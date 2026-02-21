@@ -2,7 +2,7 @@
 // FILE: src/main/java/frc/robot/subsystems/HopperSubsystem.java
 //
 // PURPOSE: Controls the hopper floor motor that pushes game pieces toward the
-//   feeder and into the shooter. Simple on/off/power control.
+//   feeder and into the shooter. Open-loop power control by design.
 //
 // Hardware: REV SparkMax + NEO brushless motor
 // NO burnFlash() — see IntakeSubsystem for the policy explanation.

@@ -7,7 +7,7 @@
 //
 // TUNING NOTES FOR STUDENTS:
 //   Values marked "TUNE ME" need to be measured or adjusted on the real robot.
-//   Everything else should work as-is for MK4 L2 + Kraken X60 + Pigeon 2.
+//   Everything else should work as-is for MK4 L2 + Falcon 500 (TalonFX) + Pigeon 2.
 // ============================================================================
 package frc.robot;
 
@@ -76,7 +76,7 @@ public final class Constants {
     // =========================================================================
     // SWERVE DRIVE CONSTANTS
     //
-    // Hardware: SDS MK4 L2 modules, Kraken X60 motors, CTRE CANcoder, Pigeon 2
+    // Hardware: SDS MK4 L2 modules, Falcon 500 motors (TalonFX), CTRE CANcoder, Pigeon 2
     //
     // GEAR RATIOS (from SDS documentation):
     //   Drive:  6.75 : 1  (6.75 motor rotations per 1 wheel rotation)
@@ -105,16 +105,16 @@ public final class Constants {
         public static final double STEER_GEAR_RATIO = 12.8;  // motor turns per 1 wheel turn
 
         // ---- Speed limits ----
-        // Kraken X60 free speed ≈ 6000 RPM = 100 RPS
-        // Wheel free speed = 100 / 6.75 = 14.81 RPS
-        // Max speed = 14.81 × 0.319 ≈ 4.73 m/s theoretical
+        // Falcon 500 free speed ≈ 6380 RPM = 106.33 RPS
+        // Wheel free speed = 106.33 / 6.75 = 15.75 RPS
+        // Max speed = 15.75 × 0.319 ≈ 5.02 m/s theoretical
         // We cap at 4.5 to leave headroom for battery sag.
         public static final double MAX_TRANSLATION_MPS = 4.5;   // m/s
         public static final double MAX_ROTATION_RADPS  = 10.0;  // rad/s
 
         // The maximum physical RPS the drive motor can spin (used for velocity commands)
-        // Kraken X60 free speed = 100 RPS at 12V
-        public static final double DRIVE_MOTOR_FREE_SPEED_RPS = 100.0;
+        // Falcon 500 free speed = 6380 RPM = 106.33 RPS at 12V
+        public static final double DRIVE_MOTOR_FREE_SPEED_RPS = 6380.0 / 60.0;
 
         // ---- Module wheel locations (relative to robot center) ----
         // WPILib uses +X = forward, +Y = left
@@ -147,7 +147,7 @@ public final class Constants {
         //   kP = extra correction when speed doesn't match target
         // TUNE ME: Run Phoenix Tuner X SysId or adjust manually on real robot.
         public static final double DRIVE_kS = 0.1;    // Volts — TUNE ME (start: 0.1)
-        public static final double DRIVE_kV = 0.12;   // V/RPS — 12.0 / 100 RPS
+        public static final double DRIVE_kV = 12.0 / DRIVE_MOTOR_FREE_SPEED_RPS; // V/RPS
         public static final double DRIVE_kP = 0.1;    // V/RPS error — TUNE ME
 
         // ---- Steer motor PID (PositionVoltage + FusedCANcoder, Phoenix 6) ----
@@ -173,6 +173,8 @@ public final class Constants {
         // Target wheel speed for a full-power shot
         // At 60 RPS with 4" wheel: surface speed ≈ 19 m/s — adjust as needed.
         public static final double TARGET_RPS = 60.0;  // TUNE ME
+        // Driver override speed when shooting without alignment/vision checks.
+        public static final double FALLBACK_RPS = 52.0; // TUNE ME
 
         // Shooter wheel PID (VelocityVoltage)
         // Kraken at 1:1, 4" wheel, 12V supply:
@@ -203,9 +205,9 @@ public final class Constants {
     // =========================================================================
     public static final class Intake {
         // How many degrees the encoder reports per motor revolution.
-        // If your tilt gearbox ratio is 8:1, each motor rev = 360/8 = 45 degrees.
+        // With a 10:1 reduction, each motor rev = 360/10 = 36 degrees.
         // TUNE ME: Check your actual tilt gearbox ratio!
-        public static final double TILT_POS_CONV_DEG = 360.0 / 8.0;  // TUNE ME
+        public static final double TILT_POS_CONV_DEG = 360.0 / 10.0;  // TUNE ME
 
         // Tilt position PID (SparkMax built-in)
         public static final double TILT_kP = 0.05;  // TUNE ME
@@ -225,6 +227,14 @@ public final class Constants {
     }
 
     // =========================================================================
+    // HOPPER CONSTANTS
+    // =========================================================================
+    public static final class Hopper {
+        // Mechanical reduction from motor to hopper roller/floor.
+        public static final double GEAR_RATIO = 8.0;
+    }
+
+    // =========================================================================
     // REV NEO MOTOR DEFAULTS
     // =========================================================================
     public static final class NeoMotors {
@@ -241,11 +251,24 @@ public final class Constants {
 
         // Alignment is "good enough" once yaw error is within this many degrees
         public static final double YAW_TOLERANCE_DEG = 2.0;
+        // Tolerate brief vision dropouts instead of immediately canceling a shot.
+        public static final double TARGET_LOSS_TOLERANCE_SEC = 0.35; // TUNE ME
+        // Feasible vertical angle band for a valid shot solution from the camera.
+        public static final double MIN_SHOT_PITCH_DEG = -12.0; // TUNE ME
+        public static final double MAX_SHOT_PITCH_DEG =  18.0; // TUNE ME
 
         // PD controller for rotating toward a vision target
         public static final double TURN_kP     = 0.05;
         public static final double TURN_kD     = 0.005;
         public static final double MAX_ROT_CMD = 0.6;  // max rotation power during alignment
+    }
+
+    // =========================================================================
+    // AUTONOMOUS CONSTANTS
+    // =========================================================================
+    public static final class Auto {
+        // Timeout for AutoShoot named command in auto mode.
+        public static final double AUTO_SHOOT_TIMEOUT_SEC = 6.0;
     }
 
     // =========================================================================
