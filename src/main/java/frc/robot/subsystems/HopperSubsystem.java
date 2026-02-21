@@ -37,7 +37,11 @@ public class HopperSubsystem extends SubsystemBase {
     public void periodic() {
         // Publish current draw to dashboard — useful for detecting jams
         SmartDashboard.putNumber("Hopper/CurrentAmps",
-                floorMotor.getOutputCurrent());
+                getCurrentAmps());
+    }
+
+    public double getCurrentAmps() {
+        return floorMotor.getOutputCurrent();
     }
 
     // Sets motor power. Positive = toward feeder. Negative = reverse/clear.

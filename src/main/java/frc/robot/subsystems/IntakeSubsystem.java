@@ -136,6 +136,14 @@ public class IntakeSubsystem extends SubsystemBase {
         return isHomed;
     }
 
+    public double getTiltPositionDeg() {
+        return tiltEncoder.getPosition();
+    }
+
+    public double getRollerCurrentAmps() {
+        return rollerMotor.getStatorCurrent().getValueAsDouble();
+    }
+
     // --------------------------------------------------------------------------
     // setTiltPower()
     //

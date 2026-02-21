@@ -8,6 +8,20 @@ java {
     targetCompatibility = JavaVersion.VERSION_17
 }
 
+sourceSets {
+    dashboard {
+        java.srcDir 'src/dashboard/java'
+        resources.srcDir 'src/dashboard/resources'
+        compileClasspath += sourceSets.main.output + configurations.runtimeClasspath
+        runtimeClasspath += output + compileClasspath
+    }
+}
+
+configurations {
+    dashboardImplementation.extendsFrom implementation
+    dashboardRuntimeOnly.extendsFrom runtimeOnly
+}
+
 def ROBOT_MAIN_CLASS = "frc.robot.Main"
 
 // Define my targets (RoboRIO) and artifacts (deployable files)
@@ -104,4 +118,11 @@ wpi.java.configureTestTasks(test)
 // Configure string concat to always inline compile
 tasks.withType(JavaCompile) {
     options.compilerArgs.add '-XDstringConcat=inline'
+}
+
+tasks.register('runDashboard', JavaExec) {
+    group = 'application'
+    description = 'Run the cross-platform custom FRC dashboard.'
+    classpath = sourceSets.dashboard.runtimeClasspath
+    mainClass = 'frc.dashboard.DashboardMain'
 }

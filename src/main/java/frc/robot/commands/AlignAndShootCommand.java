@@ -36,6 +36,22 @@ import frc.robot.subsystems.*;
 
 public class AlignAndShootCommand extends Command {
 
+    // --------------------------------------------------------------------------
+    // Static telemetry snapshot
+    //
+    // Exposes the latest align-and-shoot state for dashboard and tests.
+    // Values are updated by whichever AlignAndShootCommand instance runs most
+    // recently (teleop or auto).
+    // --------------------------------------------------------------------------
+    private static volatile String telemetryState = "IDLE";
+    private static volatile boolean telemetryCommandActive = false;
+    private static volatile boolean telemetryHasTarget = false;
+    private static volatile boolean telemetryGeometryFeasible = false;
+    private static volatile boolean telemetryHasShootableTarget = false;
+    private static volatile double telemetryYawDeg = Double.NaN;
+    private static volatile double telemetryPitchDeg = Double.NaN;
+    private static volatile String telemetryLastAbortReason = "";
+
     // All the subsystems this command needs to control
     private final SwerveSubsystem  swerve;
     private final ShooterSubsystem shooter;
@@ -115,6 +131,14 @@ public class AlignAndShootCommand extends Command {
         stateTimer.start();
         lastValidTargetSeenSec = Double.NEGATIVE_INFINITY;
         lastCameraResult = new PhotonPipelineResult();
+        telemetryState = State.SPIN_UP.name();
+        telemetryCommandActive = true;
+        telemetryHasTarget = false;
+        telemetryGeometryFeasible = false;
+        telemetryHasShootableTarget = false;
+        telemetryYawDeg = Double.NaN;
+        telemetryPitchDeg = Double.NaN;
+        telemetryLastAbortReason = "";
 
         // Start spinning shooter wheels immediately so they're ready sooner
         shooter.setShooterVelocity(Constants.Shooter.TARGET_RPS);
@@ -143,15 +167,21 @@ public class AlignAndShootCommand extends Command {
             // ---- PHASE 2: Rotate to face the vision target ----
             case ALIGN: {
                 PhotonPipelineResult result = getLatestCameraResult();
+                telemetryHasTarget = result.hasTargets();
 
                 if (!result.hasTargets()) {
                     // No target visible — stop rotating and wait
                     swerve.drive(0, 0, 0, false);
+                    telemetryGeometryFeasible = false;
+                    telemetryHasShootableTarget = false;
+                    telemetryYawDeg = Double.NaN;
+                    telemetryPitchDeg = Double.NaN;
 
                     // FIXED: Bail out if we can't find a target after ALIGN_TIMEOUT_SEC.
                     // In v1, the code would never escape this state without a target.
                     if (stateTimer.hasElapsed(ALIGN_TIMEOUT_SEC)) {
                         System.out.println("[AlignAndShoot] No target found, aborting.");
+                        telemetryLastAbortReason = "No target found";
                         transitionTo(State.DONE);
                     }
                     break;
@@ -159,14 +189,19 @@ public class AlignAndShootCommand extends Command {
 
                 if (!isShotGeometryFeasible(result)) {
                     System.out.println("[AlignAndShoot] Shot geometry not feasible, aborting.");
+                    telemetryHasShootableTarget = false;
+                    telemetryLastAbortReason = "Shot geometry not feasible";
                     transitionTo(State.DONE);
                     break;
                 }
                 lastValidTargetSeenSec = Timer.getFPGATimestamp();
+                telemetryHasShootableTarget = true;
+                telemetryGeometryFeasible = true;
 
                 // Target found — get the horizontal angle error in degrees
                 double yawDeg = result.getBestTarget().getYaw();
                 SmartDashboard.putNumber("AlignShoot/YawError", yawDeg);
+                telemetryYawDeg = yawDeg;
 
                 // Calculate rotation correction using PD controller
                 // PID input = current yaw error, setpoint = 0 (target centered)
@@ -189,6 +224,7 @@ public class AlignAndShootCommand extends Command {
             case CLEAR: {
                 if (!hasShootableTarget()) {
                     System.out.println("[AlignAndShoot] Vision lost or geometry invalid before feed, aborting.");
+                    telemetryLastAbortReason = "Vision lost before feed";
                     transitionTo(State.DONE);
                     break;
                 }
@@ -204,6 +240,7 @@ public class AlignAndShootCommand extends Command {
             case FEED: {
                 if (!hasShootableTarget()) {
                     System.out.println("[AlignAndShoot] Vision lost or geometry invalid during feed, aborting.");
+                    telemetryLastAbortReason = "Vision lost during feed";
                     transitionTo(State.DONE);
                     break;
                 }
@@ -241,9 +278,13 @@ public class AlignAndShootCommand extends Command {
         feeder.stop();
         hopper.stop();
         intake.setRollerPower(0);
+        telemetryState = "IDLE";
+        telemetryCommandActive = false;
+        telemetryHasShootableTarget = false;
         SmartDashboard.putString("AlignShoot/State", "IDLE");
         if (interrupted) {
             System.out.println("[AlignAndShoot] Command was interrupted.");
+            telemetryLastAbortReason = "Interrupted";
         }
     }
 
@@ -254,19 +295,26 @@ public class AlignAndShootCommand extends Command {
         state = newState;
         stateTimer.reset();
         stateTimer.start();
+        telemetryState = newState.toString();
         SmartDashboard.putString("AlignShoot/State", newState.toString());
     }
 
     private boolean hasShootableTarget() {
         PhotonPipelineResult result = getLatestCameraResult();
+        telemetryHasTarget = result.hasTargets();
         if (result.hasTargets()) {
-            if (isShotGeometryFeasible(result)) {
+            boolean geometryFeasible = isShotGeometryFeasible(result);
+            telemetryGeometryFeasible = geometryFeasible;
+            if (geometryFeasible) {
                 lastValidTargetSeenSec = Timer.getFPGATimestamp();
+                telemetryHasShootableTarget = true;
                 return true;
             }
+            telemetryHasShootableTarget = false;
             return false;
         }
-
+        telemetryGeometryFeasible = false;
+        telemetryHasShootableTarget = hasRecentValidTarget();
         return hasRecentValidTarget();
     }
 
@@ -278,6 +326,7 @@ public class AlignAndShootCommand extends Command {
     private boolean isShotGeometryFeasible(PhotonPipelineResult result) {
         double pitchDeg = result.getBestTarget().getPitch();
         SmartDashboard.putNumber("AlignShoot/TargetPitchDeg", pitchDeg);
+        telemetryPitchDeg = pitchDeg;
 
         if (!Double.isFinite(pitchDeg)) {
             return false;
@@ -293,5 +342,37 @@ public class AlignAndShootCommand extends Command {
             lastCameraResult = unreadResults.get(unreadResults.size() - 1);
         }
         return lastCameraResult;
+    }
+
+    public static String getTelemetryState() {
+        return telemetryState;
+    }
+
+    public static boolean isTelemetryCommandActive() {
+        return telemetryCommandActive;
+    }
+
+    public static boolean telemetryHasTarget() {
+        return telemetryHasTarget;
+    }
+
+    public static boolean telemetryGeometryFeasible() {
+        return telemetryGeometryFeasible;
+    }
+
+    public static boolean telemetryHasShootableTarget() {
+        return telemetryHasShootableTarget;
+    }
+
+    public static double getTelemetryYawDeg() {
+        return telemetryYawDeg;
+    }
+
+    public static double getTelemetryPitchDeg() {
+        return telemetryPitchDeg;
+    }
+
+    public static String getTelemetryLastAbortReason() {
+        return telemetryLastAbortReason;
     }
 }
