@@ -73,7 +73,7 @@ public class IntakeSubsystem extends SubsystemBase {
         tiltMotor.setIdleMode(IdleMode.kBrake);
 
         // Position conversion: sets what unit the encoder reports.
-        // If gearbox = 8:1, one motor revolution = 1/8 arm revolution = 45°
+        // If gearbox = 10:1, one motor revolution = 1/10 arm revolution = 36°
         // So position in "degrees" = motor_rotations × (360 / gear_ratio)
         // IMPORTANT: This MUST also be set in REV Hardware Client via burnFlash!
         //            We set it here as a safety net at runtime.

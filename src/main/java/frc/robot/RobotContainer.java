@@ -164,10 +164,10 @@ public class RobotContainer {
                         Commands.runOnce(() -> intake.setRollerPower(0.0), intake)
                 ));
 
-        // AutoShoot: align to target and shoot (3-second timeout for safety)
+        // AutoShoot: align to target and shoot (timeout configured in Constants.Auto)
         NamedCommands.registerCommand("AutoShoot",
                 new AlignAndShootCommand(swerve, shooter, feeder, hopper, intake, camera)
-                        .withTimeout(3.0));
+                        .withTimeout(Constants.Auto.AUTO_SHOOT_TIMEOUT_SEC));
 
         // Level1Climb: automatically extends climber to Level 1 height
         NamedCommands.registerCommand("Level1Climb",
@@ -247,15 +247,18 @@ public class RobotContainer {
         driverController.x().onTrue(
                 new IntakeHomeCommand(intake));
 
-        // Right Trigger: Full shoot routine (spin up + align + feed)
+        // Right Trigger: Vision-required align-and-shoot.
+        // Safety: if target is lost or geometry is infeasible, command aborts.
         driverController.rightTrigger().onTrue(
-                shooter.buildShootRoutine(feeder, hopper, intake, Constants.Shooter.TARGET_RPS));
+                new AlignAndShootCommand(swerve, shooter, feeder, hopper, intake, camera));
 
-        // Y button (+ vision): Align and shoot using camera
-        // NOTE: Y is used for gyro zero above. If you want both, use a different button.
-        // Consider moving align-and-shoot to left trigger or back button.
+        // Left Trigger: secondary vision-required align-and-shoot binding.
         driverController.leftTrigger().onTrue(
                 new AlignAndShootCommand(swerve, shooter, feeder, hopper, intake, camera));
+
+        // Right Bumper: OVERRIDE shot at fallback speed (no alignment/vision required).
+        driverController.rightBumper().onTrue(
+                shooter.buildShootRoutine(feeder, hopper, intake, Constants.Shooter.FALLBACK_RPS));
 
         // B button: Emergency stop — immediately stops ALL drive motors
         driverController.b().onTrue(Commands.runOnce(swerve::stop, swerve));

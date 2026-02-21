@@ -68,6 +68,8 @@ public class AlignAndShootCommand extends Command {
 
     // Timer tracks how long we've been in each state
     private final Timer stateTimer = new Timer();
+    // Last time we had a valid target with feasible shot geometry.
+    private double lastValidTargetSeenSec = Double.NEGATIVE_INFINITY;
 
     // FIXED: Separate timeout for alignment (3 seconds).
     // If the target is never found within this time, skip to DONE.
@@ -109,6 +111,7 @@ public class AlignAndShootCommand extends Command {
         state = State.SPIN_UP;
         stateTimer.reset();
         stateTimer.start();
+        lastValidTargetSeenSec = Double.NEGATIVE_INFINITY;
 
         // Start spinning shooter wheels immediately so they're ready sooner
         shooter.setShooterVelocity(Constants.Shooter.TARGET_RPS);
@@ -151,6 +154,13 @@ public class AlignAndShootCommand extends Command {
                     break;
                 }
 
+                if (!isShotGeometryFeasible(result)) {
+                    System.out.println("[AlignAndShoot] Shot geometry not feasible, aborting.");
+                    transitionTo(State.DONE);
+                    break;
+                }
+                lastValidTargetSeenSec = Timer.getFPGATimestamp();
+
                 // Target found — get the horizontal angle error in degrees
                 double yawDeg = result.getBestTarget().getYaw();
                 SmartDashboard.putNumber("AlignShoot/YawError", yawDeg);
@@ -174,6 +184,11 @@ public class AlignAndShootCommand extends Command {
 
             // ---- PHASE 3: Clear the feeder path ----
             case CLEAR: {
+                if (!hasShootableTarget()) {
+                    System.out.println("[AlignAndShoot] Vision lost or geometry invalid before feed, aborting.");
+                    transitionTo(State.DONE);
+                    break;
+                }
                 feeder.setPower(Constants.Shooter.CLEAR_POWER);
                 if (stateTimer.hasElapsed(Constants.Shooter.CLEAR_TIME_SEC)) {
                     feeder.stop();
@@ -184,6 +199,11 @@ public class AlignAndShootCommand extends Command {
 
             // ---- PHASE 4: Feed game piece into shooter ----
             case FEED: {
+                if (!hasShootableTarget()) {
+                    System.out.println("[AlignAndShoot] Vision lost or geometry invalid during feed, aborting.");
+                    transitionTo(State.DONE);
+                    break;
+                }
                 feeder.setPower(Constants.Shooter.FEED_POWER);
                 hopper.setPower(Constants.Shooter.FEED_POWER);
                 intake.setRollerPower(Constants.Shooter.FEED_POWER);
@@ -232,5 +252,35 @@ public class AlignAndShootCommand extends Command {
         stateTimer.reset();
         stateTimer.start();
         SmartDashboard.putString("AlignShoot/State", newState.toString());
+    }
+
+    private boolean hasShootableTarget() {
+        PhotonPipelineResult result = camera.getLatestResult();
+        if (result.hasTargets()) {
+            if (isShotGeometryFeasible(result)) {
+                lastValidTargetSeenSec = Timer.getFPGATimestamp();
+                return true;
+            }
+            return false;
+        }
+
+        return hasRecentValidTarget();
+    }
+
+    private boolean hasRecentValidTarget() {
+        return Timer.getFPGATimestamp() - lastValidTargetSeenSec
+                <= Constants.Vision.TARGET_LOSS_TOLERANCE_SEC;
+    }
+
+    private boolean isShotGeometryFeasible(PhotonPipelineResult result) {
+        double pitchDeg = result.getBestTarget().getPitch();
+        SmartDashboard.putNumber("AlignShoot/TargetPitchDeg", pitchDeg);
+
+        if (!Double.isFinite(pitchDeg)) {
+            return false;
+        }
+
+        return pitchDeg >= Constants.Vision.MIN_SHOT_PITCH_DEG
+                && pitchDeg <= Constants.Vision.MAX_SHOT_PITCH_DEG;
     }
 }

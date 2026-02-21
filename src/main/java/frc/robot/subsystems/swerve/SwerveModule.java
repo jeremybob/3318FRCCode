@@ -3,8 +3,8 @@
 //
 // PURPOSE: Controls ONE swerve module corner.
 //   Each module has:
-//     - A DRIVE motor (Kraken X60 / TalonFX) that spins the wheel
-//     - A STEER motor (Kraken X60 / TalonFX) that rotates the wheel direction
+//     - A DRIVE motor (Falcon 500 / TalonFX) that spins the wheel
+//     - A STEER motor (Falcon 500 / TalonFX) that rotates the wheel direction
 //     - A CANcoder that reads the absolute wheel angle (so we never lose position)
 //
 // KEY FIX FROM v1: The steer motor's position loop now uses the CANcoder as its
@@ -93,7 +93,7 @@ public class SwerveModule {
 
         // Velocity PID — controls wheel speed
         // kS: min voltage to overcome static friction
-        // kV: voltage per RPS (kV = 12V / free_speed = 12/100 = 0.12)
+        // kV: voltage per RPS (kV = 12V / free_speed for the configured drive motor)
         // kP: extra correction when actual speed doesn't match target
         driveCfg.Slot0.kS = Constants.Swerve.DRIVE_kS;
         driveCfg.Slot0.kV = Constants.Swerve.DRIVE_kV;
