@@ -70,6 +70,8 @@ public class AlignAndShootCommand extends Command {
     private final Timer stateTimer = new Timer();
     // Last time we had a valid target with feasible shot geometry.
     private double lastValidTargetSeenSec = Double.NEGATIVE_INFINITY;
+    // Cached camera result so we can use the latest unread packet API without losing continuity.
+    private PhotonPipelineResult lastCameraResult = new PhotonPipelineResult();
 
     // FIXED: Separate timeout for alignment (3 seconds).
     // If the target is never found within this time, skip to DONE.
@@ -112,6 +114,7 @@ public class AlignAndShootCommand extends Command {
         stateTimer.reset();
         stateTimer.start();
         lastValidTargetSeenSec = Double.NEGATIVE_INFINITY;
+        lastCameraResult = new PhotonPipelineResult();
 
         // Start spinning shooter wheels immediately so they're ready sooner
         shooter.setShooterVelocity(Constants.Shooter.TARGET_RPS);
@@ -139,7 +142,7 @@ public class AlignAndShootCommand extends Command {
 
             // ---- PHASE 2: Rotate to face the vision target ----
             case ALIGN: {
-                PhotonPipelineResult result = camera.getLatestResult();
+                PhotonPipelineResult result = getLatestCameraResult();
 
                 if (!result.hasTargets()) {
                     // No target visible — stop rotating and wait
@@ -255,7 +258,7 @@ public class AlignAndShootCommand extends Command {
     }
 
     private boolean hasShootableTarget() {
-        PhotonPipelineResult result = camera.getLatestResult();
+        PhotonPipelineResult result = getLatestCameraResult();
         if (result.hasTargets()) {
             if (isShotGeometryFeasible(result)) {
                 lastValidTargetSeenSec = Timer.getFPGATimestamp();
@@ -282,5 +285,13 @@ public class AlignAndShootCommand extends Command {
 
         return pitchDeg >= Constants.Vision.MIN_SHOT_PITCH_DEG
                 && pitchDeg <= Constants.Vision.MAX_SHOT_PITCH_DEG;
+    }
+
+    private PhotonPipelineResult getLatestCameraResult() {
+        var unreadResults = camera.getAllUnreadResults();
+        if (!unreadResults.isEmpty()) {
+            lastCameraResult = unreadResults.get(unreadResults.size() - 1);
+        }
+        return lastCameraResult;
     }
 }

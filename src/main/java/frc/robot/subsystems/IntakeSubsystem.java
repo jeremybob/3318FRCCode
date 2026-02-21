@@ -177,7 +177,7 @@ public class IntakeSubsystem extends SubsystemBase {
     public void setTiltPosition(double targetDegrees) {
         if (isHomed) {
             // kPosition tells the SparkMax to run its built-in position PID loop
-            tiltPID.setReference(targetDegrees, ControlType.kPosition);
+            tiltPID.setSetpoint(targetDegrees, ControlType.kPosition);
         } else {
             // Safety: refuse to move if we haven't homed yet.
             // Log a warning so the student knows why it's not moving.

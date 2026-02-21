@@ -41,7 +41,7 @@ public class Robot extends TimedRobot {
         // Because the tilt uses a relative encoder that resets on power-off,
         // we need to find the home position before we can use position control.
         // This runs immediately on power-on so it's done before the match starts.
-        robotContainer.getIntakeHomeCommand().schedule();
+        CommandScheduler.getInstance().schedule(robotContainer.getIntakeHomeCommand());
     }
 
     // --------------------------------------------------------------------------
@@ -74,7 +74,7 @@ public class Robot extends TimedRobot {
         autonomousCommand = robotContainer.getAutonomousCommand();
 
         if (autonomousCommand != null) {
-            autonomousCommand.schedule();
+            CommandScheduler.getInstance().schedule(autonomousCommand);
         } else {
             System.out.println("[Robot] No autonomous command selected.");
         }

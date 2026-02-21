@@ -151,8 +151,8 @@ public class SwerveModule {
         // WPILib's optimize() does this automatically.
         // FYI: With ContinuousWrap enabled, Phoenix 6 also handles wrap-around,
         // but we still need optimize() to flip the drive direction when needed.
-        SwerveModuleState optimized = SwerveModuleState.optimize(
-                desiredState, getAbsoluteAngle());
+        desiredState.optimize(getAbsoluteAngle());
+        SwerveModuleState optimized = desiredState;
 
         // ---- Command the STEER motor to the target angle ----
         // The CANcoder (and therefore the position feedback) is in rotations.
