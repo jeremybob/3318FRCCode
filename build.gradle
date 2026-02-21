@@ -123,6 +123,12 @@ tasks.withType(JavaCompile) {
 tasks.register('runDashboard', JavaExec) {
     group = 'application'
     description = 'Run the cross-platform custom FRC dashboard.'
+    dependsOn 'extractReleaseNative', 'dashboardClasses'
     classpath = sourceSets.dashboard.runtimeClasspath
     mainClass = 'frc.dashboard.DashboardMain'
+
+    def nativeDir = file("${buildDir}/jni/release").absolutePath
+    systemProperty 'java.library.path', nativeDir
+    environment 'LD_LIBRARY_PATH', nativeDir
+    environment 'DYLD_LIBRARY_PATH', nativeDir
 }
