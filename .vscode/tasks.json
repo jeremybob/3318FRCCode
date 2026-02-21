@@ -18,6 +18,15 @@
         "command": "${workspaceFolder}\\run-dashboard.bat --host 10.33.18.2"
       },
       "problemMatcher": []
+    },
+    {
+      "label": "Dashboard: Run (Sim Localhost)",
+      "type": "shell",
+      "command": "${workspaceFolder}/run-dashboard.sh --host 127.0.0.1",
+      "windows": {
+        "command": "${workspaceFolder}\\run-dashboard.bat --host 127.0.0.1"
+      },
+      "problemMatcher": []
     }
   ]
 }
