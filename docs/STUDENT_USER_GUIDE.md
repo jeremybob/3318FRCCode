@@ -169,6 +169,7 @@ Use the launcher script from repo root:
 ```
 
 Defaults to team connection (`--team 3318`).
+The launcher auto-detects WPILib Java from common install paths and years.
 
 For host override (sim/debug):
 
@@ -185,6 +186,11 @@ For host override (sim/debug):
 ```
 
 VS Code: run task `Dashboard: Run (Team 3318)` from `Terminal > Run Task...`.
+
+If Java still is not found, set one of:
+
+- `DASHBOARD_JAVA_HOME` (preferred override)
+- `JAVA_HOME`
 
 ## 10. Current two-controller teleop mapping (audited)
 
