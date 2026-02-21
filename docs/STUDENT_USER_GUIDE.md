@@ -152,6 +152,40 @@ If only checking compile:
 
 On robot boot, intake homing is auto-scheduled in `Robot.robotInit()`.
 
+### 9.1 Simplest dashboard launch (Mac + Windows)
+
+Use the launcher script from repo root:
+
+- macOS/Linux:
+
+```bash
+./run-dashboard.sh
+```
+
+- Windows:
+
+```powershell
+.\run-dashboard.bat
+```
+
+Defaults to team connection (`--team 3318`).
+
+For host override (sim/debug):
+
+- macOS/Linux:
+
+```bash
+./run-dashboard.sh --host 10.33.18.2
+```
+
+- Windows:
+
+```powershell
+.\run-dashboard.bat --host 10.33.18.2
+```
+
+VS Code: run task `Dashboard: Run (Team 3318)` from `Terminal > Run Task...`.
+
 ## 10. Current two-controller teleop mapping (audited)
 
 Controller ports (`Constants.OI`):
