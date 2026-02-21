@@ -64,8 +64,7 @@ public class ShooterSubsystem extends SubsystemBase {
         leftShooter.getConfigurator().apply(cfg);
         rightShooter.getConfigurator().apply(cfg);
 
-        // Right motor spins opposite direction to left (they face each other)
-        rightShooter.setInverted(true);
+        // Right wheel command sign is flipped in setShooterVelocity().
     }
 
     // --------------------------------------------------------------------------
@@ -90,7 +89,7 @@ public class ShooterSubsystem extends SubsystemBase {
     // --------------------------------------------------------------------------
     public void setShooterVelocity(double targetRPS) {
         leftShooter.setControl(velocityRequest.withVelocity(targetRPS));
-        rightShooter.setControl(velocityRequest.withVelocity(targetRPS));
+        rightShooter.setControl(velocityRequest.withVelocity(-targetRPS));
     }
 
     // --------------------------------------------------------------------------

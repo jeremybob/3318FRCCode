@@ -23,12 +23,15 @@ package frc.robot.subsystems;
 import com.ctre.phoenix6.configs.TalonFXConfiguration;
 import com.ctre.phoenix6.hardware.TalonFX;
 import com.ctre.phoenix6.signals.NeutralModeValue;
-import com.revrobotics.CANSparkBase.ControlType;
-import com.revrobotics.CANSparkBase.IdleMode;
-import com.revrobotics.CANSparkLowLevel.MotorType;
-import com.revrobotics.CANSparkMax;
+import com.revrobotics.PersistMode;
 import com.revrobotics.RelativeEncoder;
-import com.revrobotics.SparkPIDController;
+import com.revrobotics.ResetMode;
+import com.revrobotics.spark.SparkBase.ControlType;
+import com.revrobotics.spark.SparkClosedLoopController;
+import com.revrobotics.spark.SparkLowLevel.MotorType;
+import com.revrobotics.spark.SparkMax;
+import com.revrobotics.spark.config.SparkBaseConfig.IdleMode;
+import com.revrobotics.spark.config.SparkMaxConfig;
 
 import edu.wpi.first.wpilibj.DigitalInput;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
@@ -39,9 +42,9 @@ import frc.robot.Constants;
 public class IntakeSubsystem extends SubsystemBase {
 
     // ---- Tilt motor (SparkMax + NEO) ----
-    private final CANSparkMax      tiltMotor   = new CANSparkMax(Constants.CAN.INTAKE_TILT_NEO, MotorType.kBrushless);
+    private final SparkMax      tiltMotor   = new SparkMax(Constants.CAN.INTAKE_TILT_NEO, MotorType.kBrushless);
     private final RelativeEncoder  tiltEncoder = tiltMotor.getEncoder();
-    private final SparkPIDController tiltPID   = tiltMotor.getPIDController();
+    private final SparkClosedLoopController tiltPID   = tiltMotor.getClosedLoopController();
 
     // ---- Limit switch (detects home position) ----
     // DigitalInput.get() returns true when switch is OPEN (not pressed)
@@ -66,23 +69,26 @@ public class IntakeSubsystem extends SubsystemBase {
         // The permanent settings (position conversion factor, etc.) must be
         // configured once in the REV Hardware Client, then they persist.
 
+        SparkMaxConfig tiltConfig = new SparkMaxConfig();
+
         // Current limit protects the NEO and gearbox during homing stalls
-        tiltMotor.setSmartCurrentLimit(Constants.Intake.TILT_CURRENT_LIMIT_A);
+        tiltConfig.smartCurrentLimit(Constants.Intake.TILT_CURRENT_LIMIT_A);
 
         // Brake mode: arm holds its position when power is removed
-        tiltMotor.setIdleMode(IdleMode.kBrake);
+        tiltConfig.idleMode(IdleMode.kBrake);
 
         // Position conversion: sets what unit the encoder reports.
         // If gearbox = 10:1, one motor revolution = 1/10 arm revolution = 36°
         // So position in "degrees" = motor_rotations × (360 / gear_ratio)
         // IMPORTANT: This MUST also be set in REV Hardware Client via burnFlash!
         //            We set it here as a safety net at runtime.
-        tiltEncoder.setPositionConversionFactor(Constants.Intake.TILT_POS_CONV_DEG);
+        tiltConfig.encoder.positionConversionFactor(Constants.Intake.TILT_POS_CONV_DEG);
 
         // Tilt position PID (built into SparkMax)
-        tiltPID.setP(Constants.Intake.TILT_kP);
-        tiltPID.setI(0.0);  // no integral — it causes windup in position control
-        tiltPID.setD(0.0);  // add D if you see oscillation
+        tiltConfig.closedLoop.p(Constants.Intake.TILT_kP);
+        tiltConfig.closedLoop.i(0.0);  // no integral — it causes windup in position control
+        tiltConfig.closedLoop.d(0.0);  // add D if you see oscillation
+        tiltMotor.configure(tiltConfig, ResetMode.kNoResetSafeParameters, PersistMode.kNoPersistParameters);
 
         // ---- Roller motor (TalonFX) configuration ----
         TalonFXConfiguration rollerCfg = new TalonFXConfiguration();

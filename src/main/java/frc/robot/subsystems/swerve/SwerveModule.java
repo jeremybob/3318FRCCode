@@ -24,7 +24,6 @@ import com.ctre.phoenix6.controls.PositionVoltage;
 import com.ctre.phoenix6.controls.StrictFollower;
 import com.ctre.phoenix6.hardware.CANcoder;
 import com.ctre.phoenix6.hardware.TalonFX;
-import com.ctre.phoenix6.signals.AbsoluteSensorRangeValue;
 import com.ctre.phoenix6.signals.FeedbackSensorSourceValue;
 import com.ctre.phoenix6.signals.NeutralModeValue;
 import com.ctre.phoenix6.signals.SensorDirectionValue;
@@ -71,8 +70,8 @@ public class SwerveModule {
 
         // ---- Configure the CANcoder ----------------------------------------
         CANcoderConfiguration ccfg = new CANcoderConfiguration();
-        // Report angle as -0.5 to +0.5 rotations (so 0 = forward, ±0.5 = backward)
-        ccfg.MagnetSensor.AbsoluteSensorRange = AbsoluteSensorRangeValue.Signed_PlusMinusHalf;
+        // Report angle around a centered discontinuity (equivalent to ±0.5 rotations).
+        ccfg.MagnetSensor.AbsoluteSensorDiscontinuityPoint = 0.5;
         // The offset you measured in Tuner X shifts the reading so forward = 0
         ccfg.MagnetSensor.MagnetOffset = cancoderOffsetRot;
         // CCW positive means turning left increases the angle value (WPILib convention)
