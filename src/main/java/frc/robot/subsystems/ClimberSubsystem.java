@@ -94,6 +94,11 @@ public class ClimberSubsystem extends SubsystemBase {
         return leaderWinch.getStatorCurrent().getValueAsDouble();
     }
 
+    public boolean isAtLevel1Target() {
+        return Math.abs(getWinchPositionRot() - Constants.Climber.LEVEL1_TARGET_ROT)
+                <= Constants.Climber.LEVEL1_TOLERANCE_ROT;
+    }
+
     // --------------------------------------------------------------------------
     // setWinchPower()
     //

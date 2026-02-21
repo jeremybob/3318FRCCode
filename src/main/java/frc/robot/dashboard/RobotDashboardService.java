@@ -19,7 +19,7 @@ public class RobotDashboardService {
         void scheduleLevel1Climb();
     }
 
-    private static final String CONTRACT_VERSION = "2026.1.0";
+    private static final String CONTRACT_VERSION = "2026.2.0";
 
     private final Actions actions;
 
@@ -84,9 +84,13 @@ public class RobotDashboardService {
     private long level1ClimbSeqSeen = 0;
 
     public RobotDashboardService(Actions actions) {
+        this(actions, NetworkTableInstance.getDefault());
+    }
+
+    RobotDashboardService(Actions actions, NetworkTableInstance ntInstance) {
         this.actions = actions;
 
-        NetworkTable table = NetworkTableInstance.getDefault().getTable("Dashboard");
+        NetworkTable table = ntInstance.getTable("Dashboard");
 
         contractVersionPub = table.getStringTopic("meta/contract_version").publish();
 
@@ -200,6 +204,8 @@ public class RobotDashboardService {
     private void processCommandRequests(DashboardSnapshot snapshot) {
         boolean disabled = "DISABLED".equals(snapshot.robotMode());
         boolean teleopEnabled = snapshot.enabled() && "TELEOP".equals(snapshot.robotMode());
+        boolean intakeHomeEnabled = snapshot.enabled()
+                && ("TELEOP".equals(snapshot.robotMode()) || "TEST".equals(snapshot.robotMode()));
 
         zeroHeadingSeqSeen = runCommandIfNew(
                 zeroHeadingCmdSub,
@@ -224,8 +230,8 @@ public class RobotDashboardService {
                 intakeHomeSeqSeen,
                 "intake_home",
                 actions::scheduleIntakeHome,
-                disabled,
-                "Only allowed while disabled",
+                intakeHomeEnabled,
+                "Requires enabled teleop/test (disabled mode blocks motor output)",
                 snapshot.timestampSec());
 
         alignShootSeqSeen = runCommandIfNew(

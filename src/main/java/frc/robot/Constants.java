@@ -281,6 +281,8 @@ public final class Constants {
 
         // Target position for Level 1 automatic climb
         public static final double LEVEL1_TARGET_ROT = 45.0;  // TUNE ME
+        public static final double LEVEL1_TOLERANCE_ROT = 1.0;
+        public static final double LEVEL1_TIMEOUT_SEC = 4.0;
 
         // Position PID for the winch
         public static final double CLIMBER_kP = 30.0;  // TUNE ME

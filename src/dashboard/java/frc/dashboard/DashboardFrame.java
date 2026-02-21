@@ -18,6 +18,8 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayDeque;
 
 import javax.swing.BorderFactory;
+import javax.swing.Box;
+import javax.swing.BoxLayout;
 import javax.swing.JButton;
 import javax.swing.JComponent;
 import javax.swing.JFrame;
@@ -25,6 +27,7 @@ import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JProgressBar;
 import javax.swing.JScrollPane;
+import javax.swing.ScrollPaneConstants;
 import javax.swing.JTabbedPane;
 import javax.swing.JTextArea;
 import javax.swing.SwingConstants;
@@ -44,6 +47,7 @@ public class DashboardFrame extends JFrame {
     private static final Color OK = new Color(46, 170, 88);
     private static final Color WARN = new Color(224, 157, 55);
     private static final Color BAD = new Color(202, 65, 65);
+    private static final Color PENDING = new Color(150, 108, 49);
     private static final Color INFO = new Color(58, 118, 179);
     private static final Color BUTTON_ACTIVE = new Color(48, 92, 142);
     private static final Color BUTTON_DISABLED = new Color(61, 73, 89);
@@ -112,7 +116,7 @@ public class DashboardFrame extends JFrame {
 
     private double lastRobotTimestampSec = Double.NaN;
     private long lastTimestampSeenNanos = System.nanoTime();
-    private long lastAckSeqLogged = Long.MIN_VALUE;
+    private long lastAckSeqLogged = 0;
     private boolean connectionInitialized = false;
     private boolean lastConnected = false;
     private boolean readyInitialized = false;
@@ -184,25 +188,30 @@ public class DashboardFrame extends JFrame {
 
         styleMetricLabel(readyReasonLabel);
         styleMetricLabel(nextActionLabel);
-        styleMetricLabel(alignPhaseLabel);
-        styleMetricLabel(yawLabel);
-        styleMetricLabel(pitchLabel);
-        styleMetricLabel(visionLabel);
-        styleMetricLabel(abortLabel);
+        styleCompactLabel(alignPhaseLabel);
+        styleCompactLabel(yawLabel);
+        styleCompactLabel(pitchLabel);
+        styleCompactLabel(visionLabel);
+        styleCompactLabel(abortLabel);
         styleMetricLabel(ackLabel);
 
-        JPanel side = new JPanel(new GridLayout(6, 1, 8, 8));
-        side.setPreferredSize(new Dimension(420, 620));
+        JPanel side = new JPanel();
+        side.setLayout(new BoxLayout(side, BoxLayout.Y_AXIS));
         side.setBackground(BG);
 
-        side.add(wrapLabelCard("Shot Readiness", readyLabel, readyReasonLabel, nextActionLabel));
-        side.add(buildChecklistCard());
-        side.add(buildAlignCard());
-        side.add(wrapLabelCard("Command Ack", ackLabel));
-        side.add(buildDriverActionCard());
-        side.add(buildOperatorActionCard());
+        addSideCard(side, wrapLabelCard("Shot Readiness", readyLabel, readyReasonLabel, nextActionLabel));
+        addSideCard(side, buildChecklistCard());
+        addSideCard(side, buildAlignCard());
+        addSideCard(side, wrapLabelCard("Command Ack", ackLabel));
+        addSideCard(side, buildDriverActionCard());
+        addSideCard(side, buildOperatorActionCard());
 
-        root.add(side, BorderLayout.EAST);
+        JScrollPane sideScroll = new JScrollPane(side);
+        sideScroll.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+        sideScroll.setBorder(BorderFactory.createEmptyBorder());
+        sideScroll.getViewport().setBackground(BG);
+        sideScroll.setPreferredSize(new Dimension(430, 620));
+        root.add(sideScroll, BorderLayout.EAST);
         return root;
     }
 
@@ -356,6 +365,13 @@ public class DashboardFrame extends JFrame {
         return panel;
     }
 
+    private void addSideCard(JPanel container, JPanel card) {
+        card.setAlignmentX(JComponent.LEFT_ALIGNMENT);
+        card.setMaximumSize(new Dimension(Integer.MAX_VALUE, card.getPreferredSize().height));
+        container.add(card);
+        container.add(Box.createVerticalStrut(8));
+    }
+
     private void styleHeaderLabel(JLabel label) {
         label.setOpaque(true);
         label.setBackground(CARD);
@@ -368,6 +384,11 @@ public class DashboardFrame extends JFrame {
     private void styleMetricLabel(JLabel label) {
         label.setForeground(TEXT);
         label.setFont(METRIC_FONT);
+    }
+
+    private void styleCompactLabel(JLabel label) {
+        label.setForeground(TEXT);
+        label.setFont(new Font("Segoe UI", Font.PLAIN, 15));
     }
 
     private void styleYawBar() {
@@ -402,7 +423,7 @@ public class DashboardFrame extends JFrame {
         connectionLabel.setText(data.connected() ? "Connected" : "Disconnected");
         connectionLabel.setBackground(data.connected() ? OK : BAD);
 
-        modeLabel.setText("Mode: " + data.mode() + (data.enabled() ? " (ENABLED)" : " (DISABLED)"));
+        modeLabel.setText("Mode: " + data.mode() + (data.enabled() ? " EN" : " DIS"));
         allianceLabel.setText("Alliance: " + data.alliance());
 
         updateMatchState(data);
@@ -506,6 +527,8 @@ public class DashboardFrame extends JFrame {
         boolean connected = data.connected();
         boolean disabled = "DISABLED".equals(data.mode());
         boolean teleopEnabled = data.enabled() && "TELEOP".equals(data.mode());
+        boolean intakeHomeEnabled = data.enabled()
+                && ("TELEOP".equals(data.mode()) || "TEST".equals(data.mode()));
 
         setButtonState(
                 zeroHeadingButton,
@@ -529,9 +552,9 @@ public class DashboardFrame extends JFrame {
                 connected ? "Enable teleop first" : "No robot connection");
         setButtonState(
                 intakeHomeButton,
-                connected && disabled,
-                "Requires disabled mode",
-                connected ? "Disable robot to home intake" : "No robot connection");
+                connected && intakeHomeEnabled,
+                "Requires enabled teleop/test",
+                connected ? "Enable teleop/test to run intake home" : "No robot connection");
         setButtonState(
                 level1ClimbButton,
                 connected && teleopEnabled && data.climberArmed(),
@@ -554,7 +577,7 @@ public class DashboardFrame extends JFrame {
 
     private void updateChecklist(JLabel label, String title, boolean pass) {
         label.setText(title + ": " + (pass ? "PASS" : "WAIT"));
-        label.setBackground(pass ? OK : BAD);
+        label.setBackground(pass ? OK : PENDING);
         label.setForeground(Color.WHITE);
     }
 
@@ -584,10 +607,19 @@ public class DashboardFrame extends JFrame {
         if (!connectionInitialized) {
             connectionInitialized = true;
             lastConnected = data.connected();
+            lastAckSeqLogged = data.ackSeq();
             appendEvent(data.connected() ? "Connected to robot" : "Waiting for robot connection");
         } else if (data.connected() != lastConnected) {
             lastConnected = data.connected();
             appendEvent(data.connected() ? "Connection restored" : "Connection lost");
+            if (data.connected()) {
+                lastAckSeqLogged = data.ackSeq();
+            }
+        }
+
+        if (data.connected() && data.ackSeq() < lastAckSeqLogged) {
+            appendEvent("Ack sequence reset detected");
+            lastAckSeqLogged = data.ackSeq();
         }
 
         if (!readyInitialized) {
@@ -600,7 +632,7 @@ public class DashboardFrame extends JFrame {
                     : "Shot readiness dropped: " + sanitize(data.readyReason()));
         }
 
-        if (data.ackSeq() != lastAckSeqLogged) {
+        if (data.ackSeq() > lastAckSeqLogged) {
             lastAckSeqLogged = data.ackSeq();
             appendEvent("Command ack: " + sanitize(data.ackLastCommand())
                     + " #" + data.ackSeq()
@@ -675,7 +707,7 @@ public class DashboardFrame extends JFrame {
 
         String reason = sanitize(data.readyReason());
         if ("Intake not homed".equals(reason)) {
-            return "Run Intake Home in disabled";
+            return "Run Intake Home in enabled teleop/test";
         }
         if ("No vision target".equals(reason)) {
             return "Acquire AprilTag before firing";
@@ -739,10 +771,10 @@ public class DashboardFrame extends JFrame {
     private static JLabel createChecklistLabel(String title) {
         JLabel label = new JLabel(title + ": WAIT");
         label.setOpaque(true);
-        label.setBackground(BAD);
+        label.setBackground(PENDING);
         label.setForeground(Color.WHITE);
-        label.setFont(CHECKLIST_FONT);
-        label.setBorder(BorderFactory.createEmptyBorder(6, 8, 6, 8));
+        label.setFont(new Font("Segoe UI", Font.BOLD, 14));
+        label.setBorder(BorderFactory.createEmptyBorder(3, 8, 3, 8));
         return label;
     }
 

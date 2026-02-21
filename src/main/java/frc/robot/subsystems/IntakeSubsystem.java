@@ -111,6 +111,11 @@ public class IntakeSubsystem extends SubsystemBase {
     // --------------------------------------------------------------------------
     @Override
     public void periodic() {
+        // If we boot while already at the home switch, trust that as a valid zero.
+        if (!isHomed && getLimitSwitchPressed()) {
+            resetEncoderToHome();
+        }
+
         SmartDashboard.putNumber("Intake/TiltPositionDeg",  tiltEncoder.getPosition());
         SmartDashboard.putBoolean("Intake/IsHomed",         isHomed);
         SmartDashboard.putBoolean("Intake/LimitSwitch",     getLimitSwitchPressed());
