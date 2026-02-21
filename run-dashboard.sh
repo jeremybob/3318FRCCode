@@ -4,6 +4,10 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT_DIR"
 
+java_works() {
+  command -v java >/dev/null 2>&1 && java -version >/dev/null 2>&1
+}
+
 discover_wpilib_java_home() {
   local base
   local candidate
@@ -32,15 +36,15 @@ if [[ -n "${JAVA_HOME:-}" && -x "${JAVA_HOME}/bin/java" ]]; then
   export PATH="${JAVA_HOME}/bin:${PATH}"
 fi
 
-# If java still missing, discover WPILib JDK automatically.
-if ! command -v java >/dev/null 2>&1; then
+# If java is missing or unusable (macOS stub), discover WPILib JDK automatically.
+if ! java_works; then
   if JAVA_DISCOVERED="$(discover_wpilib_java_home)"; then
     export JAVA_HOME="${JAVA_DISCOVERED}"
     export PATH="${JAVA_HOME}/bin:${PATH}"
   fi
 fi
 
-if ! command -v java >/dev/null 2>&1; then
+if ! java_works; then
   echo "No Java runtime found."
   echo "Install WPILib (which includes Java), or set DASHBOARD_JAVA_HOME/JAVA_HOME."
   echo "Searched under: ${HOME}/wpilib and /Users/Shared/wpilib"
