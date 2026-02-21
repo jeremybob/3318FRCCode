@@ -30,14 +30,20 @@ import org.photonvision.PhotonCamera;
 
 import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.wpilibj.DriverStation;
+import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj.smartdashboard.SendableChooser;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
+import edu.wpi.first.wpilibj2.command.CommandScheduler;
 import edu.wpi.first.wpilibj2.command.button.CommandXboxController;
 
 import frc.robot.commands.AlignAndShootCommand;
 import frc.robot.commands.IntakeHomeCommand;
+import frc.robot.dashboard.DashboardSnapshot;
+import frc.robot.dashboard.ReadyToScoreEvaluator;
+import frc.robot.dashboard.ReadyToScoreResult;
+import frc.robot.dashboard.RobotDashboardService;
 import frc.robot.subsystems.*;
 
 public class RobotContainer {
@@ -73,6 +79,7 @@ public class RobotContainer {
     // =========================================================================
     private final SendableChooser<Command> autoChooser = new SendableChooser<>();
     private boolean pathPlannerConfigured = false;
+    private final RobotDashboardService dashboardService;
 
     // =========================================================================
     // CONSTRUCTOR
@@ -82,6 +89,37 @@ public class RobotContainer {
         registerPathPlannerCommands();
         configureAutoChooser();
         configureBindings();
+        dashboardService = new RobotDashboardService(new RobotDashboardService.Actions() {
+            @Override
+            public void zeroHeading() {
+                RobotContainer.this.zeroHeading();
+            }
+
+            @Override
+            public void stopDrive() {
+                RobotContainer.this.stopDrive();
+            }
+
+            @Override
+            public void scheduleIntakeHome() {
+                RobotContainer.this.scheduleIntakeHome();
+            }
+
+            @Override
+            public void scheduleAlignAndShoot() {
+                RobotContainer.this.scheduleAlignAndShoot();
+            }
+
+            @Override
+            public void scheduleFallbackShoot() {
+                RobotContainer.this.scheduleFallbackShoot();
+            }
+
+            @Override
+            public void scheduleLevel1Climb() {
+                RobotContainer.this.scheduleLevel1Climb();
+            }
+        });
     }
 
     // =========================================================================
@@ -148,29 +186,16 @@ public class RobotContainer {
     private void registerPathPlannerCommands() {
 
         // HomeIntake: re-home the intake at the start of auto (belt-and-suspenders)
-        NamedCommands.registerCommand("HomeIntake",
-                new IntakeHomeCommand(intake));
+        NamedCommands.registerCommand("HomeIntake", buildIntakeHomeCommand());
 
-        // IntakeFuel: deploy intake and spin rollers to collect a game piece
-        NamedCommands.registerCommand("IntakeFuel",
-                Commands.sequence(
-                        // Only home if we haven't already done it
-                        Commands.either(
-                                new IntakeHomeCommand(intake),
-                                Commands.none(),
-                                () -> !intake.isHomed()),
-                        // Deploy arm to pickup position
-                        Commands.runOnce(() -> intake.setTiltPosition(Constants.Intake.INTAKE_DOWN_DEG), intake),
-                        // Spin rollers for 2 seconds to grab a game piece
-                        Commands.run(() -> intake.setRollerPower(0.8), intake).withTimeout(2.0),
-                        // Stop rollers and leave arm down (ready to stow)
-                        Commands.runOnce(() -> intake.setRollerPower(0.0), intake)
-                ));
+        // Preferred event name: IntakeGamePiece.
+        // Compatibility alias retained: IntakeFuel.
+        NamedCommands.registerCommand("IntakeGamePiece", buildIntakeGamePieceCommand());
+        NamedCommands.registerCommand("IntakeFuel", buildIntakeGamePieceCommand());
 
         // AutoShoot: align to target and shoot (timeout configured in Constants.Auto)
         NamedCommands.registerCommand("AutoShoot",
-                new AlignAndShootCommand(swerve, shooter, feeder, hopper, intake, camera)
-                        .withTimeout(Constants.Auto.AUTO_SHOOT_TIMEOUT_SEC));
+                buildAlignAndShootCommand().withTimeout(Constants.Auto.AUTO_SHOOT_TIMEOUT_SEC));
 
         // Level1Climb: automatically extends climber to Level 1 height
         NamedCommands.registerCommand("Level1Climb",
@@ -195,8 +220,8 @@ public class RobotContainer {
 
         // IMPORTANT: The string names below MUST exactly match your .auto file names
         // in deploy/pathplanner/autos/ (case sensitive, no .auto extension needed)
-        addPathPlannerAutoOption("Four Note Climb Auto", "FourNoteClimbAuto");
-        addPathPlannerAutoOption("Two Note Auto", "TwoNoteAuto");
+        addPathPlannerAutoOption("Four Piece Climb Auto", "FourNoteClimbAuto");
+        addPathPlannerAutoOption("Two Piece Auto", "TwoNoteAuto");
         addPathPlannerAutoOption("Taxi Only", "TaxiOnly");
 
         // Publish the chooser so it shows up in SmartDashboard / Shuffleboard
@@ -253,10 +278,10 @@ public class RobotContainer {
         // Y button: Zero the gyro heading.
         // Use this when field-oriented drive drifts — face the robot away from you and press Y.
         driverController.y().onTrue(
-                Commands.runOnce(swerve::zeroHeading, swerve));
+                Commands.runOnce(this::zeroHeading, swerve));
 
         // B button: Emergency stop — immediately stops ALL drive motors
-        driverController.b().onTrue(Commands.runOnce(swerve::stop, swerve));
+        driverController.b().onTrue(Commands.runOnce(this::stopDrive, swerve));
 
         // ---- OPERATOR CONTROLLER BINDINGS ----
 
@@ -294,11 +319,11 @@ public class RobotContainer {
 
         // Right Trigger: Vision-required align-and-shoot (operator controls scoring).
         operatorController.rightTrigger().onTrue(
-                new AlignAndShootCommand(swerve, shooter, feeder, hopper, intake, camera));
+                buildAlignAndShootCommand());
 
         // Right Bumper: OVERRIDE shot at fallback speed (no alignment/vision required).
         operatorController.rightBumper().onTrue(
-                shooter.buildShootRoutine(feeder, hopper, intake, Constants.Shooter.FALLBACK_RPS));
+                buildFallbackShootCommand());
 
         // Left Trigger: Manual intake roller — spin forward
         operatorController.leftTrigger().whileTrue(
@@ -311,7 +336,7 @@ public class RobotContainer {
                         .finallyDo(() -> intake.setRollerPower(0)));
 
         // X button: Re-home intake (operator can trigger this too)
-        operatorController.x().onTrue(new IntakeHomeCommand(intake));
+        operatorController.x().onTrue(buildIntakeHomeCommand());
     }
 
     // =========================================================================
@@ -329,6 +354,136 @@ public class RobotContainer {
     // Called by Robot.java during robotInit() to home the intake on startup.
     // =========================================================================
     public Command getIntakeHomeCommand() {
+        return buildIntakeHomeCommand();
+    }
+
+    public void periodicDashboard() {
+        dashboardService.periodic(buildDashboardSnapshot());
+    }
+
+    private DashboardSnapshot buildDashboardSnapshot() {
+        var pose = swerve.getPose();
+        ReadyToScoreResult ready = ReadyToScoreEvaluator.evaluate(
+                new ReadyToScoreEvaluator.Inputs(
+                        intake.isHomed(),
+                        shooter.isAtSpeed(Constants.Shooter.TARGET_RPS),
+                        AlignAndShootCommand.isTelemetryCommandActive(),
+                        AlignAndShootCommand.getTelemetryState(),
+                        AlignAndShootCommand.telemetryHasTarget(),
+                        AlignAndShootCommand.telemetryGeometryFeasible(),
+                        AlignAndShootCommand.telemetryHasShootableTarget(),
+                        AlignAndShootCommand.getTelemetryYawDeg(),
+                        Constants.Vision.YAW_TOLERANCE_DEG));
+
+        return new DashboardSnapshot(
+                Timer.getFPGATimestamp(),
+                getRobotMode(),
+                DriverStation.isEnabled(),
+                getAllianceName(),
+                DriverStation.getMatchTime(),
+                pose.getX(),
+                pose.getY(),
+                swerve.getHeading().getDegrees(),
+                shooter.getLeftRPS(),
+                shooter.getRightRPS(),
+                shooter.isAtSpeed(Constants.Shooter.TARGET_RPS),
+                intake.isHomed(),
+                intake.getLimitSwitchPressed(),
+                intake.getTiltPositionDeg(),
+                intake.getRollerCurrentAmps(),
+                feeder.getCurrentAmps(),
+                hopper.getCurrentAmps(),
+                isClimberArmed(),
+                climber.getWinchPositionRot(),
+                climber.getCurrentAmps(),
+                AlignAndShootCommand.getTelemetryState(),
+                AlignAndShootCommand.isTelemetryCommandActive(),
+                AlignAndShootCommand.telemetryHasTarget(),
+                AlignAndShootCommand.telemetryGeometryFeasible(),
+                AlignAndShootCommand.telemetryHasShootableTarget(),
+                AlignAndShootCommand.getTelemetryYawDeg(),
+                AlignAndShootCommand.getTelemetryPitchDeg(),
+                AlignAndShootCommand.getTelemetryLastAbortReason(),
+                ready.ready(),
+                ready.reason());
+    }
+
+    private Command buildAlignAndShootCommand() {
+        return new AlignAndShootCommand(swerve, shooter, feeder, hopper, intake, camera);
+    }
+
+    private Command buildFallbackShootCommand() {
+        return shooter.buildShootRoutine(feeder, hopper, intake, Constants.Shooter.FALLBACK_RPS);
+    }
+
+    private Command buildIntakeHomeCommand() {
         return new IntakeHomeCommand(intake);
+    }
+
+    private Command buildIntakeGamePieceCommand() {
+        return Commands.sequence(
+                // Only home if we haven't already done it
+                Commands.either(
+                        buildIntakeHomeCommand(),
+                        Commands.none(),
+                        () -> !intake.isHomed()),
+                // Deploy arm to pickup position
+                Commands.runOnce(() -> intake.setTiltPosition(Constants.Intake.INTAKE_DOWN_DEG), intake),
+                // Spin rollers briefly to collect a game piece
+                Commands.run(() -> intake.setRollerPower(0.8), intake).withTimeout(2.0),
+                // Stop rollers and leave arm down (ready to stow)
+                Commands.runOnce(() -> intake.setRollerPower(0.0), intake));
+    }
+
+    private void scheduleAlignAndShoot() {
+        CommandScheduler.getInstance().schedule(buildAlignAndShootCommand());
+    }
+
+    private void scheduleFallbackShoot() {
+        CommandScheduler.getInstance().schedule(buildFallbackShootCommand());
+    }
+
+    private void scheduleIntakeHome() {
+        CommandScheduler.getInstance().schedule(buildIntakeHomeCommand());
+    }
+
+    private void scheduleLevel1Climb() {
+        CommandScheduler.getInstance().schedule(Commands.runOnce(climber::autoClimbLevel1, climber));
+    }
+
+    private void zeroHeading() {
+        swerve.zeroHeading();
+    }
+
+    private void stopDrive() {
+        swerve.stop();
+    }
+
+    private boolean isClimberArmed() {
+        return operatorController.start().getAsBoolean() && operatorController.back().getAsBoolean();
+    }
+
+    private static String getRobotMode() {
+        if (DriverStation.isDisabled()) {
+            return "DISABLED";
+        }
+        if (DriverStation.isAutonomousEnabled()) {
+            return "AUTONOMOUS";
+        }
+        if (DriverStation.isTeleopEnabled()) {
+            return "TELEOP";
+        }
+        if (DriverStation.isTestEnabled()) {
+            return "TEST";
+        }
+        return "UNKNOWN";
+    }
+
+    private static String getAllianceName() {
+        var alliance = DriverStation.getAlliance();
+        if (alliance.isEmpty()) {
+            return "UNKNOWN";
+        }
+        return alliance.get().name().toUpperCase();
     }
 }

@@ -99,10 +99,18 @@ public class ShooterSubsystem extends SubsystemBase {
     // Used by shoot routines to wait until wheels are ready before feeding.
     // --------------------------------------------------------------------------
     public boolean isAtSpeed(double targetRPS) {
-        double leftRPS  = Math.abs(leftShooter.getVelocity().getValueAsDouble());
-        double rightRPS = Math.abs(rightShooter.getVelocity().getValueAsDouble());
+        double leftRPS  = Math.abs(getLeftRPS());
+        double rightRPS = Math.abs(getRightRPS());
         return Math.abs(leftRPS  - targetRPS) <= Constants.Shooter.TOLERANCE_RPS
             && Math.abs(rightRPS - targetRPS) <= Constants.Shooter.TOLERANCE_RPS;
+    }
+
+    public double getLeftRPS() {
+        return leftShooter.getVelocity().getValueAsDouble();
+    }
+
+    public double getRightRPS() {
+        return rightShooter.getVelocity().getValueAsDouble();
     }
 
     // --------------------------------------------------------------------------

@@ -54,19 +54,33 @@ assert_contains "$CONSTANTS_FILE" "public static final double MAX_SHOT_PITCH_DEG
 # 4) Override button + fallback speed
 assert_contains "$CONSTANTS_FILE" "public static final double FALLBACK_RPS = 52.0;" \
   "Fallback shot speed constant exists"
-assert_contains "$CONTAINER_FILE" "driverController.rightBumper().onTrue(" \
-  "Driver right bumper is bound"
+assert_contains "$CONTAINER_FILE" "operatorController.rightBumper().onTrue(" \
+  "Operator right bumper is bound"
 assert_contains "$CONTAINER_FILE" "Constants.Shooter.FALLBACK_RPS" \
-  "Right bumper shoots using fallback speed"
-assert_contains "$CONTAINER_FILE" "driverController.rightTrigger().onTrue(" \
-  "Right trigger is bound"
-assert_contains "$CONTAINER_FILE" "new AlignAndShootCommand(swerve, shooter, feeder, hopper, intake, camera)" \
-  "Right trigger uses alignment + vision shoot command"
+  "Operator right bumper shoots using fallback speed"
+assert_contains "$CONTAINER_FILE" "operatorController.rightTrigger().onTrue(" \
+  "Operator right trigger is bound"
+assert_contains "$CONTAINER_FILE" "return new AlignAndShootCommand(swerve, shooter, feeder, hopper, intake, camera);" \
+  "Align-and-shoot builder uses the shared camera and subsystems"
 
-# 5) Auto mode AutoShoot timeout is configurable
+# 5) Legacy naming cleanup with compatibility
+assert_contains "$CONTAINER_FILE" "NamedCommands.registerCommand(\"IntakeGamePiece\"" \
+  "Preferred path event name uses game-piece naming"
+assert_contains "$CONTAINER_FILE" "NamedCommands.registerCommand(\"IntakeFuel\"" \
+  "Legacy IntakeFuel path event alias is retained"
+
+# 6) Auto mode AutoShoot timeout is configurable
 assert_contains "$CONSTANTS_FILE" "public static final double AUTO_SHOOT_TIMEOUT_SEC = 6.0;" \
   "AutoShoot timeout constant exists and is set to 6s"
 assert_contains "$CONTAINER_FILE" ".withTimeout(Constants.Auto.AUTO_SHOOT_TIMEOUT_SEC)" \
   "AutoShoot named command uses configurable timeout"
+
+# 7) Dashboard service integration
+assert_contains "$CONTAINER_FILE" "new RobotDashboardService(new RobotDashboardService.Actions() {" \
+  "RobotContainer constructs dashboard service"
+assert_contains "$CONTAINER_FILE" "public void periodicDashboard() {" \
+  "RobotContainer exposes dashboard periodic hook"
+assert_contains "$ROOT_DIR/src/main/java/frc/robot/Robot.java" "robotContainer.periodicDashboard();" \
+  "Robot periodic loop updates dashboard service"
 
 echo "All robot update checks passed."

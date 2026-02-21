@@ -112,8 +112,8 @@ If missing, teleop still works, but PathPlanner autos are disabled.
 
 Current auto options in `RobotContainer`:
 
-- `Four Note Climb Auto` -> `FourNoteClimbAuto`
-- `Two Note Auto` -> `TwoNoteAuto`
+- `Four Piece Climb Auto` -> `FourNoteClimbAuto` (legacy file name retained)
+- `Two Piece Auto` -> `TwoNoteAuto` (legacy file name retained)
 - `Taxi Only` -> `TaxiOnly`
 - Default: `Do Nothing`
 
@@ -124,7 +124,8 @@ Current auto options in `RobotContainer`:
 Current named events available in paths:
 
 - `HomeIntake`
-- `IntakeFuel`
+- `IntakeGamePiece` (preferred)
+- `IntakeFuel` (legacy alias retained for compatibility)
 - `AutoShoot`
 - `Level1Climb`
 

@@ -36,8 +36,11 @@ public class FeederSubsystem extends SubsystemBase {
 
     @Override
     public void periodic() {
-        SmartDashboard.putNumber("Feeder/CurrentAmps",
-                feederMotor.getOutputCurrent());
+        SmartDashboard.putNumber("Feeder/CurrentAmps", getCurrentAmps());
+    }
+
+    public double getCurrentAmps() {
+        return feederMotor.getOutputCurrent();
     }
 
     // Sets motor power. Positive = toward shooter. Negative = clear/reverse.

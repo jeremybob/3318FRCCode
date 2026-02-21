@@ -82,10 +82,16 @@ public class ClimberSubsystem extends SubsystemBase {
     // --------------------------------------------------------------------------
     @Override
     public void periodic() {
-        SmartDashboard.putNumber("Climber/WinchPositionRot",
-                leaderWinch.getPosition().getValueAsDouble());
-        SmartDashboard.putNumber("Climber/CurrentAmps",
-                leaderWinch.getStatorCurrent().getValueAsDouble());
+        SmartDashboard.putNumber("Climber/WinchPositionRot", getWinchPositionRot());
+        SmartDashboard.putNumber("Climber/CurrentAmps", getCurrentAmps());
+    }
+
+    public double getWinchPositionRot() {
+        return leaderWinch.getPosition().getValueAsDouble();
+    }
+
+    public double getCurrentAmps() {
+        return leaderWinch.getStatorCurrent().getValueAsDouble();
     }
 
     // --------------------------------------------------------------------------
