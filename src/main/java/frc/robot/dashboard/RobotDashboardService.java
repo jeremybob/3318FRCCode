@@ -29,6 +29,7 @@ public class RobotDashboardService {
     private final BooleanPublisher robotEnabledPub;
     private final StringPublisher alliancePub;
     private final DoublePublisher matchTimePub;
+    private final DoublePublisher robotTimestampPub;
 
     private final DoublePublisher poseXPub;
     private final DoublePublisher poseYPub;
@@ -93,6 +94,7 @@ public class RobotDashboardService {
         robotEnabledPub = table.getBooleanTopic("robot/enabled").publish();
         alliancePub = table.getStringTopic("robot/alliance").publish();
         matchTimePub = table.getDoubleTopic("robot/match_time_sec").publish();
+        robotTimestampPub = table.getDoubleTopic("robot/timestamp_sec").publish();
 
         poseXPub = table.getDoubleTopic("drive/pose_x_m").publish();
         poseYPub = table.getDoubleTopic("drive/pose_y_m").publish();
@@ -160,6 +162,7 @@ public class RobotDashboardService {
         robotEnabledPub.set(snapshot.enabled());
         alliancePub.set(snapshot.alliance());
         matchTimePub.set(snapshot.matchTimeSec());
+        robotTimestampPub.set(snapshot.timestampSec());
 
         poseXPub.set(snapshot.poseX_m());
         poseYPub.set(snapshot.poseY_m());

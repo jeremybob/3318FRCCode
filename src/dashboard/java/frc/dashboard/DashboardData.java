@@ -6,6 +6,7 @@ public record DashboardData(
         boolean enabled,
         String alliance,
         double matchTimeSec,
+        double robotTimestampSec,
         double poseX_m,
         double poseY_m,
         double headingDeg,
