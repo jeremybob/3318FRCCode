@@ -14,6 +14,7 @@ Last updated: 2026-02-21
 Robot publishes typed topics under `Dashboard/`:
 
 - `robot/*`: mode, enabled, alliance, match time.
+- `robot/timestamp_sec` heartbeat for stale-telemetry detection on dashboard.
 - `drive/*`: pose and heading.
 - `shooter/*`: left/right RPS, at-speed.
 - `intake/*`: homed, limit switch, tilt, roller current.
@@ -80,3 +81,10 @@ Optional connection arguments:
 3. Add event replay mode from logged CSV/NT snapshots.
 4. Add UI integration tests for command button -> ack behavior.
 
+Implemented in this pass:
+
+- Competition-focused UI refresh for readability and reduced clutter.
+- Driver shot checklist + "next action" guidance from readiness reason.
+- Command pre-check lockouts/tooltips to prevent invalid requests before ack rejection.
+- Telemetry freshness indicator using `robot/timestamp_sec`.
+- Event feed for connection/ack/readiness state transitions.

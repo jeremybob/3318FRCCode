@@ -26,6 +26,7 @@ public class DashboardNtClient implements AutoCloseable {
     private final BooleanSubscriber enabledSub = table.getBooleanTopic("robot/enabled").subscribe(false);
     private final StringSubscriber allianceSub = table.getStringTopic("robot/alliance").subscribe("UNKNOWN");
     private final DoubleSubscriber matchTimeSub = table.getDoubleTopic("robot/match_time_sec").subscribe(-1.0);
+    private final DoubleSubscriber robotTimestampSub = table.getDoubleTopic("robot/timestamp_sec").subscribe(0.0);
 
     private final DoubleSubscriber poseXSub = table.getDoubleTopic("drive/pose_x_m").subscribe(0.0);
     private final DoubleSubscriber poseYSub = table.getDoubleTopic("drive/pose_y_m").subscribe(0.0);
@@ -99,6 +100,7 @@ public class DashboardNtClient implements AutoCloseable {
                 enabledSub.get(),
                 allianceSub.get(),
                 matchTimeSub.get(),
+                robotTimestampSub.get(),
                 poseXSub.get(),
                 poseYSub.get(),
                 headingSub.get(),
