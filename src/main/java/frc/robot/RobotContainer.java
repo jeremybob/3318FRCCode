@@ -72,6 +72,7 @@ public class RobotContainer {
     // the match without redeploying code.
     // =========================================================================
     private final SendableChooser<Command> autoChooser = new SendableChooser<>();
+    private boolean pathPlannerConfigured = false;
 
     // =========================================================================
     // CONSTRUCTOR
@@ -127,7 +128,9 @@ public class RobotContainer {
 
                     swerve   // the swerve subsystem is required during auto paths
             );
+            pathPlannerConfigured = true;
         } catch (Exception e) {
+            pathPlannerConfigured = false;
             // If PathPlanner robot config file is missing, log an error.
             // The robot will still work for teleop, just not for autos.
             System.err.println("[RobotContainer] PATHPLANNER CONFIG FAILED: " + e.getMessage());
@@ -184,19 +187,28 @@ public class RobotContainer {
         // Default option (no auto — safe if something breaks)
         autoChooser.setDefaultOption("Do Nothing", Commands.none());
 
+        if (!pathPlannerConfigured) {
+            System.err.println("[RobotContainer] PathPlanner autos disabled: AutoBuilder is not configured.");
+            SmartDashboard.putData("Auto Selector", autoChooser);
+            return;
+        }
+
         // IMPORTANT: The string names below MUST exactly match your .auto file names
         // in deploy/pathplanner/autos/ (case sensitive, no .auto extension needed)
-        autoChooser.addOption("Four Note Climb Auto",
-                new PathPlannerAuto("FourNoteClimbAuto"));
-
-        autoChooser.addOption("Two Note Auto",
-                new PathPlannerAuto("TwoNoteAuto"));
-
-        autoChooser.addOption("Taxi Only",
-                new PathPlannerAuto("TaxiOnly"));
+        addPathPlannerAutoOption("Four Note Climb Auto", "FourNoteClimbAuto");
+        addPathPlannerAutoOption("Two Note Auto", "TwoNoteAuto");
+        addPathPlannerAutoOption("Taxi Only", "TaxiOnly");
 
         // Publish the chooser so it shows up in SmartDashboard / Shuffleboard
         SmartDashboard.putData("Auto Selector", autoChooser);
+    }
+
+    private void addPathPlannerAutoOption(String chooserName, String autoFileName) {
+        try {
+            autoChooser.addOption(chooserName, new PathPlannerAuto(autoFileName));
+        } catch (Exception e) {
+            System.err.println("[RobotContainer] Skipping auto '" + autoFileName + "': " + e.getMessage());
+        }
     }
 
     // =========================================================================
