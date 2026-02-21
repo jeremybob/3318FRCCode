@@ -60,8 +60,8 @@ public class RobotContainer {
 
     // =========================================================================
     // CONTROLLERS
-    // Port 0 = Driver controller (translation + rotation + game actions)
-    // Port 1 = Operator controller (mechanisms: climber, hopper, manual intake)
+    // Port 0 = Driver controller (driving only)
+    // Port 1 = Operator controller (shooting, intake, hopper, climber)
     // =========================================================================
     private final CommandXboxController driverController   = new CommandXboxController(Constants.OI.DRIVER_PORT);
     private final CommandXboxController operatorController = new CommandXboxController(Constants.OI.OPERATOR_PORT);
@@ -255,35 +255,20 @@ public class RobotContainer {
         driverController.y().onTrue(
                 Commands.runOnce(swerve::zeroHeading, swerve));
 
-        // X button: Home the intake arm (find limit switch position)
-        driverController.x().onTrue(
-                new IntakeHomeCommand(intake));
-
-        // Right Trigger: Vision-required align-and-shoot.
-        // Safety: if target is lost or geometry is infeasible, command aborts.
-        driverController.rightTrigger().onTrue(
-                new AlignAndShootCommand(swerve, shooter, feeder, hopper, intake, camera));
-
-        // Left Trigger: secondary vision-required align-and-shoot binding.
-        driverController.leftTrigger().onTrue(
-                new AlignAndShootCommand(swerve, shooter, feeder, hopper, intake, camera));
-
-        // Right Bumper: OVERRIDE shot at fallback speed (no alignment/vision required).
-        driverController.rightBumper().onTrue(
-                shooter.buildShootRoutine(feeder, hopper, intake, Constants.Shooter.FALLBACK_RPS));
-
         // B button: Emergency stop — immediately stops ALL drive motors
         driverController.b().onTrue(Commands.runOnce(swerve::stop, swerve));
 
         // ---- OPERATOR CONTROLLER BINDINGS ----
 
         // Right stick Y: Manual climber control
-        // Positive = extend (robot goes up), negative = retract
-        // Runs continuously while the subsystem is required
+        // Safety gate: climber only moves while BOTH Start + Back are held.
         climber.setDefaultCommand(
                 Commands.run(() -> {
-                    double climbPower = MathUtil.applyDeadband(
-                            -operatorController.getRightY(), 0.1);
+                    boolean climbArmed = operatorController.start().getAsBoolean()
+                            && operatorController.back().getAsBoolean();
+                    double climbPower = climbArmed
+                            ? MathUtil.applyDeadband(-operatorController.getRightY(), 0.1)
+                            : 0.0;
                     climber.setWinchPower(climbPower);
                 }, climber));
 
@@ -296,16 +281,27 @@ public class RobotContainer {
                     hopper.setPower(hopperPower);
                 }, hopper));
 
-        // A button: Automatic Level 1 climb
-        operatorController.a().onTrue(
+        // A button: Automatic Level 1 climb (requires climb gate held)
+        operatorController.a()
+                .and(operatorController.start())
+                .and(operatorController.back())
+                .onTrue(
                 Commands.runOnce(climber::autoClimbLevel1, climber));
 
         // B button: Stop climber immediately
         operatorController.b().onTrue(
                 Commands.runOnce(climber::stop, climber));
 
-        // Right Bumper: Manual intake roller — spin forward
-        operatorController.rightBumper().whileTrue(
+        // Right Trigger: Vision-required align-and-shoot (operator controls scoring).
+        operatorController.rightTrigger().onTrue(
+                new AlignAndShootCommand(swerve, shooter, feeder, hopper, intake, camera));
+
+        // Right Bumper: OVERRIDE shot at fallback speed (no alignment/vision required).
+        operatorController.rightBumper().onTrue(
+                shooter.buildShootRoutine(feeder, hopper, intake, Constants.Shooter.FALLBACK_RPS));
+
+        // Left Trigger: Manual intake roller — spin forward
+        operatorController.leftTrigger().whileTrue(
                 Commands.run(() -> intake.setRollerPower(0.6), intake)
                         .finallyDo(() -> intake.setRollerPower(0)));
 
