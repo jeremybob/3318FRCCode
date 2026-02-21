@@ -10,9 +10,12 @@
 // ============================================================================
 package frc.robot.subsystems;
 
-import com.revrobotics.CANSparkBase.IdleMode;
-import com.revrobotics.CANSparkLowLevel.MotorType;
-import com.revrobotics.CANSparkMax;
+import com.revrobotics.PersistMode;
+import com.revrobotics.ResetMode;
+import com.revrobotics.spark.SparkLowLevel.MotorType;
+import com.revrobotics.spark.SparkMax;
+import com.revrobotics.spark.config.SparkBaseConfig.IdleMode;
+import com.revrobotics.spark.config.SparkMaxConfig;
 
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
@@ -21,12 +24,14 @@ import frc.robot.Constants;
 
 public class FeederSubsystem extends SubsystemBase {
 
-    private final CANSparkMax feederMotor =
-            new CANSparkMax(Constants.CAN.FEEDER_NEO, MotorType.kBrushless);
+    private final SparkMax feederMotor =
+            new SparkMax(Constants.CAN.FEEDER_NEO, MotorType.kBrushless);
 
     public FeederSubsystem() {
-        feederMotor.setSmartCurrentLimit(Constants.NeoMotors.DEFAULT_CURRENT_LIMIT_A);
-        feederMotor.setIdleMode(IdleMode.kBrake);
+        SparkMaxConfig config = new SparkMaxConfig();
+        config.smartCurrentLimit(Constants.NeoMotors.DEFAULT_CURRENT_LIMIT_A);
+        config.idleMode(IdleMode.kBrake);
+        feederMotor.configure(config, ResetMode.kNoResetSafeParameters, PersistMode.kNoPersistParameters);
     }
 
     @Override

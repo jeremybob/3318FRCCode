@@ -9,9 +9,12 @@
 // ============================================================================
 package frc.robot.subsystems;
 
-import com.revrobotics.CANSparkBase.IdleMode;
-import com.revrobotics.CANSparkLowLevel.MotorType;
-import com.revrobotics.CANSparkMax;
+import com.revrobotics.PersistMode;
+import com.revrobotics.ResetMode;
+import com.revrobotics.spark.SparkLowLevel.MotorType;
+import com.revrobotics.spark.SparkMax;
+import com.revrobotics.spark.config.SparkBaseConfig.IdleMode;
+import com.revrobotics.spark.config.SparkMaxConfig;
 
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
@@ -20,12 +23,14 @@ import frc.robot.Constants;
 
 public class HopperSubsystem extends SubsystemBase {
 
-    private final CANSparkMax floorMotor =
-            new CANSparkMax(Constants.CAN.HOPPER_FLOOR_NEO, MotorType.kBrushless);
+    private final SparkMax floorMotor =
+            new SparkMax(Constants.CAN.HOPPER_FLOOR_NEO, MotorType.kBrushless);
 
     public HopperSubsystem() {
-        floorMotor.setSmartCurrentLimit(Constants.NeoMotors.DEFAULT_CURRENT_LIMIT_A);
-        floorMotor.setIdleMode(IdleMode.kBrake);
+        SparkMaxConfig config = new SparkMaxConfig();
+        config.smartCurrentLimit(Constants.NeoMotors.DEFAULT_CURRENT_LIMIT_A);
+        config.idleMode(IdleMode.kBrake);
+        floorMotor.configure(config, ResetMode.kNoResetSafeParameters, PersistMode.kNoPersistParameters);
     }
 
     @Override
