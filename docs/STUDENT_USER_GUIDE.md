@@ -150,7 +150,8 @@ If only checking compile:
 ./gradlew compileJava
 ```
 
-On robot boot, intake homing is auto-scheduled in `Robot.robotInit()`.
+On robot boot, intake is marked homed automatically if the home switch is already pressed.
+If not homed, run intake home from operator `X` or dashboard while enabled in teleop/test.
 
 ### 9.1 Simplest dashboard launch (Mac + Windows)
 

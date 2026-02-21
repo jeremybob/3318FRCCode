@@ -307,11 +307,13 @@ public class RobotContainer {
                 }, hopper));
 
         // A button: Automatic Level 1 climb (requires climb gate held)
+        // Uses a sustained command so the default manual climber command does not
+        // immediately overwrite the position request.
         operatorController.a()
                 .and(operatorController.start())
                 .and(operatorController.back())
                 .onTrue(
-                Commands.runOnce(climber::autoClimbLevel1, climber));
+                buildLevel1ClimbCommand());
 
         // B button: Stop climber immediately
         operatorController.b().onTrue(
@@ -351,7 +353,7 @@ public class RobotContainer {
     // =========================================================================
     // getIntakeHomeCommand()
     //
-    // Called by Robot.java during robotInit() to home the intake on startup.
+    // Exposed for any explicit homing workflows/tests that need the command.
     // =========================================================================
     public Command getIntakeHomeCommand() {
         return buildIntakeHomeCommand();
@@ -448,7 +450,14 @@ public class RobotContainer {
     }
 
     private void scheduleLevel1Climb() {
-        CommandScheduler.getInstance().schedule(Commands.runOnce(climber::autoClimbLevel1, climber));
+        CommandScheduler.getInstance().schedule(buildLevel1ClimbCommand());
+    }
+
+    private Command buildLevel1ClimbCommand() {
+        return Commands.run(climber::autoClimbLevel1, climber)
+                .until(climber::isAtLevel1Target)
+                .withTimeout(Constants.Climber.LEVEL1_TIMEOUT_SEC)
+                .finallyDo(climber::stop);
     }
 
     private void zeroHeading() {

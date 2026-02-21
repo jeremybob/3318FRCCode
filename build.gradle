@@ -17,6 +17,13 @@ sourceSets {
     }
 }
 
+sourceSets {
+    test {
+        compileClasspath += sourceSets.dashboard.output
+        runtimeClasspath += sourceSets.dashboard.output
+    }
+}
+
 configurations {
     dashboardImplementation.extendsFrom implementation
     dashboardRuntimeOnly.extendsFrom runtimeOnly

@@ -39,7 +39,7 @@ Safety gates:
 
 - `zero_heading`: disabled or teleop only.
 - `stop_drive`: always allowed.
-- `intake_home`: disabled only.
+- `intake_home`: enabled teleop/test only (disabled mode cannot actuate motors).
 - `align_shoot`: enabled teleop only.
 - `fallback_shoot`: enabled teleop only.
 - `level1_climb`: enabled teleop and climber arm gate required.

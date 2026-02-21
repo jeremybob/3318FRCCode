@@ -31,17 +31,11 @@ public class Robot extends TimedRobot {
     // robotInit()
     //
     // Called ONCE when the robot first powers on.
-    // We create the RobotContainer and trigger the intake homing sequence.
+    // We create the RobotContainer.
     // --------------------------------------------------------------------------
     @Override
     public void robotInit() {
         robotContainer = new RobotContainer();
-
-        // ---- Auto-home the intake at startup ----
-        // Because the tilt uses a relative encoder that resets on power-off,
-        // we need to find the home position before we can use position control.
-        // This runs immediately on power-on so it's done before the match starts.
-        CommandScheduler.getInstance().schedule(robotContainer.getIntakeHomeCommand());
     }
 
     // --------------------------------------------------------------------------
