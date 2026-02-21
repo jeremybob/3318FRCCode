@@ -1,0 +1,23 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Dashboard: Run (Team 3318)",
+      "type": "shell",
+      "command": "${workspaceFolder}/run-dashboard.sh",
+      "windows": {
+        "command": "${workspaceFolder}\\run-dashboard.bat"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Dashboard: Run (Host 10.33.18.2)",
+      "type": "shell",
+      "command": "${workspaceFolder}/run-dashboard.sh --host 10.33.18.2",
+      "windows": {
+        "command": "${workspaceFolder}\\run-dashboard.bat --host 10.33.18.2"
+      },
+      "problemMatcher": []
+    }
+  ]
+}
