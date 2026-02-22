@@ -24,9 +24,11 @@ package frc.robot.commands;
 
 import org.photonvision.PhotonCamera;
 import org.photonvision.targeting.PhotonPipelineResult;
+import org.photonvision.targeting.PhotonTrackedTarget;
 
 import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.controller.PIDController;
+import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;  // ← not CommandBase
@@ -164,13 +166,18 @@ public class AlignAndShootCommand extends Command {
                 break;
             }
 
-            // ---- PHASE 2: Rotate to face the vision target ----
+            // ---- PHASE 2: Rotate to face the alliance HUB ----
             case ALIGN: {
                 PhotonPipelineResult result = getLatestCameraResult();
-                telemetryHasTarget = result.hasTargets();
 
-                if (!result.hasTargets()) {
-                    // No target visible — stop rotating and wait
+                // Filter for only our alliance's HUB tags — ignore Trench, Tower,
+                // Outpost, and opponent HUB tags. Without this filter, the robot
+                // could aim at any visible AprilTag and shoot the wrong direction.
+                PhotonTrackedTarget hubTarget = findBestHubTarget(result);
+                telemetryHasTarget = (hubTarget != null);
+
+                if (hubTarget == null) {
+                    // No alliance HUB tag visible — stop rotating and wait
                     swerve.drive(0, 0, 0, false);
                     telemetryGeometryFeasible = false;
                     telemetryHasShootableTarget = false;
@@ -180,14 +187,14 @@ public class AlignAndShootCommand extends Command {
                     // FIXED: Bail out if we can't find a target after ALIGN_TIMEOUT_SEC.
                     // In v1, the code would never escape this state without a target.
                     if (stateTimer.hasElapsed(ALIGN_TIMEOUT_SEC)) {
-                        System.out.println("[AlignAndShoot] No target found, aborting.");
-                        telemetryLastAbortReason = "No target found";
+                        System.out.println("[AlignAndShoot] No alliance HUB tag found, aborting.");
+                        telemetryLastAbortReason = "No alliance HUB tag found";
                         transitionTo(State.DONE);
                     }
                     break;
                 }
 
-                if (!isShotGeometryFeasible(result)) {
+                if (!isShotGeometryFeasible(hubTarget)) {
                     System.out.println("[AlignAndShoot] Shot geometry not feasible, aborting.");
                     telemetryHasShootableTarget = false;
                     telemetryLastAbortReason = "Shot geometry not feasible";
@@ -198,9 +205,10 @@ public class AlignAndShootCommand extends Command {
                 telemetryHasShootableTarget = true;
                 telemetryGeometryFeasible = true;
 
-                // Target found — get the horizontal angle error in degrees
-                double yawDeg = result.getBestTarget().getYaw();
+                // HUB target found — get the horizontal angle error in degrees
+                double yawDeg = hubTarget.getYaw();
                 SmartDashboard.putNumber("AlignShoot/YawError", yawDeg);
+                SmartDashboard.putNumber("AlignShoot/TargetTagId", hubTarget.getFiducialId());
                 telemetryYawDeg = yawDeg;
 
                 // Calculate rotation correction using PD controller
@@ -301,9 +309,11 @@ public class AlignAndShootCommand extends Command {
 
     private boolean hasShootableTarget() {
         PhotonPipelineResult result = getLatestCameraResult();
-        telemetryHasTarget = result.hasTargets();
-        if (result.hasTargets()) {
-            boolean geometryFeasible = isShotGeometryFeasible(result);
+        PhotonTrackedTarget hubTarget = findBestHubTarget(result);
+        telemetryHasTarget = (hubTarget != null);
+
+        if (hubTarget != null) {
+            boolean geometryFeasible = isShotGeometryFeasible(hubTarget);
             telemetryGeometryFeasible = geometryFeasible;
             if (geometryFeasible) {
                 lastValidTargetSeenSec = Timer.getFPGATimestamp();
@@ -323,9 +333,17 @@ public class AlignAndShootCommand extends Command {
                 <= Constants.Vision.TARGET_LOSS_TOLERANCE_SEC;
     }
 
-    private boolean isShotGeometryFeasible(PhotonPipelineResult result) {
-        double pitchDeg = result.getBestTarget().getPitch();
+    // --------------------------------------------------------------------------
+    // isShotGeometryFeasible()
+    //
+    // Checks whether the target's pitch angle is within the valid band for a
+    // shot.  Pitch is a proxy for distance — too high = too close, too low =
+    // too far.  Also publishes estimated distance to SmartDashboard.
+    // --------------------------------------------------------------------------
+    private boolean isShotGeometryFeasible(PhotonTrackedTarget target) {
+        double pitchDeg = target.getPitch();
         SmartDashboard.putNumber("AlignShoot/TargetPitchDeg", pitchDeg);
+        SmartDashboard.putNumber("AlignShoot/EstDistanceM", estimateDistanceM(pitchDeg));
         telemetryPitchDeg = pitchDeg;
 
         if (!Double.isFinite(pitchDeg)) {
@@ -334,6 +352,75 @@ public class AlignAndShootCommand extends Command {
 
         return pitchDeg >= Constants.Vision.MIN_SHOT_PITCH_DEG
                 && pitchDeg <= Constants.Vision.MAX_SHOT_PITCH_DEG;
+    }
+
+    // --------------------------------------------------------------------------
+    // estimateDistanceM()
+    //
+    // Rough distance estimate using the camera-to-tag vertical angle.
+    //   distance = (tagHeight - cameraHeight) / tan(cameraPitch + targetPitch)
+    //
+    // This is approximate — it assumes a flat field and no robot tilt.
+    // Use it for telemetry and future speed-by-distance lookup tables.
+    // HUB tags are at 1.124 m (44.25 in) per the 2026 REBUILT game manual.
+    // --------------------------------------------------------------------------
+    private static final double HUB_TAG_HEIGHT_M = 1.124;
+
+    private double estimateDistanceM(double targetPitchDeg) {
+        double totalPitchRad = Constants.Vision.CAMERA_PITCH_RAD
+                + Math.toRadians(targetPitchDeg);
+        double heightDiff = HUB_TAG_HEIGHT_M - Constants.Vision.CAMERA_UP_M;
+        double tanPitch = Math.tan(totalPitchRad);
+        if (Math.abs(tanPitch) < 1e-6) return Double.NaN;
+        return heightDiff / tanPitch;
+    }
+
+    // --------------------------------------------------------------------------
+    // findBestHubTarget()
+    //
+    // Filters the camera result to only include AprilTags on our alliance's HUB.
+    // Returns the best (largest area = closest) matching target, or null if none
+    // of our HUB tags are visible.
+    //
+    // Without this filter, the robot could aim at Trench, Tower, Outpost, or
+    // opponent HUB tags — and shoot in completely the wrong direction.
+    // --------------------------------------------------------------------------
+    private PhotonTrackedTarget findBestHubTarget(PhotonPipelineResult result) {
+        if (!result.hasTargets()) return null;
+
+        int[] hubTagIds = getAllianceHubTagIds();
+        if (hubTagIds == null) return null;  // alliance unknown — can't filter
+
+        PhotonTrackedTarget best = null;
+        double bestArea = 0;
+        for (var target : result.getTargets()) {
+            if (isHubTag(target.getFiducialId(), hubTagIds) && target.getArea() > bestArea) {
+                best = target;
+                bestArea = target.getArea();
+            }
+        }
+        return best;
+    }
+
+    // --------------------------------------------------------------------------
+    // getAllianceHubTagIds()
+    //
+    // Returns the HUB tag ID array for our current alliance, or null if the
+    // alliance is not yet known (e.g., practice mode with no FMS connection).
+    // --------------------------------------------------------------------------
+    private int[] getAllianceHubTagIds() {
+        var alliance = DriverStation.getAlliance();
+        if (alliance.isEmpty()) return null;
+        return alliance.get() == DriverStation.Alliance.Red
+                ? Constants.Vision.RED_HUB_TAG_IDS
+                : Constants.Vision.BLUE_HUB_TAG_IDS;
+    }
+
+    private static boolean isHubTag(int fiducialId, int[] hubTagIds) {
+        for (int id : hubTagIds) {
+            if (id == fiducialId) return true;
+        }
+        return false;
     }
 
     private PhotonPipelineResult getLatestCameraResult() {
