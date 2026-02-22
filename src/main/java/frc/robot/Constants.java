@@ -251,6 +251,9 @@ public final class Constants {
         // Target angle for the intake to be "down" and collecting game pieces
         public static final double INTAKE_DOWN_DEG = 45.0;  // TUNE ME
 
+        // Target angle for the intake to be stowed (up / home position)
+        public static final double INTAKE_STOW_DEG = 0.0;
+
         // Software limits for the tilt arm (in degrees from the homed position).
         // Prevents commanding the arm into the chassis or past its mechanical travel.
         // TUNE ME: Set these to the actual min/max safe travel of YOUR intake arm.
