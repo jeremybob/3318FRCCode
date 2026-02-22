@@ -175,8 +175,35 @@ public final class Constants {
     // Hardware: Two Kraken X60 (TalonFX), 4-inch wheels, 1:1 gearing
     // =========================================================================
     public static final class Shooter {
-        // Target wheel speed for a full-power shot
-        // At 60 RPS with 4" wheel: surface speed ≈ 19 m/s — adjust as needed.
+        // ---- Shooter wheel hardware specs ----
+        // Kraken X60 (TalonFX), 4-inch wheels, 1:1 gearing.
+        public static final double WHEEL_DIAMETER_M      = Units.inchesToMeters(4.0);
+        public static final double WHEEL_CIRCUMFERENCE_M = Math.PI * WHEEL_DIAMETER_M; // ~0.319m
+        public static final double GEAR_RATIO             = 1.0;  // motor:wheel
+
+        // ---- Distance-based shot physics ----
+        // The shooter fires at a fixed mechanical angle. Given the distance to the
+        // HUB (from vision), we solve projectile motion for the required surface
+        // velocity, then convert to wheel RPS.
+        //
+        // Equation:
+        //   v² = (g * d²) / (2 * cos²θ * (d * tanθ - Δh))
+        //   where Δh = target_height - shooter_exit_height
+        //
+        // TUNE ME: Measure the actual launch angle with a protractor or slow-mo video.
+        public static final double SHOT_ANGLE_DEG        = 45.0;  // TUNE ME
+        // Height of the shooter exit above the floor (20 inches).
+        public static final double SHOOTER_EXIT_HEIGHT_M = Units.inchesToMeters(20.0);
+        // Height of the HUB scoring opening (may differ from tag height of 1.124m).
+        public static final double HUB_SCORING_HEIGHT_M  = 1.124; // TUNE ME
+
+        // RPS clamps — keep within motor/mechanism limits.
+        // Kraken free speed ≈ 100 RPS at 12V; leave headroom for voltage droop.
+        public static final double MIN_SHOT_RPS = 20.0;
+        public static final double MAX_SHOT_RPS = 90.0;
+
+        // Default warmup speed used during SPIN_UP before distance is known.
+        // Also used as fallback if the distance calculation fails.
         public static final double TARGET_RPS = 60.0;  // TUNE ME
         // Driver override speed when shooting without alignment/vision checks.
         public static final double FALLBACK_RPS = 52.0; // TUNE ME

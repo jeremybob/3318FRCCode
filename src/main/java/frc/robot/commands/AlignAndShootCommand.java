@@ -90,6 +90,8 @@ public class AlignAndShootCommand extends Command {
     private double lastValidTargetSeenSec = Double.NEGATIVE_INFINITY;
     // Cached camera result so we can use the latest unread packet API without losing continuity.
     private PhotonPipelineResult lastCameraResult = new PhotonPipelineResult();
+    // Distance-based shooter speed — recalculated each cycle in ALIGN
+    private double calculatedRPS = Constants.Shooter.TARGET_RPS;
 
     // FIXED: Separate timeout for alignment (3 seconds).
     // If the target is never found within this time, skip to DONE.
@@ -142,8 +144,10 @@ public class AlignAndShootCommand extends Command {
         telemetryPitchDeg = Double.NaN;
         telemetryLastAbortReason = "";
 
-        // Start spinning shooter wheels immediately so they're ready sooner
-        shooter.setShooterVelocity(Constants.Shooter.TARGET_RPS);
+        // Start spinning shooter wheels at default warmup speed.
+        // The actual speed will be recalculated based on distance once we see a HUB tag.
+        calculatedRPS = Constants.Shooter.TARGET_RPS;
+        shooter.setShooterVelocity(calculatedRPS);
 
         SmartDashboard.putString("AlignShoot/State", "SPIN_UP");
     }
@@ -155,11 +159,12 @@ public class AlignAndShootCommand extends Command {
     public void execute() {
         switch (state) {
 
-            // ---- PHASE 1: Wait for shooter to reach speed ----
+            // ---- PHASE 1: Wait for shooter to reach warmup speed ----
             case SPIN_UP: {
                 swerve.drive(0, 0, 0, false);
-                // Advance once wheels are at speed OR we've waited long enough
-                if (shooter.isAtSpeed(Constants.Shooter.TARGET_RPS)
+                // Advance once wheels are at speed OR we've waited long enough.
+                // Speed will be refined in ALIGN once we have a distance estimate.
+                if (shooter.isAtSpeed(calculatedRPS)
                         || stateTimer.hasElapsed(Constants.Shooter.AT_SPEED_TIMEOUT_SEC)) {
                     transitionTo(State.ALIGN);
                 }
@@ -211,16 +216,27 @@ public class AlignAndShootCommand extends Command {
                 SmartDashboard.putNumber("AlignShoot/TargetTagId", hubTarget.getFiducialId());
                 telemetryYawDeg = yawDeg;
 
+                // Recalculate shooter speed based on distance to HUB each cycle.
+                // Projectile physics: v = f(distance, launch_angle, height_delta).
+                double distanceM = estimateDistanceM(hubTarget.getPitch());
+                calculatedRPS = ShooterSubsystem.calculateTargetRPS(distanceM);
+                shooter.setShooterVelocity(calculatedRPS);
+                SmartDashboard.putNumber("AlignShoot/CalculatedRPS", calculatedRPS);
+                SmartDashboard.putNumber("AlignShoot/EstDistanceM", distanceM);
+
                 // Calculate rotation correction using PD controller
                 // PID input = current yaw error, setpoint = 0 (target centered)
                 double rotCmd = turnPID.calculate(yawDeg, 0);
                 rotCmd = MathUtil.clamp(rotCmd,
                         -Constants.Vision.MAX_ROT_CMD, Constants.Vision.MAX_ROT_CMD);
 
-                if (turnPID.atSetpoint()) {
-                    // Aligned! Stop rotating and advance to CLEAR phase.
+                if (turnPID.atSetpoint() && shooter.isAtSpeed(calculatedRPS)) {
+                    // Aligned AND shooter at distance-based speed — advance to CLEAR.
                     swerve.drive(0, 0, 0, false);
                     transitionTo(State.CLEAR);
+                } else if (turnPID.atSetpoint()) {
+                    // Aligned but shooter still adjusting — hold position, wait for speed
+                    swerve.drive(0, 0, 0, false);
                 } else {
                     // Not aligned yet — keep rotating
                     swerve.drive(0, 0, rotCmd, false);
@@ -338,12 +354,11 @@ public class AlignAndShootCommand extends Command {
     //
     // Checks whether the target's pitch angle is within the valid band for a
     // shot.  Pitch is a proxy for distance — too high = too close, too low =
-    // too far.  Also publishes estimated distance to SmartDashboard.
+    // too far.
     // --------------------------------------------------------------------------
     private boolean isShotGeometryFeasible(PhotonTrackedTarget target) {
         double pitchDeg = target.getPitch();
         SmartDashboard.putNumber("AlignShoot/TargetPitchDeg", pitchDeg);
-        SmartDashboard.putNumber("AlignShoot/EstDistanceM", estimateDistanceM(pitchDeg));
         telemetryPitchDeg = pitchDeg;
 
         if (!Double.isFinite(pitchDeg)) {
