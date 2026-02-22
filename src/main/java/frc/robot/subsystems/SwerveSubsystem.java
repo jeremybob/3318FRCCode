@@ -16,14 +16,25 @@
 //     driveRobotRelative)
 //   - Added SmartDashboard telemetry
 //   - Moved joystick deadband to RobotContainer where it belongs (raw axis values)
+//   - Added PhotonVision AprilTag pose estimation to correct odometry drift
 // ============================================================================
 package frc.robot.subsystems;
 
 import com.ctre.phoenix6.hardware.Pigeon2;
 
+import org.photonvision.PhotonCamera;
+import org.photonvision.PhotonPoseEstimator;
+import org.photonvision.PhotonPoseEstimator.PoseStrategy;
+
+import edu.wpi.first.apriltag.AprilTagFieldLayout;
+import edu.wpi.first.apriltag.AprilTagFields;
+import edu.wpi.first.math.VecBuilder;
 import edu.wpi.first.math.estimator.SwerveDrivePoseEstimator;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Rotation2d;
+import edu.wpi.first.math.geometry.Rotation3d;
+import edu.wpi.first.math.geometry.Transform3d;
+import edu.wpi.first.math.geometry.Translation3d;
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
 import edu.wpi.first.math.kinematics.SwerveDriveKinematics;
 import edu.wpi.first.math.kinematics.SwerveModulePosition;
@@ -33,6 +44,7 @@ import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 
 import frc.robot.Constants;
+import frc.robot.commands.AlignAndShootCommand;
 import frc.robot.subsystems.swerve.SwerveModule;
 
 public class SwerveSubsystem extends SubsystemBase {
@@ -80,16 +92,27 @@ public class SwerveSubsystem extends SubsystemBase {
     // Tracks where the robot is on the field using:
     //   - The gyro angle (heading)
     //   - How far each wheel has traveled (module positions)
-    //   - Optionally: vision target measurements (call addVisionMeasurement())
+    //   - Vision AprilTag measurements (fused automatically)
     private final SwerveDrivePoseEstimator poseEstimator;
+
+    // ---- Vision pose estimation ----
+    // Uses PhotonVision AprilTag detection to correct odometry drift.
+    // Runs in both auto and teleop (except when AlignAndShootCommand owns the camera).
+    private final PhotonCamera camera;
+    private final PhotonPoseEstimator photonEstimator;
 
     // ---- Field visualization (appears in Shuffleboard / SmartDashboard) ----
     private final Field2d field = new Field2d();
 
     // --------------------------------------------------------------------------
     // Constructor
+    //
+    // Parameters:
+    //   camera - the shared PhotonCamera instance (created in RobotContainer)
     // --------------------------------------------------------------------------
-    public SwerveSubsystem() {
+    public SwerveSubsystem(PhotonCamera camera) {
+        this.camera = camera;
+
         // Zero the gyro so "forward" is whatever direction the robot is facing
         // at power-on. If you want the robot to know field orientation from the
         // start of a match, call resetPose() with the actual starting pose instead.
@@ -105,6 +128,35 @@ public class SwerveSubsystem extends SubsystemBase {
                 new Pose2d()            // initial pose = (0, 0, 0°)
         );
 
+        // ---- Vision pose estimator setup ----
+        // 2026 REBUILT field: 32 AprilTags (IDs 1-32) across HUBs, Towers,
+        // Outposts, and Trenches.  Tag positions come from the WPILib-bundled
+        // field layout JSON derived from the 2026 Field Dimension Drawings.
+        // "Welded" = standard welded tag mounts (default for most FRC fields).
+        // Use k2026RebuiltAndymark if your practice field has AndyMark mounts.
+        AprilTagFieldLayout fieldLayout = AprilTagFieldLayout.loadField(
+                AprilTagFields.k2026RebuiltWelded);
+
+        // Camera mount position: where the camera is relative to robot center.
+        // TUNE ME: Measure these on your actual robot!
+        Transform3d robotToCamera = new Transform3d(
+                new Translation3d(
+                        Constants.Vision.CAMERA_FORWARD_M,
+                        Constants.Vision.CAMERA_LEFT_M,
+                        Constants.Vision.CAMERA_UP_M),
+                new Rotation3d(
+                        0,  // roll
+                        Constants.Vision.CAMERA_PITCH_RAD,
+                        Constants.Vision.CAMERA_YAW_RAD));
+
+        // MULTI_TAG_PNP_ON_COPROCESSOR uses all visible AprilTags together for the
+        // most accurate pose. Falls back to single-tag when only one is visible.
+        photonEstimator = new PhotonPoseEstimator(
+                fieldLayout,
+                PoseStrategy.MULTI_TAG_PNP_ON_COPROCESSOR,
+                robotToCamera);
+        photonEstimator.setMultiTagFallbackStrategy(PoseStrategy.LOWEST_AMBIGUITY);
+
         // Register the field widget so it shows up in SmartDashboard
         SmartDashboard.putData("Field", field);
     }
@@ -119,6 +171,37 @@ public class SwerveSubsystem extends SubsystemBase {
     public void periodic() {
         // Update the odometry estimate with the latest gyro and wheel data
         poseEstimator.update(getGyroYaw(), getModulePositions());
+
+        // ---- Vision pose correction ----
+        // Process AprilTag detections to correct odometry drift.
+        // Skip when AlignAndShootCommand is active — it reads camera data for targeting
+        // and we must not consume the unread buffer out from under it.
+        if (!AlignAndShootCommand.isTelemetryCommandActive()) {
+            var unreadResults = camera.getAllUnreadResults();
+            for (var result : unreadResults) {
+                if (!result.hasTargets()) continue;
+
+                var estimate = photonEstimator.update(result);
+                estimate.ifPresent(est -> {
+                    // Filter out noisy single-tag results with high ambiguity.
+                    // Multi-tag estimates use PnP and are already reliable.
+                    int tagCount = result.getTargets().size();
+                    if (tagCount == 1
+                            && result.getBestTarget().getPoseAmbiguity()
+                                    > Constants.Vision.MAX_POSE_AMBIGUITY) {
+                        return; // skip this measurement
+                    }
+
+                    poseEstimator.addVisionMeasurement(
+                            est.estimatedPose.toPose2d(),
+                            est.timestampSeconds,
+                            VecBuilder.fill(
+                                    Constants.Vision.VISION_STD_DEV_X_M,
+                                    Constants.Vision.VISION_STD_DEV_Y_M,
+                                    Constants.Vision.VISION_STD_DEV_HEADING_RAD));
+                });
+            }
+        }
 
         // Update the field visualization (robot position on the dashboard)
         field.setRobotPose(getPose());
