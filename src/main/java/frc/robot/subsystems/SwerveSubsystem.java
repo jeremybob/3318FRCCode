@@ -214,6 +214,20 @@ public class SwerveSubsystem extends SubsystemBase {
     }
 
     // --------------------------------------------------------------------------
+    // xLock()
+    //
+    // Points all four wheels inward at 45-degree angles in an X pattern.
+    // The drive motors are set to zero speed. This makes the robot very
+    // difficult to push — useful for defense or holding position.
+    // --------------------------------------------------------------------------
+    public void xLock() {
+        frontLeft.setDesiredState(new SwerveModuleState(0, Rotation2d.fromDegrees(45)));
+        frontRight.setDesiredState(new SwerveModuleState(0, Rotation2d.fromDegrees(-45)));
+        backLeft.setDesiredState(new SwerveModuleState(0, Rotation2d.fromDegrees(-45)));
+        backRight.setDesiredState(new SwerveModuleState(0, Rotation2d.fromDegrees(45)));
+    }
+
+    // --------------------------------------------------------------------------
     // zeroHeading()
     //
     // Resets the gyro so the current robot heading becomes "0 degrees / forward."
