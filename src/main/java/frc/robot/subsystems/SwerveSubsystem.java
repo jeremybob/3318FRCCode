@@ -132,8 +132,10 @@ public class SwerveSubsystem extends SubsystemBase {
         // 2026 REBUILT field: 32 AprilTags (IDs 1-32) across HUBs, Towers,
         // Outposts, and Trenches.  Tag positions come from the WPILib-bundled
         // field layout JSON derived from the 2026 Field Dimension Drawings.
+        // "Welded" = standard welded tag mounts (default for most FRC fields).
+        // Use k2026RebuiltAndymark if your practice field has AndyMark mounts.
         AprilTagFieldLayout fieldLayout = AprilTagFieldLayout.loadField(
-                AprilTagFields.k2026Rebuilt);
+                AprilTagFields.k2026RebuiltWelded);
 
         // Camera mount position: where the camera is relative to robot center.
         // TUNE ME: Measure these on your actual robot!

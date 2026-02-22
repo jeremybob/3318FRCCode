@@ -303,6 +303,14 @@ public final class Constants {
         // Maximum pose ambiguity for single-tag results (0.0 = perfect, 1.0 = worst).
         // Multi-tag results are inherently more accurate and skip this filter.
         public static final double MAX_POSE_AMBIGUITY = 0.2;
+
+        // ---- Alliance-specific HUB tag IDs for targeting ----
+        // AlignAndShootCommand should ONLY aim at your alliance's HUB tags.
+        // These are the z=1.124m (44.25in) tags mounted on each alliance's HUB.
+        // Each HUB has 4 faces with 2 tags per face = 8 tags per HUB.
+        // Red HUB center ≈ (11.92, 4.03), Blue HUB center ≈ (4.63, 4.03).
+        public static final int[] RED_HUB_TAG_IDS  = {2, 3, 4, 5, 8, 9, 10, 11};
+        public static final int[] BLUE_HUB_TAG_IDS = {18, 19, 20, 21, 24, 25, 26, 27};
     }
 
     // =========================================================================
