@@ -17,6 +17,7 @@ import com.ctre.phoenix6.controls.VelocityVoltage;
 import com.ctre.phoenix6.hardware.TalonFX;
 import com.ctre.phoenix6.signals.NeutralModeValue;
 
+import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
@@ -111,6 +112,55 @@ public class ShooterSubsystem extends SubsystemBase {
 
     public double getRightRPS() {
         return rightShooter.getVelocity().getValueAsDouble();
+    }
+
+    // --------------------------------------------------------------------------
+    // calculateTargetRPS()
+    //
+    // Solves projectile motion for the required wheel RPS given the horizontal
+    // distance to the HUB.  Assumes a fixed launch angle (configurable in
+    // Constants.Shooter.SHOT_ANGLE_DEG) and known shooter/target heights.
+    //
+    // Physics:
+    //   v² = (g × d²) / (2 × cos²θ × (d × tanθ − Δh))
+    //   where Δh = target_height − shooter_exit_height
+    //
+    // Then convert surface speed (m/s) to wheel RPS:
+    //   RPS = surface_speed / wheel_circumference / gear_ratio
+    //
+    // Returns TARGET_RPS as fallback if distance is invalid or the shot is
+    // physically impossible at the configured angle.
+    // --------------------------------------------------------------------------
+    public static double calculateTargetRPS(double distanceM) {
+        if (!Double.isFinite(distanceM) || distanceM <= 0) {
+            return Constants.Shooter.TARGET_RPS;
+        }
+
+        double angleRad = Math.toRadians(Constants.Shooter.SHOT_ANGLE_DEG);
+        double cosAngle = Math.cos(angleRad);
+        double tanAngle = Math.tan(angleRad);
+        double deltaH   = Constants.Shooter.HUB_SCORING_HEIGHT_M
+                         - Constants.Shooter.SHOOTER_EXIT_HEIGHT_M;
+
+        // denominator = d × tanθ − Δh
+        // If ≤ 0, the shot arc can't reach the target at this angle.
+        double denom = tanAngle * distanceM - deltaH;
+        if (denom <= 0) {
+            return Constants.Shooter.TARGET_RPS;
+        }
+
+        double g = 9.81; // m/s²
+        double vSquared = (g * distanceM * distanceM)
+                        / (2.0 * cosAngle * cosAngle * denom);
+        double surfaceSpeed = Math.sqrt(vSquared); // m/s
+
+        // Convert surface speed to wheel RPS (accounting for gear ratio)
+        double wheelRPS = surfaceSpeed / Constants.Shooter.WHEEL_CIRCUMFERENCE_M;
+        double motorRPS = wheelRPS * Constants.Shooter.GEAR_RATIO;
+
+        return MathUtil.clamp(motorRPS,
+                Constants.Shooter.MIN_SHOT_RPS,
+                Constants.Shooter.MAX_SHOT_RPS);
     }
 
     // --------------------------------------------------------------------------
