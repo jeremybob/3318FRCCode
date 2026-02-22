@@ -40,6 +40,7 @@ import edu.wpi.first.wpilibj2.command.button.CommandXboxController;
 
 import frc.robot.commands.AlignAndShootCommand;
 import frc.robot.commands.IntakeHomeCommand;
+import frc.robot.commands.IntakeRollerCommand;
 import frc.robot.dashboard.DashboardSnapshot;
 import frc.robot.dashboard.ReadyToScoreEvaluator;
 import frc.robot.dashboard.ReadyToScoreResult;
@@ -49,20 +50,22 @@ import frc.robot.subsystems.*;
 public class RobotContainer {
 
     // =========================================================================
+    // VISION — one shared camera instance for the whole robot
+    // FIXED: Camera is created here, not inside each command.
+    // The camera must be declared before SwerveSubsystem so it's initialized
+    // first (Java fields initialize in declaration order).
+    // =========================================================================
+    private final PhotonCamera camera = new PhotonCamera(Constants.Vision.CAMERA_NAME);
+
+    // =========================================================================
     // SUBSYSTEMS — created once here, shared with commands
     // =========================================================================
-    private final SwerveSubsystem  swerve  = new SwerveSubsystem();
+    private final SwerveSubsystem  swerve  = new SwerveSubsystem(camera);
     private final IntakeSubsystem  intake  = new IntakeSubsystem();
     private final HopperSubsystem  hopper  = new HopperSubsystem();
     private final FeederSubsystem  feeder  = new FeederSubsystem();
     private final ShooterSubsystem shooter = new ShooterSubsystem();
     private final ClimberSubsystem climber = new ClimberSubsystem();
-
-    // =========================================================================
-    // VISION — one shared camera instance for the whole robot
-    // FIXED: Camera is created here, not inside each command.
-    // =========================================================================
-    private final PhotonCamera camera = new PhotonCamera(Constants.Vision.CAMERA_NAME);
 
     // =========================================================================
     // CONTROLLERS
@@ -270,10 +273,15 @@ public class RobotContainer {
                     double filteredY     = MathUtil.applyDeadband(rawLeftX,  Constants.Swerve.JOYSTICK_DEADBAND);
                     double filteredOmega = MathUtil.applyDeadband(rawRightX, Constants.Swerve.JOYSTICK_DEADBAND);
 
-                    // Scale to actual velocity units
-                    double xVelocity = filteredX     * Constants.Swerve.MAX_TRANSLATION_MPS;
-                    double yVelocity = filteredY     * Constants.Swerve.MAX_TRANSLATION_MPS;
-                    double omega     = filteredOmega * Constants.Swerve.MAX_ROTATION_RADPS;
+                    // Precision mode: hold right trigger to slow down for fine positioning
+                    double speedScale = driverController.rightTrigger().getAsBoolean()
+                            ? Constants.Swerve.PRECISION_SPEED_SCALE
+                            : 1.0;
+
+                    // Scale to actual velocity units (with precision mode applied)
+                    double xVelocity = filteredX     * Constants.Swerve.MAX_TRANSLATION_MPS * speedScale;
+                    double yVelocity = filteredY     * Constants.Swerve.MAX_TRANSLATION_MPS * speedScale;
+                    double omega     = filteredOmega * Constants.Swerve.MAX_ROTATION_RADPS  * speedScale;
 
                     // Drive in field-relative mode (true = joystick "up" always = away from driver)
                     // Hold left bumper to switch to robot-relative mode temporarily
@@ -339,10 +347,10 @@ public class RobotContainer {
         operatorController.rightBumper().onTrue(
                 buildFallbackShootCommand());
 
-        // Left Trigger: Manual intake roller — spin forward
+        // Left Trigger: Manual intake roller — spin forward with stall detection.
+        // If the roller jams, it automatically reverses and retries (up to 3 times).
         operatorController.leftTrigger().whileTrue(
-                Commands.run(() -> intake.setRollerPower(0.6), intake)
-                        .finallyDo(() -> intake.setRollerPower(0)));
+                new IntakeRollerCommand(intake, 0.6));
 
         // Left Bumper: Manual intake roller — reverse / eject
         operatorController.leftBumper().whileTrue(
@@ -443,8 +451,8 @@ public class RobotContainer {
                         () -> !intake.isHomed()),
                 // Deploy arm to pickup position
                 Commands.runOnce(() -> intake.setTiltPosition(Constants.Intake.INTAKE_DOWN_DEG), intake),
-                // Spin rollers briefly to collect a game piece
-                Commands.run(() -> intake.setRollerPower(0.8), intake).withTimeout(2.0),
+                // Spin rollers with stall detection — auto-reverses if jammed
+                new IntakeRollerCommand(intake, 0.8).withTimeout(2.0),
                 // Stop rollers and leave arm down (ready to stow)
                 Commands.runOnce(() -> intake.setRollerPower(0.0), intake));
     }

@@ -162,6 +162,11 @@ public final class Constants {
         // Joystick axes within this range of zero are treated as zero.
         // This prevents the robot from creeping when the stick isn't centered.
         public static final double JOYSTICK_DEADBAND = 0.1;
+
+        // ---- Precision mode ----
+        // Hold driver right trigger to scale max speed down for fine positioning.
+        // 0.25 = 25% of normal speed when precision mode is active.
+        public static final double PRECISION_SPEED_SCALE = 0.25;
     }
 
     // =========================================================================
@@ -230,6 +235,15 @@ public final class Constants {
 
         // Roller current limit (TalonFX / Kraken)
         public static final int ROLLER_STATOR_LIMIT_A = 60;  // prevents jam burnout
+
+        // ---- Stall detection (roller motor) ----
+        // If roller current stays above STALL_CURRENT_THRESHOLD_A for STALL_TIME_SEC,
+        // the roller is jammed and will automatically reverse and retry.
+        public static final double STALL_CURRENT_THRESHOLD_A = 35.0;  // TUNE ME
+        public static final double STALL_TIME_SEC             = 0.3;
+        public static final double STALL_REVERSE_POWER        = -0.5;
+        public static final double STALL_REVERSE_TIME_SEC     = 0.25;
+        public static final int    STALL_MAX_RETRIES          = 3;
     }
 
     // =========================================================================
@@ -267,6 +281,28 @@ public final class Constants {
         public static final double TURN_kP     = 0.05;
         public static final double TURN_kD     = 0.005;
         public static final double MAX_ROT_CMD = 0.6;  // max rotation power during alignment
+
+        // ---- Camera mount position (for AprilTag pose estimation) ----
+        // Transform from robot center to camera lens.
+        // TUNE ME: Measure the actual camera mount position on your robot!
+        // Translation: (forward_m, left_m, up_m) from robot center
+        // Rotation: (roll, pitch, yaw) in radians
+        public static final double CAMERA_FORWARD_M  = 0.25;  // TUNE ME
+        public static final double CAMERA_LEFT_M     = 0.0;   // TUNE ME
+        public static final double CAMERA_UP_M       = 0.50;  // TUNE ME
+        public static final double CAMERA_PITCH_RAD  = Math.toRadians(-15.0); // tilted down, TUNE ME
+        public static final double CAMERA_YAW_RAD    = 0.0;
+
+        // Vision pose estimation trust (standard deviations).
+        // Higher values = less trust in vision, more trust in wheel odometry.
+        // Start conservative and tighten once you validate vision accuracy on the field.
+        public static final double VISION_STD_DEV_X_M          = 0.5;  // meters
+        public static final double VISION_STD_DEV_Y_M          = 0.5;  // meters
+        public static final double VISION_STD_DEV_HEADING_RAD  = Math.toRadians(10); // radians
+
+        // Maximum pose ambiguity for single-tag results (0.0 = perfect, 1.0 = worst).
+        // Multi-tag results are inherently more accurate and skip this filter.
+        public static final double MAX_POSE_AMBIGUITY = 0.2;
     }
 
     // =========================================================================
