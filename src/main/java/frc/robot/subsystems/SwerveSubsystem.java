@@ -129,11 +129,11 @@ public class SwerveSubsystem extends SubsystemBase {
         );
 
         // ---- Vision pose estimator setup ----
-        // TUNE ME: Update AprilTagFields to the current season's field layout.
-        // For 2025 the field is k2025Reefscape; change this to the 2026 game field
-        // once you update WPILib and the field layout is available.
+        // 2026 REBUILT field: 32 AprilTags (IDs 1-32) across HUBs, Towers,
+        // Outposts, and Trenches.  Tag positions come from the WPILib-bundled
+        // field layout JSON derived from the 2026 Field Dimension Drawings.
         AprilTagFieldLayout fieldLayout = AprilTagFieldLayout.loadField(
-                AprilTagFields.k2025Reefscape);
+                AprilTagFields.k2026Rebuilt);
 
         // Camera mount position: where the camera is relative to robot center.
         // TUNE ME: Measure these on your actual robot!
