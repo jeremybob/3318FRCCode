@@ -186,15 +186,31 @@ public class IntakeSubsystem extends SubsystemBase {
     // Commands the tilt arm to move to a specific angle (in degrees).
     // Only works after homing — if the encoder isn't zeroed, we don't know
     // where "45 degrees" actually is relative to the arm's true position.
+    //
+    // The target is clamped to [TILT_MIN_DEG, TILT_MAX_DEG] to prevent
+    // commanding the arm into the chassis or past its mechanical travel.
     // --------------------------------------------------------------------------
     public void setTiltPosition(double targetDegrees) {
         if (isHomed) {
+            double clamped = Math.max(Constants.Intake.TILT_MIN_DEG,
+                    Math.min(Constants.Intake.TILT_MAX_DEG, targetDegrees));
             // kPosition tells the SparkMax to run its built-in position PID loop
-            tiltPID.setSetpoint(targetDegrees, ControlType.kPosition);
+            tiltPID.setSetpoint(clamped, ControlType.kPosition);
         } else {
             // Safety: refuse to move if we haven't homed yet.
             // Log a warning so the student knows why it's not moving.
             System.out.println("[IntakeSubsystem] WARNING: setTiltPosition called before homing!");
         }
+    }
+
+    // --------------------------------------------------------------------------
+    // stop()
+    //
+    // Immediately stops both tilt and roller motors.
+    // Every subsystem should have a stop() for safety and cleanup consistency.
+    // --------------------------------------------------------------------------
+    public void stop() {
+        tiltMotor.stopMotor();
+        rollerMotor.stopMotor();
     }
 }

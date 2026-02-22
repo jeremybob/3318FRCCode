@@ -219,6 +219,12 @@ public final class Constants {
         // Target angle for the intake to be "down" and collecting game pieces
         public static final double INTAKE_DOWN_DEG = 45.0;  // TUNE ME
 
+        // Software limits for the tilt arm (in degrees from the homed position).
+        // Prevents commanding the arm into the chassis or past its mechanical travel.
+        // TUNE ME: Set these to the actual min/max safe travel of YOUR intake arm.
+        public static final double TILT_MIN_DEG = -5.0;   // small margin past home
+        public static final double TILT_MAX_DEG = 90.0;   // fully deployed
+
         // Current limit to protect the NEO and gearbox during homing stalls
         public static final int TILT_CURRENT_LIMIT_A = 40;
 

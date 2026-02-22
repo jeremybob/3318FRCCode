@@ -89,6 +89,13 @@ public class RobotContainer {
         registerPathPlannerCommands();
         configureAutoChooser();
         configureBindings();
+
+        // Schedule intake homing at startup so the arm finds its zero position.
+        // This runs once when the robot first enables (CommandScheduler won't
+        // execute commands while disabled, so the actual homing happens when
+        // the robot is first enabled in teleop or auto).
+        CommandScheduler.getInstance().schedule(buildIntakeHomeCommand());
+
         dashboardService = new RobotDashboardService(new RobotDashboardService.Actions() {
             @Override
             public void zeroHeading() {
@@ -282,6 +289,11 @@ public class RobotContainer {
 
         // B button: Emergency stop — immediately stops ALL drive motors
         driverController.b().onTrue(Commands.runOnce(this::stopDrive, swerve));
+
+        // X button: X-Lock — all wheels point inward at 45° to resist being pushed.
+        // Hold to maintain the lock; releasing returns to normal drive.
+        driverController.x().whileTrue(
+                Commands.run(swerve::xLock, swerve));
 
         // ---- OPERATOR CONTROLLER BINDINGS ----
 
