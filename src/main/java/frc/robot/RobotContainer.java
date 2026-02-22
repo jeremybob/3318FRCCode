@@ -82,6 +82,7 @@ public class RobotContainer {
     // =========================================================================
     private final SendableChooser<Command> autoChooser = new SendableChooser<>();
     private boolean pathPlannerConfigured = false;
+    private boolean tiltDeployed = false;
     private final RobotDashboardService dashboardService;
 
     // =========================================================================
@@ -359,6 +360,9 @@ public class RobotContainer {
 
         // X button: Re-home intake (operator can trigger this too)
         operatorController.x().onTrue(buildIntakeHomeCommand());
+
+        // Y button: Toggle intake tilt between down (deployed) and up (stowed)
+        operatorController.y().onTrue(buildIntakeTiltToggleCommand());
     }
 
     // =========================================================================
@@ -436,6 +440,15 @@ public class RobotContainer {
 
     private Command buildFallbackShootCommand() {
         return shooter.buildShootRoutine(feeder, hopper, intake, Constants.Shooter.FALLBACK_RPS);
+    }
+
+    private Command buildIntakeTiltToggleCommand() {
+        return Commands.runOnce(() -> {
+            tiltDeployed = !tiltDeployed;
+            intake.setTiltPosition(
+                    tiltDeployed ? Constants.Intake.INTAKE_DOWN_DEG
+                                : Constants.Intake.INTAKE_STOW_DEG);
+        }, intake);
     }
 
     private Command buildIntakeHomeCommand() {
