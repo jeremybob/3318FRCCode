@@ -24,7 +24,6 @@ import com.ctre.phoenix6.hardware.Pigeon2;
 
 import org.photonvision.PhotonCamera;
 import org.photonvision.PhotonPoseEstimator;
-import org.photonvision.PhotonPoseEstimator.PoseStrategy;
 
 import edu.wpi.first.apriltag.AprilTagFieldLayout;
 import edu.wpi.first.apriltag.AprilTagFields;
@@ -149,13 +148,9 @@ public class SwerveSubsystem extends SubsystemBase {
                         Constants.Vision.CAMERA_PITCH_RAD,
                         Constants.Vision.CAMERA_YAW_RAD));
 
-        // MULTI_TAG_PNP_ON_COPROCESSOR uses all visible AprilTags together for the
-        // most accurate pose. Falls back to single-tag when only one is visible.
-        photonEstimator = new PhotonPoseEstimator(
-                fieldLayout,
-                PoseStrategy.MULTI_TAG_PNP_ON_COPROCESSOR,
-                robotToCamera);
-        photonEstimator.setMultiTagFallbackStrategy(PoseStrategy.LOWEST_AMBIGUITY);
+        // Uses individual estimation methods (2026 API) with explicit fallback:
+        // coprocessor multi-tag pose first, then single-tag lowest ambiguity.
+        photonEstimator = new PhotonPoseEstimator(fieldLayout, robotToCamera);
 
         // Register the field widget so it shows up in SmartDashboard
         SmartDashboard.putData("Field", field);
@@ -181,7 +176,10 @@ public class SwerveSubsystem extends SubsystemBase {
             for (var result : unreadResults) {
                 if (!result.hasTargets()) continue;
 
-                var estimate = photonEstimator.update(result);
+                var estimate = photonEstimator.estimateCoprocMultiTagPose(result);
+                if (estimate.isEmpty()) {
+                    estimate = photonEstimator.estimateLowestAmbiguityPose(result);
+                }
                 estimate.ifPresent(est -> {
                     // Filter out noisy single-tag results with high ambiguity.
                     // Multi-tag estimates use PnP and are already reliable.
