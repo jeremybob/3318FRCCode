@@ -76,6 +76,12 @@ public class DashboardNtClient implements AutoCloseable {
     private final IntegerPublisher alignShootPub = table.getIntegerTopic("cmd/align_shoot_seq").publish();
     private final IntegerPublisher fallbackShootPub = table.getIntegerTopic("cmd/fallback_shoot_seq").publish();
     private final IntegerPublisher level1ClimbPub = table.getIntegerTopic("cmd/level1_climb_seq").publish();
+    private final IntegerSubscriber zeroHeadingSeqSub = table.getIntegerTopic("cmd/zero_heading_seq").subscribe(0);
+    private final IntegerSubscriber stopDriveSeqSub = table.getIntegerTopic("cmd/stop_drive_seq").subscribe(0);
+    private final IntegerSubscriber intakeHomeSeqSub = table.getIntegerTopic("cmd/intake_home_seq").subscribe(0);
+    private final IntegerSubscriber alignShootSeqSub = table.getIntegerTopic("cmd/align_shoot_seq").subscribe(0);
+    private final IntegerSubscriber fallbackShootSeqSub = table.getIntegerTopic("cmd/fallback_shoot_seq").subscribe(0);
+    private final IntegerSubscriber level1ClimbSeqSub = table.getIntegerTopic("cmd/level1_climb_seq").subscribe(0);
 
     private long zeroHeadingSeq = 0;
     private long stopDriveSeq = 0;
@@ -135,14 +141,36 @@ public class DashboardNtClient implements AutoCloseable {
 
     public synchronized void sendCommand(DashboardCommand command) {
         switch (command) {
-            case ZERO_HEADING -> zeroHeadingPub.set(++zeroHeadingSeq);
-            case STOP_DRIVE -> stopDrivePub.set(++stopDriveSeq);
-            case INTAKE_HOME -> intakeHomePub.set(++intakeHomeSeq);
-            case ALIGN_SHOOT -> alignShootPub.set(++alignShootSeq);
-            case FALLBACK_SHOOT -> fallbackShootPub.set(++fallbackShootSeq);
-            case LEVEL1_CLIMB -> level1ClimbPub.set(++level1ClimbSeq);
+            case ZERO_HEADING -> {
+                zeroHeadingSeq = nextCommandSequence(zeroHeadingSeq, zeroHeadingSeqSub.get());
+                zeroHeadingPub.set(zeroHeadingSeq);
+            }
+            case STOP_DRIVE -> {
+                stopDriveSeq = nextCommandSequence(stopDriveSeq, stopDriveSeqSub.get());
+                stopDrivePub.set(stopDriveSeq);
+            }
+            case INTAKE_HOME -> {
+                intakeHomeSeq = nextCommandSequence(intakeHomeSeq, intakeHomeSeqSub.get());
+                intakeHomePub.set(intakeHomeSeq);
+            }
+            case ALIGN_SHOOT -> {
+                alignShootSeq = nextCommandSequence(alignShootSeq, alignShootSeqSub.get());
+                alignShootPub.set(alignShootSeq);
+            }
+            case FALLBACK_SHOOT -> {
+                fallbackShootSeq = nextCommandSequence(fallbackShootSeq, fallbackShootSeqSub.get());
+                fallbackShootPub.set(fallbackShootSeq);
+            }
+            case LEVEL1_CLIMB -> {
+                level1ClimbSeq = nextCommandSequence(level1ClimbSeq, level1ClimbSeqSub.get());
+                level1ClimbPub.set(level1ClimbSeq);
+            }
             default -> throw new IllegalStateException("Unhandled command " + command);
         }
+    }
+
+    static long nextCommandSequence(long localSeq, long topicSeq) {
+        return Math.max(localSeq, topicSeq) + 1;
     }
 
     @Override

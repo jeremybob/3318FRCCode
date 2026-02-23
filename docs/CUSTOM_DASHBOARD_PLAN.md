@@ -7,7 +7,7 @@ Last updated: 2026-02-21
 - Cross-platform operation (macOS + Windows) using a single codebase.
 - High-signal driver/operator UX with safety-gated writable actions.
 - Typed NetworkTables contract with command acknowledgements.
-- Legacy game naming cleanup (`Note`/`Fuel` -> `Piece`/`GamePiece`) without breaking old autos.
+- 2026 game terminology throughout robot and dashboard workflows.
 
 ## Phase 1: Robot Telemetry Contract (implemented)
 

@@ -82,7 +82,6 @@ public class RobotContainer {
     // =========================================================================
     private final SendableChooser<Command> autoChooser = new SendableChooser<>();
     private boolean pathPlannerConfigured = false;
-    private boolean tiltDeployed = false;
     private final RobotDashboardService dashboardService;
 
     // =========================================================================
@@ -199,10 +198,8 @@ public class RobotContainer {
         // HomeIntake: re-home the intake at the start of auto (belt-and-suspenders)
         NamedCommands.registerCommand("HomeIntake", buildIntakeHomeCommand());
 
-        // Preferred event name: IntakeGamePiece.
-        // Compatibility alias retained: IntakeFuel.
+        // 2026 naming: game piece intake event.
         NamedCommands.registerCommand("IntakeGamePiece", buildIntakeGamePieceCommand());
-        NamedCommands.registerCommand("IntakeFuel", buildIntakeGamePieceCommand());
 
         // AutoShoot: align to target and shoot (timeout configured in Constants.Auto)
         NamedCommands.registerCommand("AutoShoot",
@@ -231,8 +228,8 @@ public class RobotContainer {
 
         // IMPORTANT: The string names below MUST exactly match your .auto file names
         // in deploy/pathplanner/autos/ (case sensitive, no .auto extension needed)
-        addPathPlannerAutoOption("Four Piece Climb Auto", "FourNoteClimbAuto");
-        addPathPlannerAutoOption("Two Piece Auto", "TwoNoteAuto");
+        addPathPlannerAutoOption("Four Piece Climb Auto", "FourPieceClimbAuto");
+        addPathPlannerAutoOption("Two Piece Auto", "TwoPieceAuto");
         addPathPlannerAutoOption("Taxi Only", "TaxiOnly");
 
         // Publish the chooser so it shows up in SmartDashboard / Shuffleboard
@@ -444,10 +441,16 @@ public class RobotContainer {
 
     private Command buildIntakeTiltToggleCommand() {
         return Commands.runOnce(() -> {
-            tiltDeployed = !tiltDeployed;
+            if (!intake.isHomed()) {
+                System.out.println("[RobotContainer] Intake tilt toggle ignored: intake is not homed.");
+                return;
+            }
+
+            double midpoint = (Constants.Intake.INTAKE_DOWN_DEG + Constants.Intake.INTAKE_STOW_DEG) / 2.0;
+            boolean shouldDeploy = intake.getTiltPositionDeg() < midpoint;
             intake.setTiltPosition(
-                    tiltDeployed ? Constants.Intake.INTAKE_DOWN_DEG
-                                : Constants.Intake.INTAKE_STOW_DEG);
+                    shouldDeploy ? Constants.Intake.INTAKE_DOWN_DEG
+                                 : Constants.Intake.INTAKE_STOW_DEG);
         }, intake);
     }
 

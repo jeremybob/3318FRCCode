@@ -21,6 +21,20 @@ assert_contains() {
   fi
 }
 
+assert_not_contains() {
+  local file="$1"
+  local pattern="$2"
+  local description="$3"
+  if grep -Fq "$pattern" "$file"; then
+    echo "FAIL: $description"
+    echo "  Unexpectedly found: $pattern"
+    echo "  In file: $file"
+    exit 1
+  else
+    echo "PASS: $description"
+  fi
+}
+
 echo "Running robot update checks..."
 
 # 1) Drivetrain / Falcon constants
@@ -38,7 +52,7 @@ assert_contains "$CONSTANTS_FILE" "public static final double GEAR_RATIO = 8.0;"
   "Hopper gear ratio set to 8:1"
 
 # 3) Vision/geometry shooting checks
-assert_contains "$ALIGN_FILE" "if (!isShotGeometryFeasible(result)) {" \
+assert_contains "$ALIGN_FILE" "if (!isShotGeometryFeasible(hubTarget)) {" \
   "Align phase aborts when geometry is infeasible"
 assert_contains "$ALIGN_FILE" "if (!hasShootableTarget()) {" \
   "Clear/feed phases verify shootability (with tolerance support)"
@@ -63,11 +77,15 @@ assert_contains "$CONTAINER_FILE" "operatorController.rightTrigger().onTrue(" \
 assert_contains "$CONTAINER_FILE" "return new AlignAndShootCommand(swerve, shooter, feeder, hopper, intake, camera);" \
   "Align-and-shoot builder uses the shared camera and subsystems"
 
-# 5) Legacy naming cleanup with compatibility
+# 5) 2026 naming
 assert_contains "$CONTAINER_FILE" "NamedCommands.registerCommand(\"IntakeGamePiece\"" \
-  "Preferred path event name uses game-piece naming"
-assert_contains "$CONTAINER_FILE" "NamedCommands.registerCommand(\"IntakeFuel\"" \
-  "Legacy IntakeFuel path event alias is retained"
+  "Path event uses game-piece naming"
+assert_not_contains "$CONTAINER_FILE" "NamedCommands.registerCommand(\"IntakeFuel\"" \
+  "Legacy IntakeFuel alias removed"
+assert_contains "$CONTAINER_FILE" "addPathPlannerAutoOption(\"Four Piece Climb Auto\", \"FourPieceClimbAuto\")" \
+  "Auto chooser references 2026 Four Piece file name"
+assert_contains "$CONTAINER_FILE" "addPathPlannerAutoOption(\"Two Piece Auto\", \"TwoPieceAuto\")" \
+  "Auto chooser references 2026 Two Piece file name"
 
 # 6) Auto mode AutoShoot timeout is configurable
 assert_contains "$CONSTANTS_FILE" "public static final double AUTO_SHOOT_TIMEOUT_SEC = 6.0;" \
