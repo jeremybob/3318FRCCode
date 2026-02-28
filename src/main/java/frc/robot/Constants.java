@@ -13,6 +13,8 @@ package frc.robot;
 
 import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.math.util.Units;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 public final class Constants {
 
@@ -26,8 +28,12 @@ public final class Constants {
     // Hardware Client. Change them here to match your actual robot wiring.
     // =========================================================================
     public static final class CAN {
+        // CTRE CAN bus name:
+        //   "rio" for roboRIO CAN, or your CANivore name (e.g. "canivore")
+        public static final String CTRE_CAN_BUS = "rio";
+
         // Pigeon 2 IMU (gyro) — used for field-oriented drive
-        public static final int PIGEON = 0;
+        public static final int PIGEON = 13;
 
         // ---- Swerve drive motors & encoders ----
         // Each corner has 3 devices: Drive TalonFX, Steer TalonFX, CANcoder
@@ -44,8 +50,9 @@ public final class Constants {
         public static final int BACK_LEFT_CANCODER = 9;
 
         // NOTE: Back-right IDs jump from 9 to 12 — IDs 10 and 11 are shooter.
+        // Steer is on 19 to avoid conflict with Pigeon on 13.
         public static final int BACK_RIGHT_DRIVE    = 12;
-        public static final int BACK_RIGHT_STEER    = 13;
+        public static final int BACK_RIGHT_STEER    = 19;
         public static final int BACK_RIGHT_CANCODER = 14;
 
         // ---- Shooter (TalonFX / Kraken X60) ----
@@ -63,6 +70,41 @@ public final class Constants {
         // ---- Climber (TalonFX) ----
         public static final int CLIMBER_LEADER   = 20;
         public static final int CLIMBER_FOLLOWER = 21;
+
+        // Fails fast on startup if any CAN IDs are duplicated in code.
+        public static void validateUniqueCanIds() {
+            Map<Integer, String> used = new LinkedHashMap<>();
+            registerCanId(used, PIGEON, "PIGEON");
+            registerCanId(used, FRONT_LEFT_DRIVE, "FRONT_LEFT_DRIVE");
+            registerCanId(used, FRONT_LEFT_STEER, "FRONT_LEFT_STEER");
+            registerCanId(used, FRONT_LEFT_CANCODER, "FRONT_LEFT_CANCODER");
+            registerCanId(used, FRONT_RIGHT_DRIVE, "FRONT_RIGHT_DRIVE");
+            registerCanId(used, FRONT_RIGHT_STEER, "FRONT_RIGHT_STEER");
+            registerCanId(used, FRONT_RIGHT_CANCODER, "FRONT_RIGHT_CANCODER");
+            registerCanId(used, BACK_LEFT_DRIVE, "BACK_LEFT_DRIVE");
+            registerCanId(used, BACK_LEFT_STEER, "BACK_LEFT_STEER");
+            registerCanId(used, BACK_LEFT_CANCODER, "BACK_LEFT_CANCODER");
+            registerCanId(used, BACK_RIGHT_DRIVE, "BACK_RIGHT_DRIVE");
+            registerCanId(used, BACK_RIGHT_STEER, "BACK_RIGHT_STEER");
+            registerCanId(used, BACK_RIGHT_CANCODER, "BACK_RIGHT_CANCODER");
+            registerCanId(used, SHOOTER_LEFT, "SHOOTER_LEFT");
+            registerCanId(used, SHOOTER_RIGHT, "SHOOTER_RIGHT");
+            registerCanId(used, INTAKE_TILT_NEO, "INTAKE_TILT_NEO");
+            registerCanId(used, INTAKE_ROLLER, "INTAKE_ROLLER");
+            registerCanId(used, HOPPER_FLOOR_NEO, "HOPPER_FLOOR_NEO");
+            registerCanId(used, FEEDER_NEO, "FEEDER_NEO");
+            registerCanId(used, CLIMBER_LEADER, "CLIMBER_LEADER");
+            registerCanId(used, CLIMBER_FOLLOWER, "CLIMBER_FOLLOWER");
+        }
+
+        private static void registerCanId(Map<Integer, String> used, int id, String name) {
+            String existing = used.putIfAbsent(id, name);
+            if (existing != null) {
+                throw new IllegalStateException(
+                        "Duplicate CAN ID " + id + " for " + existing + " and " + name
+                                + ". Fix Constants.CAN map.");
+            }
+        }
     }
 
     // =========================================================================
@@ -307,11 +349,30 @@ public final class Constants {
     }
 
     // =========================================================================
+    // PATHPLANNER FALLBACK CONSTANTS
+    // Used if deploy/pathplanner/settings.json is missing or malformed.
+    // These values are based on common 2026 FRC swerve setups similar to this robot.
+    // =========================================================================
+    public static final class PathPlanner {
+        public static final double ROBOT_MASS_KG = 54.43; // ~120 lb with battery + bumpers
+        public static final double ROBOT_MOI = 6.0;
+        public static final double WHEEL_COF = 1.0;
+        public static final double DRIVE_CURRENT_LIMIT_A = 60.0;
+    }
+
+    // =========================================================================
     // VISION / PHOTONVISION CONSTANTS
     // =========================================================================
     public static final class Vision {
+        // Set false for electrical bring-up when no coprocessor/camera is present.
+        public static final boolean ENABLE_PHOTON = true;
         // Name must match what you set in PhotonVision's web interface
         public static final String CAMERA_NAME = "PiCamera";  // TUNE ME
+
+        // Throttle repeated startup warnings when the vision coprocessor is offline.
+        public static final double VISION_WARN_INTERVAL_SEC = 5.0;
+        // Back off briefly after camera read errors to avoid command loop spam.
+        public static final double VISION_READ_ERROR_BACKOFF_SEC = 1.0;
 
         // Alignment is "good enough" once yaw error is within this many degrees
         public static final double YAW_TOLERANCE_DEG = 2.0;

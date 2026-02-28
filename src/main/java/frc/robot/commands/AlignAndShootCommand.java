@@ -91,6 +91,7 @@ public class AlignAndShootCommand extends Command {
     private double lastValidTargetSeenSec = Double.NEGATIVE_INFINITY;
     // Cached camera result so we can use the latest unread packet API without losing continuity.
     private PhotonPipelineResult lastCameraResult = new PhotonPipelineResult();
+    private double nextCameraWarningSec = 0.0;
     // Distance-based shooter speed — recalculated each cycle in ALIGN
     private double calculatedRPS = Constants.Shooter.TARGET_RPS;
 
@@ -136,6 +137,7 @@ public class AlignAndShootCommand extends Command {
         stateTimer.start();
         lastValidTargetSeenSec = Double.NEGATIVE_INFINITY;
         lastCameraResult = new PhotonPipelineResult();
+        nextCameraWarningSec = 0.0;
         telemetryState = State.SPIN_UP.name();
         telemetryCommandActive = true;
         telemetryHasTarget = false;
@@ -451,11 +453,34 @@ public class AlignAndShootCommand extends Command {
     }
 
     private PhotonPipelineResult getLatestCameraResult() {
-        var unreadResults = camera.getAllUnreadResults();
-        if (!unreadResults.isEmpty()) {
-            lastCameraResult = unreadResults.get(unreadResults.size() - 1);
+        if (!Constants.Vision.ENABLE_PHOTON) {
+            return lastCameraResult;
         }
+
+        if (!camera.isConnected()) {
+            throttledCameraWarning("PhotonVision is not connected; vision targeting unavailable.");
+            return lastCameraResult;
+        }
+
+        try {
+            var unreadResults = camera.getAllUnreadResults();
+            if (!unreadResults.isEmpty()) {
+                lastCameraResult = unreadResults.get(unreadResults.size() - 1);
+            }
+        } catch (RuntimeException e) {
+            throttledCameraWarning("PhotonVision read failed: " + e.getMessage());
+        }
+
         return lastCameraResult;
+    }
+
+    private void throttledCameraWarning(String message) {
+        double now = Timer.getFPGATimestamp();
+        if (now < nextCameraWarningSec) {
+            return;
+        }
+        nextCameraWarningSec = now + Constants.Vision.VISION_WARN_INTERVAL_SEC;
+        System.err.println("[AlignAndShoot] " + message);
     }
 
     public static String getTelemetryState() {

@@ -41,10 +41,10 @@ public class CalibrateCANcodersCommand extends Command {
         double brRaw;
 
         // Read all four CANcoders and close handles immediately after sampling.
-        try (CANcoder flEncoder = new CANcoder(Constants.CAN.FRONT_LEFT_CANCODER);
-                CANcoder frEncoder = new CANcoder(Constants.CAN.FRONT_RIGHT_CANCODER);
-                CANcoder blEncoder = new CANcoder(Constants.CAN.BACK_LEFT_CANCODER);
-                CANcoder brEncoder = new CANcoder(Constants.CAN.BACK_RIGHT_CANCODER)) {
+        try (CANcoder flEncoder = new CANcoder(Constants.CAN.FRONT_LEFT_CANCODER, Constants.CAN.CTRE_CAN_BUS);
+                CANcoder frEncoder = new CANcoder(Constants.CAN.FRONT_RIGHT_CANCODER, Constants.CAN.CTRE_CAN_BUS);
+                CANcoder blEncoder = new CANcoder(Constants.CAN.BACK_LEFT_CANCODER, Constants.CAN.CTRE_CAN_BUS);
+                CANcoder brEncoder = new CANcoder(Constants.CAN.BACK_RIGHT_CANCODER, Constants.CAN.CTRE_CAN_BUS)) {
             flRaw = flEncoder.getAbsolutePosition().getValueAsDouble();
             frRaw = frEncoder.getAbsolutePosition().getValueAsDouble();
             blRaw = blEncoder.getAbsolutePosition().getValueAsDouble();

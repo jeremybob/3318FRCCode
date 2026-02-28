@@ -37,6 +37,7 @@ public class Robot extends TimedRobot {
     // --------------------------------------------------------------------------
     @Override
     public void robotInit() {
+        Constants.CAN.validateUniqueCanIds();
         robotContainer = new RobotContainer();
     }
 

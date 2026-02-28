@@ -92,6 +92,7 @@ public class DashboardFrame extends JFrame {
     // Driver tab: pre-match checklist
     private final JLabel preMatchBatteryLabel = createChecklistLabel("Battery");
     private final JLabel preMatchCanLabel = createChecklistLabel("CAN Bus");
+    private final JLabel preMatchImuLabel = createChecklistLabel("IMU data");
     private final JLabel preMatchCameraLabel = createChecklistLabel("Camera");
     private final JLabel preMatchIntakeLabel = createChecklistLabel("Intake homed");
 
@@ -336,10 +337,11 @@ public class DashboardFrame extends JFrame {
     // CARD BUILDERS
     // =========================================================================
     private JPanel buildPreMatchChecklistCard() {
-        JPanel panel = new JPanel(new GridLayout(4, 1, 4, 4));
+        JPanel panel = new JPanel(new GridLayout(5, 1, 4, 4));
         panel.setBackground(CARD);
         panel.add(preMatchBatteryLabel);
         panel.add(preMatchCanLabel);
+        panel.add(preMatchImuLabel);
         panel.add(preMatchCameraLabel);
         panel.add(preMatchIntakeLabel);
         return wrapCard("Pre-Match Checklist", panel);
@@ -552,6 +554,10 @@ public class DashboardFrame extends JFrame {
                 data.batteryVoltage() >= 12.0);
         updateChecklist(preMatchCanLabel, "CAN Bus",
                 data.canReceiveErrorCount() == 0 && data.canTransmitErrorCount() == 0);
+        updateChecklist(preMatchImuLabel, "IMU data",
+                Double.isFinite(data.pigeonYawDeg())
+                        && Double.isFinite(data.pigeonPitchDeg())
+                        && Double.isFinite(data.pigeonRollDeg()));
         updateChecklist(preMatchCameraLabel, "Camera",
                 data.cameraConnected());
         updateChecklist(preMatchIntakeLabel, "Intake homed",

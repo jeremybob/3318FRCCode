@@ -53,7 +53,7 @@ public class IntakeSubsystem extends SubsystemBase {
     private final DigitalInput homeLimitSwitch = new DigitalInput(Constants.DIO.INTAKE_HOME_SWITCH);
 
     // ---- Roller motor (TalonFX / Kraken X60) ----
-    private final TalonFX rollerMotor = new TalonFX(Constants.CAN.INTAKE_ROLLER);
+    private final TalonFX rollerMotor = new TalonFX(Constants.CAN.INTAKE_ROLLER, Constants.CAN.CTRE_CAN_BUS);
 
     // ---- State tracking ----
     // isHomed is false at startup until IntakeHomeCommand confirms the arm

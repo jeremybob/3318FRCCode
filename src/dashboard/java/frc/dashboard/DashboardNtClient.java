@@ -21,6 +21,7 @@ public class DashboardNtClient implements AutoCloseable {
 
     private final NetworkTableInstance nt = NetworkTableInstance.create();
     private final NetworkTable table = nt.getTable("Dashboard");
+    private final NetworkTable smartDashboardTable = nt.getTable("SmartDashboard");
 
     private final StringSubscriber modeSub = table.getStringTopic("robot/mode").subscribe("UNKNOWN");
     private final BooleanSubscriber enabledSub = table.getBooleanTopic("robot/enabled").subscribe(false);
@@ -34,6 +35,13 @@ public class DashboardNtClient implements AutoCloseable {
     private final DoubleSubscriber pigeonYawSub = table.getDoubleTopic("imu/pigeon_yaw_deg").subscribe(Double.NaN);
     private final DoubleSubscriber pigeonPitchSub = table.getDoubleTopic("imu/pigeon_pitch_deg").subscribe(Double.NaN);
     private final DoubleSubscriber pigeonRollSub = table.getDoubleTopic("imu/pigeon_roll_deg").subscribe(Double.NaN);
+    // Fallback telemetry path while contract topics are being brought up.
+    private final DoubleSubscriber pigeonYawSmartSub =
+            smartDashboardTable.getDoubleTopic("Swerve/PigeonYawDeg").subscribe(Double.NaN);
+    private final DoubleSubscriber pigeonPitchSmartSub =
+            smartDashboardTable.getDoubleTopic("Swerve/PigeonPitchDeg").subscribe(Double.NaN);
+    private final DoubleSubscriber pigeonRollSmartSub =
+            smartDashboardTable.getDoubleTopic("Swerve/PigeonRollDeg").subscribe(Double.NaN);
 
     private final DoubleSubscriber shooterLeftSub = table.getDoubleTopic("shooter/left_rps").subscribe(0.0);
     private final DoubleSubscriber shooterRightSub = table.getDoubleTopic("shooter/right_rps").subscribe(0.0);
@@ -157,6 +165,10 @@ public class DashboardNtClient implements AutoCloseable {
     }
 
     public DashboardData read() {
+        double pigeonYawDeg = preferFinite(pigeonYawSub.get(), pigeonYawSmartSub.get());
+        double pigeonPitchDeg = preferFinite(pigeonPitchSub.get(), pigeonPitchSmartSub.get());
+        double pigeonRollDeg = preferFinite(pigeonRollSub.get(), pigeonRollSmartSub.get());
+
         return new DashboardData(
                 nt.isConnected(),
                 modeSub.get(),
@@ -167,9 +179,9 @@ public class DashboardNtClient implements AutoCloseable {
                 poseXSub.get(),
                 poseYSub.get(),
                 headingSub.get(),
-                pigeonYawSub.get(),
-                pigeonPitchSub.get(),
-                pigeonRollSub.get(),
+                pigeonYawDeg,
+                pigeonPitchDeg,
+                pigeonRollDeg,
                 shooterLeftSub.get(),
                 shooterRightSub.get(),
                 shooterAtSpeedSub.get(),
@@ -235,6 +247,13 @@ public class DashboardNtClient implements AutoCloseable {
                 ackSeqSub.get(),
                 ackMessageSub.get(),
                 ackTimestampSub.get());
+    }
+
+    private static double preferFinite(double primary, double fallback) {
+        if (Double.isFinite(primary)) {
+            return primary;
+        }
+        return Double.isFinite(fallback) ? fallback : Double.NaN;
     }
 
     public synchronized void sendCommand(DashboardCommand command) {

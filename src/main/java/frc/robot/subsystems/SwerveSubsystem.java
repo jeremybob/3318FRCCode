@@ -38,6 +38,7 @@ import edu.wpi.first.math.kinematics.ChassisSpeeds;
 import edu.wpi.first.math.kinematics.SwerveDriveKinematics;
 import edu.wpi.first.math.kinematics.SwerveModulePosition;
 import edu.wpi.first.math.kinematics.SwerveModuleState;
+import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj.smartdashboard.Field2d;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
@@ -76,7 +77,7 @@ public class SwerveSubsystem extends SubsystemBase {
     // ---- Gyro (Pigeon 2) ----
     // The Pigeon 2 measures the robot's yaw (rotation angle on the field).
     // We use it to make driving "field-oriented" so joystick up = away from driver.
-    private final Pigeon2 pigeon = new Pigeon2(Constants.CAN.PIGEON);
+    private final Pigeon2 pigeon = new Pigeon2(Constants.CAN.PIGEON, Constants.CAN.CTRE_CAN_BUS);
 
     // ---- Kinematics ----
     // SwerveDriveKinematics converts a desired chassis speed (x, y, omega)
@@ -99,6 +100,8 @@ public class SwerveSubsystem extends SubsystemBase {
     // Runs in both auto and teleop (except when AlignAndShootCommand owns the camera).
     private final PhotonCamera camera;
     private final PhotonPoseEstimator photonEstimator;
+    private double nextVisionWarningSec = 0.0;
+    private double visionReadBackoffUntilSec = 0.0;
 
     // ---- Field visualization (appears in Shuffleboard / SmartDashboard) ----
     private final Field2d field = new Field2d();
@@ -171,34 +174,8 @@ public class SwerveSubsystem extends SubsystemBase {
         // Process AprilTag detections to correct odometry drift.
         // Skip when AlignAndShootCommand is active — it reads camera data for targeting
         // and we must not consume the unread buffer out from under it.
-        if (!AlignAndShootCommand.isTelemetryCommandActive()) {
-            var unreadResults = camera.getAllUnreadResults();
-            for (var result : unreadResults) {
-                if (!result.hasTargets()) continue;
-
-                var estimate = photonEstimator.estimateCoprocMultiTagPose(result);
-                if (estimate.isEmpty()) {
-                    estimate = photonEstimator.estimateLowestAmbiguityPose(result);
-                }
-                estimate.ifPresent(est -> {
-                    // Filter out noisy single-tag results with high ambiguity.
-                    // Multi-tag estimates use PnP and are already reliable.
-                    int tagCount = result.getTargets().size();
-                    if (tagCount == 1
-                            && result.getBestTarget().getPoseAmbiguity()
-                                    > Constants.Vision.MAX_POSE_AMBIGUITY) {
-                        return; // skip this measurement
-                    }
-
-                    poseEstimator.addVisionMeasurement(
-                            est.estimatedPose.toPose2d(),
-                            est.timestampSeconds,
-                            VecBuilder.fill(
-                                    Constants.Vision.VISION_STD_DEV_X_M,
-                                    Constants.Vision.VISION_STD_DEV_Y_M,
-                                    Constants.Vision.VISION_STD_DEV_HEADING_RAD));
-                });
-            }
+        if (Constants.Vision.ENABLE_PHOTON && !AlignAndShootCommand.isTelemetryCommandActive()) {
+            updateVisionPoseEstimator();
         }
 
         // Update the field visualization (robot position on the dashboard)
@@ -207,6 +184,9 @@ public class SwerveSubsystem extends SubsystemBase {
         // Publish useful debugging data to SmartDashboard
         // These show up in the "Swerve" group when you open the dashboard.
         SmartDashboard.putNumber("Swerve/HeadingDeg",        getHeading().getDegrees());
+        SmartDashboard.putNumber("Swerve/PigeonYawDeg",      getPigeonYawDeg());
+        SmartDashboard.putNumber("Swerve/PigeonPitchDeg",    getPigeonPitchDeg());
+        SmartDashboard.putNumber("Swerve/PigeonRollDeg",     getPigeonRollDeg());
         SmartDashboard.putNumber("Swerve/PoseX_m",           getPose().getX());
         SmartDashboard.putNumber("Swerve/PoseY_m",           getPose().getY());
         SmartDashboard.putNumber("Swerve/FL_AngleDeg",       frontLeft.getAbsoluteAngle().getDegrees());
@@ -401,7 +381,7 @@ public class SwerveSubsystem extends SubsystemBase {
 
     // Returns whether the PhotonVision camera is connected and communicating
     public boolean isCameraConnected() {
-        return camera.isConnected();
+        return Constants.Vision.ENABLE_PHOTON && camera.isConnected();
     }
 
     // Returns an array of module positions (distance traveled + angle)
@@ -413,5 +393,59 @@ public class SwerveSubsystem extends SubsystemBase {
             backLeft.getPosition(),
             backRight.getPosition()
         };
+    }
+
+    private void updateVisionPoseEstimator() {
+        double now = Timer.getFPGATimestamp();
+        if (now < visionReadBackoffUntilSec) {
+            return;
+        }
+
+        if (!camera.isConnected()) {
+            throttledVisionWarning("PhotonVision not connected; skipping vision pose updates.");
+            return;
+        }
+
+        try {
+            var unreadResults = camera.getAllUnreadResults();
+            for (var result : unreadResults) {
+                if (!result.hasTargets()) continue;
+
+                var estimate = photonEstimator.estimateCoprocMultiTagPose(result);
+                if (estimate.isEmpty()) {
+                    estimate = photonEstimator.estimateLowestAmbiguityPose(result);
+                }
+                estimate.ifPresent(est -> {
+                    // Filter out noisy single-tag results with high ambiguity.
+                    // Multi-tag estimates use PnP and are already reliable.
+                    int tagCount = result.getTargets().size();
+                    if (tagCount == 1
+                            && result.getBestTarget().getPoseAmbiguity()
+                                    > Constants.Vision.MAX_POSE_AMBIGUITY) {
+                        return; // skip this measurement
+                    }
+
+                    poseEstimator.addVisionMeasurement(
+                            est.estimatedPose.toPose2d(),
+                            est.timestampSeconds,
+                            VecBuilder.fill(
+                                    Constants.Vision.VISION_STD_DEV_X_M,
+                                    Constants.Vision.VISION_STD_DEV_Y_M,
+                                    Constants.Vision.VISION_STD_DEV_HEADING_RAD));
+                });
+            }
+        } catch (RuntimeException e) {
+            visionReadBackoffUntilSec = now + Constants.Vision.VISION_READ_ERROR_BACKOFF_SEC;
+            throttledVisionWarning("PhotonVision read failed; backing off. " + e.getMessage());
+        }
+    }
+
+    private void throttledVisionWarning(String message) {
+        double now = Timer.getFPGATimestamp();
+        if (now < nextVisionWarningSec) {
+            return;
+        }
+        nextVisionWarningSec = now + Constants.Vision.VISION_WARN_INTERVAL_SEC;
+        System.err.println("[SwerveSubsystem] " + message);
     }
 }

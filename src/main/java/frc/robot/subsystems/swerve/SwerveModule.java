@@ -63,9 +63,9 @@ public class SwerveModule {
                         double cancoderOffsetRot) {
 
         // Create the hardware objects
-        driveMotor = new TalonFX(driveId);
-        steerMotor = new TalonFX(steerId);
-        cancoder   = new CANcoder(cancoderId);
+        driveMotor = new TalonFX(driveId, Constants.CAN.CTRE_CAN_BUS);
+        steerMotor = new TalonFX(steerId, Constants.CAN.CTRE_CAN_BUS);
+        cancoder   = new CANcoder(cancoderId, Constants.CAN.CTRE_CAN_BUS);
 
         // ---- Configure the CANcoder ----------------------------------------
         CANcoderConfiguration ccfg = new CANcoderConfiguration();
