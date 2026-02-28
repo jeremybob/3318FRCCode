@@ -95,6 +95,19 @@ public class DashboardNtClient implements AutoCloseable {
     private final DoubleSubscriber swerveFRAngleSub = table.getDoubleTopic("swerve/fr_angle_deg").subscribe(0.0);
     private final DoubleSubscriber swerveBLAngleSub = table.getDoubleTopic("swerve/bl_angle_deg").subscribe(0.0);
     private final DoubleSubscriber swerveBRAngleSub = table.getDoubleTopic("swerve/br_angle_deg").subscribe(0.0);
+    // CANcoder calibration telemetry
+    private final DoubleSubscriber cancoderFLRawSub = table.getDoubleTopic("cancoder/fl_raw_rot").subscribe(Double.NaN);
+    private final DoubleSubscriber cancoderFRRawSub = table.getDoubleTopic("cancoder/fr_raw_rot").subscribe(Double.NaN);
+    private final DoubleSubscriber cancoderBLRawSub = table.getDoubleTopic("cancoder/bl_raw_rot").subscribe(Double.NaN);
+    private final DoubleSubscriber cancoderBRRawSub = table.getDoubleTopic("cancoder/br_raw_rot").subscribe(Double.NaN);
+    private final DoubleSubscriber cancoderFLOffsetSub = table.getDoubleTopic("cancoder/fl_offset_rot")
+            .subscribe(Double.NaN);
+    private final DoubleSubscriber cancoderFROffsetSub = table.getDoubleTopic("cancoder/fr_offset_rot")
+            .subscribe(Double.NaN);
+    private final DoubleSubscriber cancoderBLOffsetSub = table.getDoubleTopic("cancoder/bl_offset_rot")
+            .subscribe(Double.NaN);
+    private final DoubleSubscriber cancoderBROffsetSub = table.getDoubleTopic("cancoder/br_offset_rot")
+            .subscribe(Double.NaN);
 
     // Motor temperatures
     private final DoubleSubscriber driveFLTempSub = table.getDoubleTopic("temps/drive_fl_c").subscribe(0.0);
@@ -194,6 +207,15 @@ public class DashboardNtClient implements AutoCloseable {
                 swerveFRAngleSub.get(),
                 swerveBLAngleSub.get(),
                 swerveBRAngleSub.get(),
+                // CANcoder calibration telemetry
+                cancoderFLRawSub.get(),
+                cancoderFRRawSub.get(),
+                cancoderBLRawSub.get(),
+                cancoderBRRawSub.get(),
+                cancoderFLOffsetSub.get(),
+                cancoderFROffsetSub.get(),
+                cancoderBLOffsetSub.get(),
+                cancoderBROffsetSub.get(),
                 // Motor temps
                 driveFLTempSub.get(),
                 driveFRTempSub.get(),

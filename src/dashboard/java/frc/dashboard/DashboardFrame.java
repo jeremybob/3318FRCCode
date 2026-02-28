@@ -889,6 +889,14 @@ public class DashboardFrame extends JFrame {
                 .append(" FR=").append(ONE_DECIMAL.format(data.swerveFRAngleDeg()))
                 .append(" BL=").append(ONE_DECIMAL.format(data.swerveBLAngleDeg()))
                 .append(" BR=").append(ONE_DECIMAL.format(data.swerveBRAngleDeg())).append('\n');
+        sb.append("CANcoder raw rot: FL=").append(formatMaybe(data.cancoderFLRawRot()))
+                .append(" FR=").append(formatMaybe(data.cancoderFRRawRot()))
+                .append(" BL=").append(formatMaybe(data.cancoderBLRawRot()))
+                .append(" BR=").append(formatMaybe(data.cancoderBRRawRot())).append('\n');
+        sb.append("CANcoder offset rot: FL=").append(formatMaybe(data.cancoderFLOffsetRot()))
+                .append(" FR=").append(formatMaybe(data.cancoderFROffsetRot()))
+                .append(" BL=").append(formatMaybe(data.cancoderBLOffsetRot()))
+                .append(" BR=").append(formatMaybe(data.cancoderBROffsetRot())).append('\n');
         sb.append("Drive temps: FL=").append(ZERO_DECIMAL.format(data.driveFLTempC()))
                 .append(" FR=").append(ZERO_DECIMAL.format(data.driveFRTempC()))
                 .append(" BL=").append(ZERO_DECIMAL.format(data.driveBLTempC()))
