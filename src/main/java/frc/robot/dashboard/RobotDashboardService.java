@@ -19,7 +19,7 @@ public class RobotDashboardService {
         void scheduleLevel1Climb();
     }
 
-    private static final String CONTRACT_VERSION = "2026.4.0";
+    private static final String CONTRACT_VERSION = "2026.5.0";
 
     private final Actions actions;
 
@@ -34,6 +34,9 @@ public class RobotDashboardService {
     private final DoublePublisher poseXPub;
     private final DoublePublisher poseYPub;
     private final DoublePublisher headingPub;
+    private final DoublePublisher pigeonYawPub;
+    private final DoublePublisher pigeonPitchPub;
+    private final DoublePublisher pigeonRollPub;
 
     private final DoublePublisher shooterLeftRpsPub;
     private final DoublePublisher shooterRightRpsPub;
@@ -138,6 +141,9 @@ public class RobotDashboardService {
         poseXPub = table.getDoubleTopic("drive/pose_x_m").publish();
         poseYPub = table.getDoubleTopic("drive/pose_y_m").publish();
         headingPub = table.getDoubleTopic("drive/heading_deg").publish();
+        pigeonYawPub = table.getDoubleTopic("imu/pigeon_yaw_deg").publish();
+        pigeonPitchPub = table.getDoubleTopic("imu/pigeon_pitch_deg").publish();
+        pigeonRollPub = table.getDoubleTopic("imu/pigeon_roll_deg").publish();
 
         shooterLeftRpsPub = table.getDoubleTopic("shooter/left_rps").publish();
         shooterRightRpsPub = table.getDoubleTopic("shooter/right_rps").publish();
@@ -241,6 +247,9 @@ public class RobotDashboardService {
         poseXPub.set(snapshot.poseX_m());
         poseYPub.set(snapshot.poseY_m());
         headingPub.set(snapshot.headingDeg());
+        pigeonYawPub.set(snapshot.pigeonYawDeg());
+        pigeonPitchPub.set(snapshot.pigeonPitchDeg());
+        pigeonRollPub.set(snapshot.pigeonRollDeg());
 
         shooterLeftRpsPub.set(snapshot.shooterLeftRps());
         shooterRightRpsPub.set(snapshot.shooterRightRps());

@@ -128,6 +128,7 @@ public class DashboardFrame extends JFrame {
     // Operator tab: system health (CAN + camera)
     private final JLabel canHealthLabel = new JLabel("CAN: --");
     private final JLabel cameraStatusLabel = new JLabel("Camera: --");
+    private final JLabel pigeonLabel = new JLabel("Pigeon: Y -- P -- R --");
 
     // Operator tab: motor temperatures
     private final JLabel driveTempLabel = new JLabel("Drive: FL -- FR -- BL -- BR --");
@@ -288,6 +289,7 @@ public class DashboardFrame extends JFrame {
         styleMetricLabel(swerveAnglesLabel);
         styleMetricLabel(canHealthLabel);
         styleMetricLabel(cameraStatusLabel);
+        styleMetricLabel(pigeonLabel);
         styleMetricLabel(driveTempLabel);
         styleMetricLabel(shooterTempLabel);
 
@@ -303,7 +305,7 @@ public class DashboardFrame extends JFrame {
         top.add(wrapLabelCard("Readiness", operatorReadyLabel, operatorReadyReasonLabel));
         // Row 3: system health
         top.add(wrapLabelCard("Swerve Modules", swerveAnglesLabel));
-        top.add(wrapLabelCard("System Health", canHealthLabel, cameraStatusLabel));
+        top.add(wrapLabelCard("System Health", canHealthLabel, cameraStatusLabel, pigeonLabel));
         top.add(wrapLabelCard("Motor Temps", driveTempLabel, shooterTempLabel));
         root.add(top, BorderLayout.CENTER);
 
@@ -612,6 +614,13 @@ public class DashboardFrame extends JFrame {
 
         cameraStatusLabel.setText("Camera: " + (data.cameraConnected() ? "CONNECTED" : "DISCONNECTED"));
         cameraStatusLabel.setForeground(data.cameraConnected() ? OK : BAD);
+        pigeonLabel.setText("Pigeon: Y " + formatMaybe(data.pigeonYawDeg())
+                + "  P " + formatMaybe(data.pigeonPitchDeg())
+                + "  R " + formatMaybe(data.pigeonRollDeg()) + " deg");
+        pigeonLabel.setForeground(
+                Double.isFinite(data.pigeonYawDeg())
+                        && Double.isFinite(data.pigeonPitchDeg())
+                        && Double.isFinite(data.pigeonRollDeg()) ? TEXT : WARN);
 
         // Operator tab: motor temperatures
         updateTemperatureLabels(data);
@@ -885,6 +894,9 @@ public class DashboardFrame extends JFrame {
                 .append(" txErr=").append(data.canTransmitErrorCount()).append('\n');
         sb.append("Pose: x=").append(data.poseX_m()).append(" y=").append(data.poseY_m())
                 .append(" heading=").append(data.headingDeg()).append('\n');
+        sb.append("Pigeon raw deg: yaw=").append(formatMaybe(data.pigeonYawDeg()))
+                .append(" pitch=").append(formatMaybe(data.pigeonPitchDeg()))
+                .append(" roll=").append(formatMaybe(data.pigeonRollDeg())).append('\n');
         sb.append("Swerve angles: FL=").append(ONE_DECIMAL.format(data.swerveFLAngleDeg()))
                 .append(" FR=").append(ONE_DECIMAL.format(data.swerveFRAngleDeg()))
                 .append(" BL=").append(ONE_DECIMAL.format(data.swerveBLAngleDeg()))

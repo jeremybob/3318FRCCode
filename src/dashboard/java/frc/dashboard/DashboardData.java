@@ -10,6 +10,10 @@ public record DashboardData(
         double poseX_m,
         double poseY_m,
         double headingDeg,
+        // Raw Pigeon2 IMU telemetry
+        double pigeonYawDeg,
+        double pigeonPitchDeg,
+        double pigeonRollDeg,
         double shooterLeftRps,
         double shooterRightRps,
         boolean shooterAtSpeed,
