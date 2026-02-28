@@ -30,8 +30,8 @@ import frc.robot.Constants;
 
 public class ClimberSubsystem extends SubsystemBase {
 
-    private final TalonFX leaderWinch   = new TalonFX(Constants.CAN.CLIMBER_LEADER);
-    private final TalonFX followerWinch = new TalonFX(Constants.CAN.CLIMBER_FOLLOWER);
+    private final TalonFX leaderWinch   = new TalonFX(Constants.CAN.CLIMBER_LEADER, Constants.CAN.CTRE_CAN_BUS);
+    private final TalonFX followerWinch = new TalonFX(Constants.CAN.CLIMBER_FOLLOWER, Constants.CAN.CTRE_CAN_BUS);
 
     // Position control request — used for the automatic Level 1 climb
     private final PositionVoltage positionRequest = new PositionVoltage(0);

@@ -27,8 +27,8 @@ import frc.robot.Constants;
 
 public class ShooterSubsystem extends SubsystemBase {
 
-    private final TalonFX leftShooter  = new TalonFX(Constants.CAN.SHOOTER_LEFT);
-    private final TalonFX rightShooter = new TalonFX(Constants.CAN.SHOOTER_RIGHT);
+    private final TalonFX leftShooter  = new TalonFX(Constants.CAN.SHOOTER_LEFT, Constants.CAN.CTRE_CAN_BUS);
+    private final TalonFX rightShooter = new TalonFX(Constants.CAN.SHOOTER_RIGHT, Constants.CAN.CTRE_CAN_BUS);
 
     // VelocityVoltage: tells the motor "spin at exactly X rotations per second"
     // enableFOC = true improves efficiency and torque with Kraken's TorqueCurrentFOC
