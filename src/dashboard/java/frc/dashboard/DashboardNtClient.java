@@ -128,6 +128,17 @@ public class DashboardNtClient implements AutoCloseable {
     private final DoubleSubscriber shooterLeftTempSub = table.getDoubleTopic("temps/shooter_left_c").subscribe(0.0);
     private final DoubleSubscriber shooterRightTempSub = table.getDoubleTopic("temps/shooter_right_c").subscribe(0.0);
 
+    // Controller diagnostics
+    private final StringSubscriber driverButtonsSub =
+            table.getStringTopic("controls/driver_buttons_active").subscribe("--");
+    private final StringSubscriber operatorButtonsSub =
+            table.getStringTopic("controls/operator_buttons_active").subscribe("--");
+    private final IntegerSubscriber controlEventSeqSub = table.getIntegerTopic("controls/last_event_seq").subscribe(0);
+    private final DoubleSubscriber controlEventTimestampSub =
+            table.getDoubleTopic("controls/last_event_timestamp_sec").subscribe(0.0);
+    private final StringSubscriber controlEventMessageSub =
+            table.getStringTopic("controls/last_event_message").subscribe("");
+
     // Ack
     private final StringSubscriber ackCommandSub = table.getStringTopic("ack/last_command").subscribe("");
     private final StringSubscriber ackStatusSub = table.getStringTopic("ack/last_status").subscribe("");
@@ -241,6 +252,12 @@ public class DashboardNtClient implements AutoCloseable {
                 driveBRTempSub.get(),
                 shooterLeftTempSub.get(),
                 shooterRightTempSub.get(),
+                // Controller diagnostics
+                driverButtonsSub.get(),
+                operatorButtonsSub.get(),
+                controlEventSeqSub.get(),
+                controlEventTimestampSub.get(),
+                controlEventMessageSub.get(),
                 // Ack
                 ackCommandSub.get(),
                 ackStatusSub.get(),

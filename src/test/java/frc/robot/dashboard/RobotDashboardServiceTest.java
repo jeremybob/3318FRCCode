@@ -32,6 +32,11 @@ class RobotDashboardServiceTest {
     private IntegerSubscriber ackSeqSub;
     private StringSubscriber ackMessageSub;
     private DoubleSubscriber robotTimestampSub;
+    private StringSubscriber driverButtonsSub;
+    private StringSubscriber operatorButtonsSub;
+    private IntegerSubscriber controlEventSeqSub;
+    private DoubleSubscriber controlEventTimestampSub;
+    private StringSubscriber controlEventMessageSub;
 
     @BeforeEach
     void setUp() {
@@ -52,6 +57,11 @@ class RobotDashboardServiceTest {
         ackSeqSub = table.getIntegerTopic("ack/last_seq").subscribe(0);
         ackMessageSub = table.getStringTopic("ack/message").subscribe("");
         robotTimestampSub = table.getDoubleTopic("robot/timestamp_sec").subscribe(0.0);
+        driverButtonsSub = table.getStringTopic("controls/driver_buttons_active").subscribe("--");
+        operatorButtonsSub = table.getStringTopic("controls/operator_buttons_active").subscribe("--");
+        controlEventSeqSub = table.getIntegerTopic("controls/last_event_seq").subscribe(0);
+        controlEventTimestampSub = table.getDoubleTopic("controls/last_event_timestamp_sec").subscribe(0.0);
+        controlEventMessageSub = table.getStringTopic("controls/last_event_message").subscribe("");
     }
 
     @AfterEach
@@ -168,11 +178,45 @@ class RobotDashboardServiceTest {
         assertEquals(42.5, robotTimestampSub.get(), 1e-9);
     }
 
+    @Test
+    void publishesControllerDiagnostics() {
+        service.periodic(snapshot(
+                "TELEOP",
+                true,
+                true,
+                50.0,
+                "Y, RT",
+                "A, START, BACK",
+                17,
+                49.95,
+                "Operator:RT -> AlignAndShoot requested"));
+        nt.flush();
+
+        assertEquals("Y, RT", driverButtonsSub.get());
+        assertEquals("A, START, BACK", operatorButtonsSub.get());
+        assertEquals(17L, controlEventSeqSub.get());
+        assertEquals(49.95, controlEventTimestampSub.get(), 1e-9);
+        assertEquals("Operator:RT -> AlignAndShoot requested", controlEventMessageSub.get());
+    }
+
     private static DashboardSnapshot snapshot(
             String mode,
             boolean enabled,
             boolean climberArmed,
             double timestampSec) {
+        return snapshot(mode, enabled, climberArmed, timestampSec, "--", "--", 0, 0.0, "");
+    }
+
+    private static DashboardSnapshot snapshot(
+            String mode,
+            boolean enabled,
+            boolean climberArmed,
+            double timestampSec,
+            String driverButtonsActive,
+            String operatorButtonsActive,
+            long controlEventSeq,
+            double controlEventTimestampSec,
+            String controlEventMessage) {
         return new DashboardSnapshot(
                 timestampSec,
                 mode,
@@ -227,7 +271,13 @@ class RobotDashboardServiceTest {
                 0.0, 0.0, 0.0, 0.0,
                 // Motor temps
                 0.0, 0.0, 0.0, 0.0,
-                0.0, 0.0);
+                0.0, 0.0,
+                // Controller diagnostics
+                driverButtonsActive,
+                operatorButtonsActive,
+                controlEventSeq,
+                controlEventTimestampSec,
+                controlEventMessage);
     }
 
     private static final class TestActions implements RobotDashboardService.Actions {
