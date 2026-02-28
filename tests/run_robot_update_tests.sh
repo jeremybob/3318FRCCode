@@ -74,7 +74,7 @@ assert_contains "$CONTAINER_FILE" "Constants.Shooter.FALLBACK_RPS" \
   "Operator right bumper shoots using fallback speed"
 assert_contains "$CONTAINER_FILE" "operatorController.rightTrigger().onTrue(" \
   "Operator right trigger is bound"
-assert_contains "$CONTAINER_FILE" "return new AlignAndShootCommand(swerve, shooter, feeder, hopper, intake, camera);" \
+assert_contains "$CONTAINER_FILE" "new AlignAndShootCommand(swerve, shooter, feeder, hopper, intake, camera)" \
   "Align-and-shoot builder uses the shared camera and subsystems"
 
 # 5) 2026 REBUILT naming — uses FUEL terminology, not generic "piece"
@@ -100,5 +100,21 @@ assert_contains "$CONTAINER_FILE" "public void periodicDashboard() {" \
   "RobotContainer exposes dashboard periodic hook"
 assert_contains "$ROOT_DIR/src/main/java/frc/robot/Robot.java" "robotContainer.periodicDashboard();" \
   "Robot periodic loop updates dashboard service"
+
+# 8) Safety gate hardening (defense in depth)
+assert_contains "$CONTAINER_FILE" "scheduleAlignAndShoot() rejected: teleop required" \
+  "Dashboard align-and-shoot helper enforces teleop mode"
+assert_contains "$CONTAINER_FILE" "scheduleFallbackShoot() rejected: teleop required" \
+  "Dashboard fallback-shoot helper enforces teleop mode"
+assert_contains "$CONTAINER_FILE" "scheduleIntakeHome() rejected: enabled teleop/test required" \
+  "Dashboard intake-home helper enforces enabled teleop/test mode"
+assert_contains "$CONTAINER_FILE" "scheduleLevel1Climb() rejected: teleop+arm gate required" \
+  "Dashboard level-1 climb helper enforces teleop + arm gate"
+
+# 9) Vision fallback behavior when alliance is unknown
+assert_contains "$ALIGN_FILE" "Constants.Vision.RED_HUB_TAG_IDS" \
+  "Align-and-shoot can evaluate red HUB tags"
+assert_contains "$ALIGN_FILE" "Constants.Vision.BLUE_HUB_TAG_IDS" \
+  "Align-and-shoot can evaluate blue HUB tags"
 
 echo "All robot update checks passed."

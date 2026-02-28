@@ -100,6 +100,21 @@ class RobotDashboardServiceTest {
     }
 
     @Test
+    void intakeHomeAcceptedWhenEnabledTestMode() {
+        intakeHomeCmdPub.set(3);
+        nt.flush();
+
+        service.periodic(snapshot("TEST", true, false, 2.1));
+        nt.flush();
+
+        assertEquals("intake_home", ackCommandSub.get());
+        assertEquals("OK", ackStatusSub.get());
+        assertEquals(3L, ackSeqSub.get());
+        assertEquals("Accepted", ackMessageSub.get());
+        assertEquals(1, actions.intakeHomeCalls);
+    }
+
+    @Test
     void level1ClimbRejectedWithoutArmGate() {
         level1ClimbCmdPub.set(1);
         nt.flush();
@@ -111,6 +126,21 @@ class RobotDashboardServiceTest {
         assertEquals("REJECTED", ackStatusSub.get());
         assertEquals("Requires enabled teleop and climber arm gate", ackMessageSub.get());
         assertEquals(0, actions.level1ClimbCalls);
+    }
+
+    @Test
+    void level1ClimbAcceptedWhenTeleopAndArmed() {
+        level1ClimbCmdPub.set(2);
+        nt.flush();
+
+        service.periodic(snapshot("TELEOP", true, true, 3.1));
+        nt.flush();
+
+        assertEquals("level1_climb", ackCommandSub.get());
+        assertEquals("OK", ackStatusSub.get());
+        assertEquals(2L, ackSeqSub.get());
+        assertEquals("Accepted", ackMessageSub.get());
+        assertEquals(1, actions.level1ClimbCalls);
     }
 
     @Test
@@ -144,6 +174,21 @@ class RobotDashboardServiceTest {
     }
 
     @Test
+    void alignShootRejectedWhenDisabled() {
+        alignShootCmdPub.set(2);
+        nt.flush();
+
+        service.periodic(snapshot("DISABLED", false, false, 3.8));
+        nt.flush();
+
+        assertEquals("align_shoot", ackCommandSub.get());
+        assertEquals("REJECTED", ackStatusSub.get());
+        assertEquals(2L, ackSeqSub.get());
+        assertEquals("Only allowed in enabled teleop", ackMessageSub.get());
+        assertEquals(0, actions.alignShootCalls);
+    }
+
+    @Test
     void fallbackShootAcceptedWhenEnabledTeleop() {
         fallbackShootCmdPub.set(1);
         nt.flush();
@@ -156,6 +201,21 @@ class RobotDashboardServiceTest {
         assertEquals(1L, ackSeqSub.get());
         assertEquals("Accepted", ackMessageSub.get());
         assertEquals(1, actions.fallbackShootCalls);
+    }
+
+    @Test
+    void fallbackShootRejectedWhenAutonomous() {
+        fallbackShootCmdPub.set(2);
+        nt.flush();
+
+        service.periodic(snapshot("AUTONOMOUS", true, false, 3.95));
+        nt.flush();
+
+        assertEquals("fallback_shoot", ackCommandSub.get());
+        assertEquals("REJECTED", ackStatusSub.get());
+        assertEquals(2L, ackSeqSub.get());
+        assertEquals("Only allowed in enabled teleop", ackMessageSub.get());
+        assertEquals(0, actions.fallbackShootCalls);
     }
 
     @Test

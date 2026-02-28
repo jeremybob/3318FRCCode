@@ -418,12 +418,14 @@ public class AlignAndShootCommand extends Command {
         if (!result.hasTargets()) return null;
 
         int[] hubTagIds = getAllianceHubTagIds();
-        if (hubTagIds == null) return null;  // alliance unknown — can't filter
-
         PhotonTrackedTarget best = null;
         double bestArea = 0;
         for (var target : result.getTargets()) {
-            if (isHubTag(target.getFiducialId(), hubTagIds) && target.getArea() > bestArea) {
+            boolean isAllianceHubTag = hubTagIds != null
+                    ? isHubTag(target.getFiducialId(), hubTagIds)
+                    : (isHubTag(target.getFiducialId(), Constants.Vision.RED_HUB_TAG_IDS)
+                    || isHubTag(target.getFiducialId(), Constants.Vision.BLUE_HUB_TAG_IDS));
+            if (isAllianceHubTag && target.getArea() > bestArea) {
                 best = target;
                 bestArea = target.getArea();
             }
@@ -435,7 +437,7 @@ public class AlignAndShootCommand extends Command {
     // getAllianceHubTagIds()
     //
     // Returns the HUB tag ID array for our current alliance, or null if the
-    // alliance is not yet known (e.g., practice mode with no FMS connection).
+    // alliance is not yet known (in that case callers should allow either HUB).
     // --------------------------------------------------------------------------
     private int[] getAllianceHubTagIds() {
         var alliance = DriverStation.getAlliance();

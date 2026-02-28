@@ -17,6 +17,7 @@
 // ============================================================================
 package frc.robot.subsystems.swerve;
 
+import com.ctre.phoenix6.CANBus;
 import com.ctre.phoenix6.configs.CANcoderConfiguration;
 import com.ctre.phoenix6.configs.TalonFXConfiguration;
 import com.ctre.phoenix6.controls.VelocityVoltage;
@@ -63,9 +64,9 @@ public class SwerveModule {
                         double cancoderOffsetRot) {
 
         // Create the hardware objects
-        driveMotor = new TalonFX(driveId, Constants.CAN.CTRE_CAN_BUS);
-        steerMotor = new TalonFX(steerId, Constants.CAN.CTRE_CAN_BUS);
-        cancoder   = new CANcoder(cancoderId, Constants.CAN.CTRE_CAN_BUS);
+        driveMotor = new TalonFX(driveId, new CANBus(Constants.CAN.CTRE_CAN_BUS));
+        steerMotor = new TalonFX(steerId, new CANBus(Constants.CAN.CTRE_CAN_BUS));
+        cancoder   = new CANcoder(cancoderId, new CANBus(Constants.CAN.CTRE_CAN_BUS));
 
         // ---- Configure the CANcoder ----------------------------------------
         CANcoderConfiguration ccfg = new CANcoderConfiguration();

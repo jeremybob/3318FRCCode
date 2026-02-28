@@ -661,21 +661,38 @@ public class RobotContainer {
     }
 
     private void scheduleAlignAndShoot() {
+        if (!DriverStation.isTeleopEnabled()) {
+            logControlEvent("Dashboard", "scheduleAlignAndShoot() rejected: teleop required");
+            return;
+        }
         logControlEvent("Dashboard", "scheduleAlignAndShoot()");
         CommandScheduler.getInstance().schedule(buildAlignAndShootCommand());
     }
 
     private void scheduleFallbackShoot() {
+        if (!DriverStation.isTeleopEnabled()) {
+            logControlEvent("Dashboard", "scheduleFallbackShoot() rejected: teleop required");
+            return;
+        }
         logControlEvent("Dashboard", "scheduleFallbackShoot()");
         CommandScheduler.getInstance().schedule(buildFallbackShootCommand());
     }
 
     private void scheduleIntakeHome() {
+        if (!DriverStation.isEnabled()
+                || !(DriverStation.isTeleopEnabled() || DriverStation.isTestEnabled())) {
+            logControlEvent("Dashboard", "scheduleIntakeHome() rejected: enabled teleop/test required");
+            return;
+        }
         logControlEvent("Dashboard", "scheduleIntakeHome()");
         CommandScheduler.getInstance().schedule(buildIntakeHomeCommand());
     }
 
     private void scheduleLevel1Climb() {
+        if (!DriverStation.isTeleopEnabled() || !isClimberArmed()) {
+            logControlEvent("Dashboard", "scheduleLevel1Climb() rejected: teleop+arm gate required");
+            return;
+        }
         logControlEvent("Dashboard", "scheduleLevel1Climb()");
         CommandScheduler.getInstance().schedule(buildLevel1ClimbCommand());
     }
