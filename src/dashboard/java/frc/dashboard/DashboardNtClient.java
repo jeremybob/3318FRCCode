@@ -31,6 +31,9 @@ public class DashboardNtClient implements AutoCloseable {
     private final DoubleSubscriber poseXSub = table.getDoubleTopic("drive/pose_x_m").subscribe(0.0);
     private final DoubleSubscriber poseYSub = table.getDoubleTopic("drive/pose_y_m").subscribe(0.0);
     private final DoubleSubscriber headingSub = table.getDoubleTopic("drive/heading_deg").subscribe(0.0);
+    private final DoubleSubscriber pigeonYawSub = table.getDoubleTopic("imu/pigeon_yaw_deg").subscribe(Double.NaN);
+    private final DoubleSubscriber pigeonPitchSub = table.getDoubleTopic("imu/pigeon_pitch_deg").subscribe(Double.NaN);
+    private final DoubleSubscriber pigeonRollSub = table.getDoubleTopic("imu/pigeon_roll_deg").subscribe(Double.NaN);
 
     private final DoubleSubscriber shooterLeftSub = table.getDoubleTopic("shooter/left_rps").subscribe(0.0);
     private final DoubleSubscriber shooterRightSub = table.getDoubleTopic("shooter/right_rps").subscribe(0.0);
@@ -164,6 +167,9 @@ public class DashboardNtClient implements AutoCloseable {
                 poseXSub.get(),
                 poseYSub.get(),
                 headingSub.get(),
+                pigeonYawSub.get(),
+                pigeonPitchSub.get(),
+                pigeonRollSub.get(),
                 shooterLeftSub.get(),
                 shooterRightSub.get(),
                 shooterAtSpeedSub.get(),

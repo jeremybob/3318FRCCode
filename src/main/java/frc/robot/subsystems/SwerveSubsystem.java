@@ -348,6 +348,21 @@ public class SwerveSubsystem extends SubsystemBase {
         return getPose().getRotation();
     }
 
+    // Returns raw Pigeon2 yaw in degrees (unfused sensor reading)
+    public double getPigeonYawDeg() {
+        return pigeon.getYaw().getValueAsDouble();
+    }
+
+    // Returns raw Pigeon2 pitch in degrees
+    public double getPigeonPitchDeg() {
+        return pigeon.getPitch().getValueAsDouble();
+    }
+
+    // Returns raw Pigeon2 roll in degrees
+    public double getPigeonRollDeg() {
+        return pigeon.getRoll().getValueAsDouble();
+    }
+
     // Returns the raw Pigeon 2 yaw angle
     // Used only internally for updating the pose estimator
     private Rotation2d getGyroYaw() {
