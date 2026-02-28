@@ -57,32 +57,52 @@ public class DashboardFrame extends JFrame {
     private static final Font METRIC_FONT = new Font("Segoe UI", Font.PLAIN, 18);
     private static final Font ACTION_FONT = new Font("Segoe UI", Font.BOLD, 15);
     private static final Font READY_FONT = new Font("Segoe UI", Font.BOLD, 40);
-    private static final Font CHECKLIST_FONT = new Font("Segoe UI", Font.BOLD, 15);
     private static final Font MONO_FONT = new Font(Font.MONOSPACED, Font.PLAIN, 13);
 
     private static final DecimalFormat ONE_DECIMAL = new DecimalFormat("0.0");
+    private static final DecimalFormat ZERO_DECIMAL = new DecimalFormat("0");
     private static final DateTimeFormatter LOG_TIME_FORMAT = DateTimeFormatter.ofPattern("HH:mm:ss");
     private static final int MAX_EVENT_LINES = 70;
 
+    // Thermal thresholds (TalonFX processor temp, Celsius)
+    private static final double TEMP_WARN_C = 60.0;
+    private static final double TEMP_CRITICAL_C = 80.0;
+
     private final DashboardNtClient client;
 
+    // Header labels
     private final JLabel connectionLabel = new JLabel("Disconnected");
     private final JLabel modeLabel = new JLabel("Mode: UNKNOWN");
     private final JLabel allianceLabel = new JLabel("Alliance: UNKNOWN");
     private final JLabel matchTimeLabel = new JLabel("Match: --.-");
     private final JLabel phaseLabel = new JLabel("Phase: UNKNOWN");
     private final JLabel freshnessLabel = new JLabel("Telemetry: --");
+    private final JLabel batteryLabel = new JLabel("Battery: --");
+    private final JLabel matchInfoLabel = new JLabel("Match: --");
 
+    // Driver tab: shot readiness
     private final JLabel readyLabel = new JLabel("NOT READY", SwingConstants.CENTER);
     private final JLabel readyReasonLabel = new JLabel("Reason: --");
     private final JLabel nextActionLabel = new JLabel("Action: --");
 
+    // Driver tab: auto selector & execution
+    private final JLabel autoSelectorLabel = new JLabel("Auto: --");
+    private final JLabel autoExecutionLabel = new JLabel("Status: Idle");
+
+    // Driver tab: pre-match checklist
+    private final JLabel preMatchBatteryLabel = createChecklistLabel("Battery");
+    private final JLabel preMatchCanLabel = createChecklistLabel("CAN Bus");
+    private final JLabel preMatchCameraLabel = createChecklistLabel("Camera");
+    private final JLabel preMatchIntakeLabel = createChecklistLabel("Intake homed");
+
+    // Driver tab: shot checklist
     private final JLabel intakeChecklistLabel = createChecklistLabel("Intake homed");
     private final JLabel shooterChecklistLabel = createChecklistLabel("Shooter at speed");
     private final JLabel targetChecklistLabel = createChecklistLabel("Vision target");
     private final JLabel geometryChecklistLabel = createChecklistLabel("Shot geometry");
     private final JLabel yawChecklistLabel = createChecklistLabel("Yaw aligned");
 
+    // Driver tab: align pipeline
     private final JLabel alignPhaseLabel = new JLabel("Align phase: IDLE");
     private final JLabel yawLabel = new JLabel("Yaw: --");
     private final JLabel pitchLabel = new JLabel("Pitch: --");
@@ -91,6 +111,7 @@ public class DashboardFrame extends JFrame {
     private final JLabel abortLabel = new JLabel("Last abort: --");
     private final FieldPanel fieldPanel = new FieldPanel();
 
+    // Operator tab: subsystem metrics
     private final JLabel shooterLabel = new JLabel("Left -- / Right -- RPS");
     private final JLabel shooterAtSpeedLabel = new JLabel("At speed: NO");
     private final JLabel intakeLabel = new JLabel("Homed: NO  Limit: NO  Tilt: -- deg");
@@ -101,12 +122,26 @@ public class DashboardFrame extends JFrame {
     private final JLabel operatorReadyLabel = new JLabel("NOT READY");
     private final JLabel operatorReadyReasonLabel = new JLabel("Reason: --");
 
+    // Operator tab: swerve module angles
+    private final JLabel swerveAnglesLabel = new JLabel("FL -- FR -- BL -- BR --");
+
+    // Operator tab: system health (CAN + camera)
+    private final JLabel canHealthLabel = new JLabel("CAN: --");
+    private final JLabel cameraStatusLabel = new JLabel("Camera: --");
+
+    // Operator tab: motor temperatures
+    private final JLabel driveTempLabel = new JLabel("Drive: FL -- FR -- BL -- BR --");
+    private final JLabel shooterTempLabel = new JLabel("Shooter: L -- R --");
+
+    // Command ack
     private final JLabel ackLabel = new JLabel("Ack: --");
     private final JTextArea eventLogArea = new JTextArea();
     private final ArrayDeque<String> eventLogLines = new ArrayDeque<>();
 
+    // Pit tab
     private final JTextArea pitRawArea = new JTextArea();
 
+    // Buttons
     private JButton zeroHeadingButton;
     private JButton stopDriveButton;
     private JButton alignShootButton;
@@ -114,6 +149,7 @@ public class DashboardFrame extends JFrame {
     private JButton intakeHomeButton;
     private JButton level1ClimbButton;
 
+    // State tracking
     private double lastRobotTimestampSec = Double.NaN;
     private long lastTimestampSeenNanos = System.nanoTime();
     private long lastAckSeqLogged = 0;
@@ -127,7 +163,7 @@ public class DashboardFrame extends JFrame {
         this.client = client;
 
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setMinimumSize(new Dimension(1320, 820));
+        setMinimumSize(new Dimension(1440, 860));
         getContentPane().setBackground(BG);
         setLayout(new BorderLayout(10, 10));
 
@@ -141,8 +177,11 @@ public class DashboardFrame extends JFrame {
         timer.start();
     }
 
+    // =========================================================================
+    // HEADER — 8 cells across the top
+    // =========================================================================
     private JPanel buildHeader() {
-        JPanel header = new JPanel(new GridLayout(1, 6, 8, 8));
+        JPanel header = new JPanel(new GridLayout(1, 8, 6, 6));
         header.setBorder(BorderFactory.createEmptyBorder(10, 10, 0, 10));
         header.setBackground(BG);
 
@@ -151,6 +190,8 @@ public class DashboardFrame extends JFrame {
         styleHeaderLabel(allianceLabel);
         styleHeaderLabel(matchTimeLabel);
         styleHeaderLabel(phaseLabel);
+        styleHeaderLabel(batteryLabel);
+        styleHeaderLabel(matchInfoLabel);
         styleHeaderLabel(freshnessLabel);
 
         header.add(connectionLabel);
@@ -158,10 +199,15 @@ public class DashboardFrame extends JFrame {
         header.add(allianceLabel);
         header.add(matchTimeLabel);
         header.add(phaseLabel);
+        header.add(batteryLabel);
+        header.add(matchInfoLabel);
         header.add(freshnessLabel);
         return header;
     }
 
+    // =========================================================================
+    // TABS
+    // =========================================================================
     private JTabbedPane buildTabs() {
         JTabbedPane tabs = new JTabbedPane();
         tabs.setBackground(CARD);
@@ -172,6 +218,9 @@ public class DashboardFrame extends JFrame {
         return tabs;
     }
 
+    // =========================================================================
+    // DRIVER TAB
+    // =========================================================================
     private JPanel buildDriverTab() {
         JPanel root = new JPanel(new BorderLayout(10, 10));
         root.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
@@ -188,6 +237,8 @@ public class DashboardFrame extends JFrame {
 
         styleMetricLabel(readyReasonLabel);
         styleMetricLabel(nextActionLabel);
+        styleMetricLabel(autoSelectorLabel);
+        styleMetricLabel(autoExecutionLabel);
         styleCompactLabel(alignPhaseLabel);
         styleCompactLabel(yawLabel);
         styleCompactLabel(pitchLabel);
@@ -199,6 +250,8 @@ public class DashboardFrame extends JFrame {
         side.setLayout(new BoxLayout(side, BoxLayout.Y_AXIS));
         side.setBackground(BG);
 
+        addSideCard(side, wrapLabelCard("Auto Selection", autoSelectorLabel, autoExecutionLabel));
+        addSideCard(side, buildPreMatchChecklistCard());
         addSideCard(side, wrapLabelCard("Shot Readiness", readyLabel, readyReasonLabel, nextActionLabel));
         addSideCard(side, buildChecklistCard());
         addSideCard(side, buildAlignCard());
@@ -215,6 +268,9 @@ public class DashboardFrame extends JFrame {
         return root;
     }
 
+    // =========================================================================
+    // OPERATOR TAB — 3x3 grid + event feed
+    // =========================================================================
     private JPanel buildOperatorTab() {
         JPanel root = new JPanel(new BorderLayout(10, 10));
         root.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
@@ -229,25 +285,39 @@ public class DashboardFrame extends JFrame {
         styleMetricLabel(operatorPhaseLabel);
         styleMetricLabel(operatorReadyLabel);
         styleMetricLabel(operatorReadyReasonLabel);
+        styleMetricLabel(swerveAnglesLabel);
+        styleMetricLabel(canHealthLabel);
+        styleMetricLabel(cameraStatusLabel);
+        styleMetricLabel(driveTempLabel);
+        styleMetricLabel(shooterTempLabel);
 
-        JPanel top = new JPanel(new GridLayout(2, 3, 10, 10));
+        JPanel top = new JPanel(new GridLayout(3, 3, 10, 10));
         top.setBackground(BG);
+        // Row 1: subsystem status
         top.add(wrapLabelCard("Shooter", shooterLabel, shooterAtSpeedLabel));
         top.add(wrapLabelCard("Intake", intakeLabel));
         top.add(wrapLabelCard("Conveyor", conveyorLabel));
+        // Row 2: more subsystems
         top.add(wrapLabelCard("Climber", climberLabel));
         top.add(wrapLabelCard("Vision", operatorVisionLabel, operatorPhaseLabel));
         top.add(wrapLabelCard("Readiness", operatorReadyLabel, operatorReadyReasonLabel));
+        // Row 3: system health
+        top.add(wrapLabelCard("Swerve Modules", swerveAnglesLabel));
+        top.add(wrapLabelCard("System Health", canHealthLabel, cameraStatusLabel));
+        top.add(wrapLabelCard("Motor Temps", driveTempLabel, shooterTempLabel));
         root.add(top, BorderLayout.CENTER);
 
         JScrollPane eventScroll = new JScrollPane(eventLogArea);
         eventScroll.setBorder(BorderFactory.createLineBorder(BORDER, 1));
         eventScroll.getViewport().setBackground(CARD_ALT);
-        eventScroll.setPreferredSize(new Dimension(100, 190));
+        eventScroll.setPreferredSize(new Dimension(100, 160));
         root.add(wrapCard("Event Feed", eventScroll), BorderLayout.SOUTH);
         return root;
     }
 
+    // =========================================================================
+    // PIT TAB
+    // =========================================================================
     private JPanel buildPitTab() {
         JPanel root = new JPanel(new BorderLayout(8, 8));
         root.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
@@ -258,6 +328,19 @@ public class DashboardFrame extends JFrame {
         pitScroll.getViewport().setBackground(CARD_ALT);
         root.add(pitScroll, BorderLayout.CENTER);
         return root;
+    }
+
+    // =========================================================================
+    // CARD BUILDERS
+    // =========================================================================
+    private JPanel buildPreMatchChecklistCard() {
+        JPanel panel = new JPanel(new GridLayout(4, 1, 4, 4));
+        panel.setBackground(CARD);
+        panel.add(preMatchBatteryLabel);
+        panel.add(preMatchCanLabel);
+        panel.add(preMatchCameraLabel);
+        panel.add(preMatchIntakeLabel);
+        return wrapCard("Pre-Match Checklist", panel);
     }
 
     private JPanel buildChecklistCard() {
@@ -323,6 +406,9 @@ public class DashboardFrame extends JFrame {
         return button;
     }
 
+    // =========================================================================
+    // CARD WRAPPERS
+    // =========================================================================
     private JPanel wrapLabelCard(String title, JLabel... labels) {
         JPanel panel = new JPanel(new GridBagLayout());
         panel.setBackground(CARD);
@@ -372,6 +458,9 @@ public class DashboardFrame extends JFrame {
         container.add(Box.createVerticalStrut(8));
     }
 
+    // =========================================================================
+    // STYLING
+    // =========================================================================
     private void styleHeaderLabel(JLabel label) {
         label.setOpaque(true);
         label.setBackground(CARD);
@@ -416,10 +505,14 @@ public class DashboardFrame extends JFrame {
         pitRawArea.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
     }
 
+    // =========================================================================
+    // REFRESH — called every 100ms
+    // =========================================================================
     private void refresh() {
         DashboardData data = client.read();
         long nowNanos = System.nanoTime();
 
+        // Header
         connectionLabel.setText(data.connected() ? "Connected" : "Disconnected");
         connectionLabel.setBackground(data.connected() ? OK : BAD);
 
@@ -428,12 +521,47 @@ public class DashboardFrame extends JFrame {
 
         updateMatchState(data);
         updateTelemetryFreshness(data, nowNanos);
+        updateBatteryLabel(data);
+        updateMatchInfoLabel(data);
 
+        // Auto selector & execution (Driver tab)
+        String autoName = sanitize(data.selectedAutoName());
+        autoSelectorLabel.setText("Auto: " + autoName);
+        if ("Do Nothing".equals(data.selectedAutoName())) {
+            autoSelectorLabel.setForeground(WARN);
+        } else if ("--".equals(autoName)) {
+            autoSelectorLabel.setForeground(BAD);
+        } else {
+            autoSelectorLabel.setForeground(OK);
+        }
+        if (data.autoCommandRunning()) {
+            autoExecutionLabel.setText("Status: RUNNING");
+            autoExecutionLabel.setForeground(OK);
+        } else if ("AUTONOMOUS".equals(data.mode()) && data.enabled()) {
+            autoExecutionLabel.setText("Status: FINISHED");
+            autoExecutionLabel.setForeground(MUTED);
+        } else {
+            autoExecutionLabel.setText("Status: Idle");
+            autoExecutionLabel.setForeground(MUTED);
+        }
+
+        // Pre-match checklist
+        updateChecklist(preMatchBatteryLabel, "Battery",
+                data.batteryVoltage() >= 12.0);
+        updateChecklist(preMatchCanLabel, "CAN Bus",
+                data.canReceiveErrorCount() == 0 && data.canTransmitErrorCount() == 0);
+        updateChecklist(preMatchCameraLabel, "Camera",
+                data.cameraConnected());
+        updateChecklist(preMatchIntakeLabel, "Intake homed",
+                data.intakeHomed());
+
+        // Shot readiness
         readyLabel.setText(data.readyToScore() ? "READY" : "NOT READY");
         readyLabel.setBackground(data.readyToScore() ? OK : BAD);
         readyReasonLabel.setText("Reason: " + sanitize(data.readyReason()));
         nextActionLabel.setText("Action: " + nextAction(data));
 
+        // Align pipeline
         alignPhaseLabel.setText("Align phase: " + data.alignState() + (data.alignCommandActive() ? " (ACTIVE)" : ""));
         yawLabel.setText("Yaw: " + formatMaybe(data.alignYawDeg()) + " deg");
         pitchLabel.setText("Pitch: " + formatMaybe(data.alignPitchDeg()) + " deg");
@@ -441,6 +569,7 @@ public class DashboardFrame extends JFrame {
         abortLabel.setText("Last abort: " + sanitize(data.alignAbortReason()));
         updateYawBar(data.alignYawDeg());
 
+        // Shot checklist
         updateChecklist(intakeChecklistLabel, "Intake homed", data.intakeHomed());
         updateChecklist(shooterChecklistLabel, "Shooter at speed", data.shooterAtSpeed());
         updateChecklist(targetChecklistLabel, "Vision target", data.alignHasTarget());
@@ -449,6 +578,7 @@ public class DashboardFrame extends JFrame {
                 && Math.abs(data.alignYawDeg()) <= Constants.Vision.YAW_TOLERANCE_DEG;
         updateChecklist(yawChecklistLabel, "Yaw aligned", yawAligned);
 
+        // Operator tab: subsystem metrics
         shooterLabel.setText("Left " + ONE_DECIMAL.format(data.shooterLeftRps())
                 + " / Right " + ONE_DECIMAL.format(data.shooterRightRps()) + " RPS");
         shooterAtSpeedLabel.setText("At speed: " + yesNo(data.shooterAtSpeed()));
@@ -468,6 +598,25 @@ public class DashboardFrame extends JFrame {
         operatorReadyLabel.setForeground(data.readyToScore() ? OK : BAD);
         operatorReadyReasonLabel.setText("Reason: " + sanitize(data.readyReason()));
 
+        // Operator tab: swerve module angles
+        swerveAnglesLabel.setText("FL " + ONE_DECIMAL.format(data.swerveFLAngleDeg())
+                + "  FR " + ONE_DECIMAL.format(data.swerveFRAngleDeg())
+                + "  BL " + ONE_DECIMAL.format(data.swerveBLAngleDeg())
+                + "  BR " + ONE_DECIMAL.format(data.swerveBRAngleDeg()) + " deg");
+
+        // Operator tab: system health
+        int canErrors = (int) (data.canReceiveErrorCount() + data.canTransmitErrorCount());
+        canHealthLabel.setText("CAN: " + ZERO_DECIMAL.format(data.canBusUtilization() * 100.0)
+                + "% util, " + canErrors + " errors");
+        canHealthLabel.setForeground(canErrors > 0 ? BAD : OK);
+
+        cameraStatusLabel.setText("Camera: " + (data.cameraConnected() ? "CONNECTED" : "DISCONNECTED"));
+        cameraStatusLabel.setForeground(data.cameraConnected() ? OK : BAD);
+
+        // Operator tab: motor temperatures
+        updateTemperatureLabels(data);
+
+        // Command ack
         ackLabel.setText("Ack: " + sanitize(data.ackLastCommand())
                 + " #" + data.ackSeq()
                 + "  " + sanitize(data.ackStatus())
@@ -481,14 +630,43 @@ public class DashboardFrame extends JFrame {
         pitRawArea.setText(buildRawText(data));
     }
 
+    // =========================================================================
+    // HEADER UPDATERS
+    // =========================================================================
+    private void updateBatteryLabel(DashboardData data) {
+        double v = data.batteryVoltage();
+        batteryLabel.setText("Bat: " + ONE_DECIMAL.format(v) + "V");
+        if (data.isBrownout()) {
+            batteryLabel.setBackground(BAD);
+        } else if (data.brownoutAlert()) {
+            batteryLabel.setBackground(BAD);
+        } else if (v < 11.5) {
+            batteryLabel.setBackground(WARN);
+        } else {
+            batteryLabel.setBackground(OK);
+        }
+    }
+
+    private void updateMatchInfoLabel(DashboardData data) {
+        String event = sanitize(data.eventName());
+        long num = data.matchNumber();
+        if (num > 0) {
+            matchInfoLabel.setText("Match " + num);
+        } else if (!"--".equals(event)) {
+            matchInfoLabel.setText(event);
+        } else {
+            matchInfoLabel.setText("Practice");
+        }
+    }
+
     private void updateMatchState(DashboardData data) {
         String phase = determinePhase(data);
         phaseLabel.setText("Phase: " + phase);
 
         if (data.matchTimeSec() >= 0.0 && Double.isFinite(data.matchTimeSec())) {
-            matchTimeLabel.setText("Match: " + ONE_DECIMAL.format(data.matchTimeSec()) + "s");
+            matchTimeLabel.setText("Time: " + ONE_DECIMAL.format(data.matchTimeSec()) + "s");
         } else {
-            matchTimeLabel.setText("Match: --.-");
+            matchTimeLabel.setText("Time: --.-");
         }
 
         Color phaseColor = determinePhaseColor(data);
@@ -523,6 +701,34 @@ public class DashboardFrame extends JFrame {
         }
     }
 
+    // =========================================================================
+    // TEMPERATURE DISPLAY
+    // =========================================================================
+    private void updateTemperatureLabels(DashboardData data) {
+        driveTempLabel.setText("Drive: FL " + ZERO_DECIMAL.format(data.driveFLTempC())
+                + " FR " + ZERO_DECIMAL.format(data.driveFRTempC())
+                + " BL " + ZERO_DECIMAL.format(data.driveBLTempC())
+                + " BR " + ZERO_DECIMAL.format(data.driveBRTempC()) + " C");
+        double maxDriveTemp = Math.max(
+                Math.max(data.driveFLTempC(), data.driveFRTempC()),
+                Math.max(data.driveBLTempC(), data.driveBRTempC()));
+        driveTempLabel.setForeground(tempColor(maxDriveTemp));
+
+        shooterTempLabel.setText("Shooter: L " + ZERO_DECIMAL.format(data.shooterLeftTempC())
+                + " R " + ZERO_DECIMAL.format(data.shooterRightTempC()) + " C");
+        double maxShooterTemp = Math.max(data.shooterLeftTempC(), data.shooterRightTempC());
+        shooterTempLabel.setForeground(tempColor(maxShooterTemp));
+    }
+
+    private static Color tempColor(double tempC) {
+        if (tempC >= TEMP_CRITICAL_C) return BAD;
+        if (tempC >= TEMP_WARN_C) return WARN;
+        return TEXT;
+    }
+
+    // =========================================================================
+    // COMMAND AVAILABILITY
+    // =========================================================================
     private void updateCommandAvailability(DashboardData data) {
         boolean connected = data.connected();
         boolean disabled = "DISABLED".equals(data.mode());
@@ -575,6 +781,9 @@ public class DashboardFrame extends JFrame {
         button.setToolTipText(enabled ? enabledTooltip : disabledTooltip);
     }
 
+    // =========================================================================
+    // CHECKLIST & PROGRESS BAR
+    // =========================================================================
     private void updateChecklist(JLabel label, String title, boolean pass) {
         label.setText(title + ": " + (pass ? "PASS" : "WAIT"));
         label.setBackground(pass ? OK : PENDING);
@@ -603,6 +812,9 @@ public class DashboardFrame extends JFrame {
         }
     }
 
+    // =========================================================================
+    // EVENT FEED
+    // =========================================================================
     private void updateEventFeed(DashboardData data) {
         if (!connectionInitialized) {
             connectionInitialized = true;
@@ -651,14 +863,38 @@ public class DashboardFrame extends JFrame {
         eventLogArea.setCaretPosition(eventLogArea.getDocument().getLength());
     }
 
+    // =========================================================================
+    // PIT RAW TEXT
+    // =========================================================================
     private String buildRawText(DashboardData data) {
         StringBuilder sb = new StringBuilder();
         sb.append("Connection: ").append(data.connected()).append('\n');
         sb.append("Mode: ").append(data.mode()).append(" enabled=").append(data.enabled()).append('\n');
         sb.append("Alliance: ").append(data.alliance()).append("  MatchTime=").append(data.matchTimeSec()).append('\n');
         sb.append("RobotTimestampSec: ").append(data.robotTimestampSec()).append('\n');
+        sb.append("Battery: ").append(ONE_DECIMAL.format(data.batteryVoltage())).append("V")
+                .append(" brownout=").append(data.isBrownout())
+                .append(" alert=").append(data.brownoutAlert()).append('\n');
+        sb.append("Auto: '").append(sanitize(data.selectedAutoName()))
+                .append("' running=").append(data.autoCommandRunning()).append('\n');
+        sb.append("Match: #").append(data.matchNumber())
+                .append(" event='").append(sanitize(data.eventName())).append("'\n");
+        sb.append("Camera: connected=").append(data.cameraConnected()).append('\n');
+        sb.append("CAN: util=").append(ONE_DECIMAL.format(data.canBusUtilization() * 100.0)).append("%")
+                .append(" rxErr=").append(data.canReceiveErrorCount())
+                .append(" txErr=").append(data.canTransmitErrorCount()).append('\n');
         sb.append("Pose: x=").append(data.poseX_m()).append(" y=").append(data.poseY_m())
                 .append(" heading=").append(data.headingDeg()).append('\n');
+        sb.append("Swerve angles: FL=").append(ONE_DECIMAL.format(data.swerveFLAngleDeg()))
+                .append(" FR=").append(ONE_DECIMAL.format(data.swerveFRAngleDeg()))
+                .append(" BL=").append(ONE_DECIMAL.format(data.swerveBLAngleDeg()))
+                .append(" BR=").append(ONE_DECIMAL.format(data.swerveBRAngleDeg())).append('\n');
+        sb.append("Drive temps: FL=").append(ZERO_DECIMAL.format(data.driveFLTempC()))
+                .append(" FR=").append(ZERO_DECIMAL.format(data.driveFRTempC()))
+                .append(" BL=").append(ZERO_DECIMAL.format(data.driveBLTempC()))
+                .append(" BR=").append(ZERO_DECIMAL.format(data.driveBRTempC())).append(" C\n");
+        sb.append("Shooter temps: L=").append(ZERO_DECIMAL.format(data.shooterLeftTempC()))
+                .append(" R=").append(ZERO_DECIMAL.format(data.shooterRightTempC())).append(" C\n");
         sb.append("Shooter: L=").append(data.shooterLeftRps()).append(" R=").append(data.shooterRightRps())
                 .append(" atSpeed=").append(data.shooterAtSpeed()).append('\n');
         sb.append("Intake: homed=").append(data.intakeHomed())
@@ -688,6 +924,9 @@ public class DashboardFrame extends JFrame {
         return sb.toString();
     }
 
+    // =========================================================================
+    // UTILITIES
+    // =========================================================================
     private static String sanitize(String value) {
         return value == null || value.isBlank() ? "--" : value;
     }
@@ -778,6 +1017,9 @@ public class DashboardFrame extends JFrame {
         return label;
     }
 
+    // =========================================================================
+    // FIELD VISUALIZATION PANEL
+    // =========================================================================
     private static final class FieldPanel extends JPanel {
         private double poseX_m;
         private double poseY_m;

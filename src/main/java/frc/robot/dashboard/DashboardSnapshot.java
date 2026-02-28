@@ -30,5 +30,33 @@ public record DashboardSnapshot(
         double alignPitchDeg,
         String alignAbortReason,
         boolean readyToScore,
-        String readyReason) {
+        String readyReason,
+        // System health
+        double batteryVoltage,
+        boolean brownoutAlert,
+        boolean isBrownout,
+        // Auto selection & execution
+        String selectedAutoName,
+        boolean autoCommandRunning,
+        // Match info
+        int matchNumber,
+        String eventName,
+        // Camera / vision connection
+        boolean cameraConnected,
+        // CAN bus health
+        double canBusUtilization,
+        int canReceiveErrorCount,
+        int canTransmitErrorCount,
+        // Swerve module angles (FL, FR, BL, BR)
+        double swerveFLAngleDeg,
+        double swerveFRAngleDeg,
+        double swerveBLAngleDeg,
+        double swerveBRAngleDeg,
+        // Motor temperatures (Celsius)
+        double driveFLTempC,
+        double driveFRTempC,
+        double driveBLTempC,
+        double driveBRTempC,
+        double shooterLeftTempC,
+        double shooterRightTempC) {
 }

@@ -114,6 +114,14 @@ public class ShooterSubsystem extends SubsystemBase {
         return rightShooter.getVelocity().getValueAsDouble();
     }
 
+    public double getLeftTemperatureC() {
+        return leftShooter.getDeviceTemp().getValueAsDouble();
+    }
+
+    public double getRightTemperatureC() {
+        return rightShooter.getDeviceTemp().getValueAsDouble();
+    }
+
     // --------------------------------------------------------------------------
     // calculateTargetRPS()
     //

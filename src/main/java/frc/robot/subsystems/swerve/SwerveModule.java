@@ -212,6 +212,17 @@ public class SwerveModule {
     }
 
     // --------------------------------------------------------------------------
+    // getDriveTemperatureC()
+    //
+    // Returns the drive motor's processor temperature in degrees Celsius.
+    // Useful for monitoring thermal health during a match — TalonFX throttles
+    // at high temps and will eventually fault.
+    // --------------------------------------------------------------------------
+    public double getDriveTemperatureC() {
+        return driveMotor.getDeviceTemp().getValueAsDouble();
+    }
+
+    // --------------------------------------------------------------------------
     // stop()
     //
     // Immediately cuts power to both motors (neutral/coast).

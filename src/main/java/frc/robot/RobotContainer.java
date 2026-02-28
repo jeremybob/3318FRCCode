@@ -28,8 +28,12 @@ import com.pathplanner.lib.controllers.PPHolonomicDriveController;
 
 import org.photonvision.PhotonCamera;
 
+import java.util.IdentityHashMap;
+import java.util.Map;
+
 import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.wpilibj.DriverStation;
+import edu.wpi.first.wpilibj.RobotController;
 import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj.smartdashboard.SendableChooser;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
@@ -82,7 +86,9 @@ public class RobotContainer {
     // the match without redeploying code.
     // =========================================================================
     private final SendableChooser<Command> autoChooser = new SendableChooser<>();
+    private final Map<Command, String> autoCommandNames = new IdentityHashMap<>();
     private boolean pathPlannerConfigured = false;
+    private Command currentAutoCommand;
     private final RobotDashboardService dashboardService;
 
     // =========================================================================
@@ -223,7 +229,9 @@ public class RobotContainer {
     // =========================================================================
     private void configureAutoChooser() {
         // Default option (no auto — safe if something breaks)
-        autoChooser.setDefaultOption("Do Nothing", Commands.none());
+        Command doNothing = Commands.none();
+        autoChooser.setDefaultOption("Do Nothing", doNothing);
+        autoCommandNames.put(doNothing, "Do Nothing");
 
         if (!pathPlannerConfigured) {
             System.err.println("[RobotContainer] PathPlanner autos disabled: AutoBuilder is not configured.");
@@ -245,7 +253,9 @@ public class RobotContainer {
 
         // Calibration utility: reads CANcoder offsets and prints to console.
         // Align all wheels forward, select this auto, and enable briefly.
-        autoChooser.addOption("Calibrate CANcoders", new CalibrateCANcodersCommand());
+        Command calibrate = new CalibrateCANcodersCommand();
+        autoChooser.addOption("Calibrate CANcoders", calibrate);
+        autoCommandNames.put(calibrate, "Calibrate CANcoders");
 
         // Publish the chooser so it shows up in SmartDashboard / Shuffleboard
         SmartDashboard.putData("Auto Selector", autoChooser);
@@ -253,7 +263,9 @@ public class RobotContainer {
 
     private void addPathPlannerAutoOption(String chooserName, String autoFileName) {
         try {
-            autoChooser.addOption(chooserName, new PathPlannerAuto(autoFileName));
+            Command cmd = new PathPlannerAuto(autoFileName);
+            autoChooser.addOption(chooserName, cmd);
+            autoCommandNames.put(cmd, chooserName);
         } catch (Exception e) {
             System.err.println("[RobotContainer] Skipping auto '" + autoFileName + "': " + e.getMessage());
         }
@@ -386,6 +398,15 @@ public class RobotContainer {
         return autoChooser.getSelected();
     }
 
+    public String getSelectedAutoName() {
+        Command selected = autoChooser.getSelected();
+        return autoCommandNames.getOrDefault(selected, "Unknown");
+    }
+
+    public void setCurrentAutoCommand(Command cmd) {
+        this.currentAutoCommand = cmd;
+    }
+
     // =========================================================================
     // getIntakeHomeCommand()
     //
@@ -417,6 +438,12 @@ public class RobotContainer {
                         AlignAndShootCommand.getTelemetryYawDeg(),
                         Constants.Vision.YAW_TOLERANCE_DEG));
 
+        double batteryVoltage = RobotController.getBatteryVoltage();
+        var canStatus = RobotController.getCANStatus();
+        double[] swerveAngles = swerve.getModuleAnglesDeg();
+        double[] driveTemps = swerve.getDriveTemperaturesC();
+        boolean autoRunning = currentAutoCommand != null && currentAutoCommand.isScheduled();
+
         return new DashboardSnapshot(
                 Timer.getFPGATimestamp(),
                 getRobotMode(),
@@ -447,7 +474,29 @@ public class RobotContainer {
                 AlignAndShootCommand.getTelemetryPitchDeg(),
                 AlignAndShootCommand.getTelemetryLastAbortReason(),
                 ready.ready(),
-                ready.reason());
+                ready.reason(),
+                // System health
+                batteryVoltage,
+                batteryVoltage < 7.0,
+                RobotController.isBrownedOut(),
+                // Auto
+                getSelectedAutoName(),
+                autoRunning,
+                // Match info
+                DriverStation.getMatchNumber(),
+                DriverStation.getEventName(),
+                // Camera
+                swerve.isCameraConnected(),
+                // CAN health
+                canStatus.percentBusUtilization,
+                canStatus.receiveErrorCount,
+                canStatus.transmitErrorCount,
+                // Swerve module angles
+                swerveAngles[0], swerveAngles[1], swerveAngles[2], swerveAngles[3],
+                // Motor temperatures
+                driveTemps[0], driveTemps[1], driveTemps[2], driveTemps[3],
+                shooter.getLeftTemperatureC(),
+                shooter.getRightTemperatureC());
     }
 
     private Command buildAlignAndShootCommand() {

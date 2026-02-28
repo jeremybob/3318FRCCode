@@ -77,6 +77,7 @@ public class Robot extends TimedRobot {
     public void autonomousInit() {
         // Get the auto selected by the drive team on SmartDashboard
         autonomousCommand = robotContainer.getAutonomousCommand();
+        robotContainer.setCurrentAutoCommand(autonomousCommand);
 
         if (autonomousCommand != null) {
             CommandScheduler.getInstance().schedule(autonomousCommand);
@@ -102,6 +103,7 @@ public class Robot extends TimedRobot {
         if (autonomousCommand != null) {
             autonomousCommand.cancel();
         }
+        robotContainer.setCurrentAutoCommand(null);
     }
 
     // --------------------------------------------------------------------------
