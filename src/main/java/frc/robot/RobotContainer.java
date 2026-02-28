@@ -32,7 +32,9 @@ import org.photonvision.PhotonCamera;
 import java.util.ArrayList;
 import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.system.plant.DCMotor;
@@ -99,6 +101,11 @@ public class RobotContainer {
     private long controlEventSeq = 0;
     private double controlEventTimestampSec = 0.0;
     private String controlEventMessage = "";
+    private String driverCommandSummary = "drive idle";
+    private String operatorCommandSummary = "operator idle";
+    private double lastClimberPower = 0.0;
+    private double lastHopperPower = 0.0;
+    private boolean lastClimbArmed = false;
 
     // =========================================================================
     // CONSTRUCTOR
@@ -152,11 +159,11 @@ public class RobotContainer {
     private void configureCommandEventLogging() {
         CommandScheduler scheduler = CommandScheduler.getInstance();
         scheduler.onCommandInitialize(command ->
-                logControlEvent("CMD INIT", command.getName()));
+                logControlEvent("CMD INIT", describeCommand(command)));
         scheduler.onCommandFinish(command ->
-                logControlEvent("CMD FINISH", command.getName()));
+                logControlEvent("CMD FINISH", describeCommand(command)));
         scheduler.onCommandInterrupt(command ->
-                logControlEvent("CMD INTERRUPT", command.getName()));
+                logControlEvent("CMD INTERRUPT", describeCommand(command)));
     }
 
     // =========================================================================
@@ -354,7 +361,8 @@ public class RobotContainer {
                     double filteredOmega = MathUtil.applyDeadband(rawRightX, Constants.Swerve.JOYSTICK_DEADBAND);
 
                     // Precision mode: hold right trigger to slow down for fine positioning
-                    double speedScale = driverController.rightTrigger().getAsBoolean()
+                    boolean precisionMode = driverController.rightTrigger().getAsBoolean();
+                    double speedScale = precisionMode
                             ? Constants.Swerve.PRECISION_SPEED_SCALE
                             : 1.0;
 
@@ -368,7 +376,12 @@ public class RobotContainer {
                     boolean fieldRelative = !driverController.leftBumper().getAsBoolean();
                     swerve.drive(xVelocity, yVelocity, omega, fieldRelative);
 
-                }, swerve));
+                    driverCommandSummary = "drive x=" + formatSigned(xVelocity)
+                            + "m/s y=" + formatSigned(yVelocity)
+                            + "m/s omega=" + formatSigned(omega)
+                            + "rad/s field=" + yesNo(fieldRelative)
+                            + " precision=" + yesNo(precisionMode);
+                }, swerve).withName("DriverFieldDriveDefault"));
 
         // Y button: Zero the gyro heading.
         // Use this when field-oriented drive drifts — face the robot away from you and press Y.
@@ -403,7 +416,11 @@ public class RobotContainer {
                             ? MathUtil.applyDeadband(-operatorController.getRightY(), 0.1)
                             : 0.0;
                     climber.setWinchPower(climbPower);
-                }, climber));
+
+                    lastClimbArmed = climbArmed;
+                    lastClimberPower = climbPower;
+                    refreshOperatorCommandSummary();
+                }, climber).withName("OperatorClimberManualDefault"));
 
         // Left stick Y: Manual hopper control
         // Lets the operator nudge game pieces if they get stuck
@@ -412,7 +429,10 @@ public class RobotContainer {
                     double hopperPower = MathUtil.applyDeadband(
                             -operatorController.getLeftY(), 0.1);
                     hopper.setPower(hopperPower);
-                }, hopper));
+
+                    lastHopperPower = hopperPower;
+                    refreshOperatorCommandSummary();
+                }, hopper).withName("OperatorHopperManualDefault"));
 
         // A button: Automatic Level 1 climb (requires climb gate held)
         // Uses a sustained command so the default manual climber command does not
@@ -585,8 +605,8 @@ public class RobotContainer {
                 shooter.getLeftTemperatureC(),
                 shooter.getRightTemperatureC(),
                 // Controller diagnostics
-                activeControls(driverController),
-                activeControls(operatorController),
+                formatControlState(activeControls(driverController), driverCommandSummary),
+                formatControlState(activeControls(operatorController), operatorCommandSummary),
                 controlEventSeq,
                 controlEventTimestampSec,
                 controlEventMessage);
@@ -596,11 +616,13 @@ public class RobotContainer {
         if (!Constants.Vision.ENABLE_PHOTON) {
             return Commands.print("[RobotContainer] AlignAndShoot unavailable: vision is disabled in Constants.");
         }
-        return new AlignAndShootCommand(swerve, shooter, feeder, hopper, intake, camera);
+        return new AlignAndShootCommand(swerve, shooter, feeder, hopper, intake, camera)
+                .withName("AlignAndShoot");
     }
 
     private Command buildFallbackShootCommand() {
-        return shooter.buildShootRoutine(feeder, hopper, intake, Constants.Shooter.FALLBACK_RPS);
+        return shooter.buildShootRoutine(feeder, hopper, intake, Constants.Shooter.FALLBACK_RPS)
+                .withName("FallbackShootRoutine");
     }
 
     private Command buildIntakeTiltToggleCommand() {
@@ -615,11 +637,11 @@ public class RobotContainer {
             intake.setTiltPosition(
                     shouldDeploy ? Constants.Intake.INTAKE_DOWN_DEG
                                  : Constants.Intake.INTAKE_STOW_DEG);
-        }, intake);
+        }, intake).withName("IntakeTiltToggle");
     }
 
     private Command buildIntakeHomeCommand() {
-        return new IntakeHomeCommand(intake);
+        return new IntakeHomeCommand(intake).withName("IntakeHome");
     }
 
     private Command buildIntakeGamePieceCommand() {
@@ -634,7 +656,8 @@ public class RobotContainer {
                 // Spin rollers with stall detection — auto-reverses if jammed
                 new IntakeRollerCommand(intake, 0.8).withTimeout(2.0),
                 // Stop rollers and leave arm down (ready to stow)
-                Commands.runOnce(() -> intake.setRollerPower(0.0), intake));
+                Commands.runOnce(() -> intake.setRollerPower(0.0), intake))
+                .withName("AutoIntakeFuel");
     }
 
     private void scheduleAlignAndShoot() {
@@ -661,7 +684,8 @@ public class RobotContainer {
         return Commands.run(climber::autoClimbLevel1, climber)
                 .until(climber::isAtLevel1Target)
                 .withTimeout(Constants.Climber.LEVEL1_TIMEOUT_SEC)
-                .finallyDo(climber::stop);
+                .finallyDo(climber::stop)
+                .withName("Level1ClimbAuto");
     }
 
     private void zeroHeading() {
@@ -680,6 +704,30 @@ public class RobotContainer {
         controlEventSeq++;
         controlEventTimestampSec = Timer.getFPGATimestamp();
         controlEventMessage = source + " -> " + detail;
+    }
+
+    private void refreshOperatorCommandSummary() {
+        operatorCommandSummary = "climberPower=" + formatSigned(lastClimberPower)
+                + " hopperPower=" + formatSigned(lastHopperPower)
+                + " climbArmed=" + yesNo(lastClimbArmed);
+    }
+
+    private static String formatControlState(String activeControls, String commandSummary) {
+        String controls = activeControls == null || activeControls.isBlank() ? "--" : activeControls;
+        String command = commandSummary == null || commandSummary.isBlank() ? "--" : commandSummary;
+        return "active[" + controls + "] cmd[" + command + "]";
+    }
+
+    private static String describeCommand(Command command) {
+        String requirements = command.getRequirements().stream()
+                .map(req -> req.getClass().getSimpleName())
+                .sorted()
+                .collect(Collectors.joining(","));
+        if (requirements.isBlank()) {
+            requirements = "none";
+        }
+        return command.getName() + " class=" + command.getClass().getSimpleName()
+                + " reqs=[" + requirements + "]";
     }
 
     private static String activeControls(CommandXboxController controller) {
@@ -711,10 +759,36 @@ public class RobotContainer {
             pressed.add("POV " + pov + "deg");
         }
 
+        final double axisThreshold = 0.15;
+        double leftX = hid.getLeftX();
+        if (Math.abs(leftX) > axisThreshold) {
+            pressed.add("LX " + formatSigned(leftX));
+        }
+        double leftY = hid.getLeftY();
+        if (Math.abs(leftY) > axisThreshold) {
+            pressed.add("LY " + formatSigned(leftY));
+        }
+        double rightX = hid.getRightX();
+        if (Math.abs(rightX) > axisThreshold) {
+            pressed.add("RX " + formatSigned(rightX));
+        }
+        double rightY = hid.getRightY();
+        if (Math.abs(rightY) > axisThreshold) {
+            pressed.add("RY " + formatSigned(rightY));
+        }
+
         if (pressed.isEmpty()) {
             return "--";
         }
         return String.join(", ", pressed);
+    }
+
+    private static String formatSigned(double value) {
+        return String.format(Locale.US, "%+.2f", value);
+    }
+
+    private static String yesNo(boolean value) {
+        return value ? "YES" : "NO";
     }
 
     private static String getRobotMode() {
