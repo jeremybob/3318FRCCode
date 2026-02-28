@@ -53,6 +53,15 @@ public record DashboardData(
         double swerveFRAngleDeg,
         double swerveBLAngleDeg,
         double swerveBRAngleDeg,
+        // CANcoder calibration telemetry
+        double cancoderFLRawRot,
+        double cancoderFRRawRot,
+        double cancoderBLRawRot,
+        double cancoderBRRawRot,
+        double cancoderFLOffsetRot,
+        double cancoderFROffsetRot,
+        double cancoderBLOffsetRot,
+        double cancoderBROffsetRot,
         // Motor temperatures
         double driveFLTempC,
         double driveFRTempC,

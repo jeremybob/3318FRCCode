@@ -20,6 +20,8 @@ package frc.robot.commands;
 
 import com.ctre.phoenix6.hardware.CANcoder;
 
+import edu.wpi.first.networktables.NetworkTable;
+import edu.wpi.first.networktables.NetworkTableInstance;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;
 
@@ -33,32 +35,37 @@ public class CalibrateCANcodersCommand extends Command {
 
     @Override
     public void initialize() {
-        // Read all four CANcoders
-        CANcoder flEncoder = new CANcoder(Constants.CAN.FRONT_LEFT_CANCODER);
-        CANcoder frEncoder = new CANcoder(Constants.CAN.FRONT_RIGHT_CANCODER);
-        CANcoder blEncoder = new CANcoder(Constants.CAN.BACK_LEFT_CANCODER);
-        CANcoder brEncoder = new CANcoder(Constants.CAN.BACK_RIGHT_CANCODER);
+        double flRaw;
+        double frRaw;
+        double blRaw;
+        double brRaw;
 
-        double flRaw = flEncoder.getAbsolutePosition().getValueAsDouble();
-        double frRaw = frEncoder.getAbsolutePosition().getValueAsDouble();
-        double blRaw = blEncoder.getAbsolutePosition().getValueAsDouble();
-        double brRaw = brEncoder.getAbsolutePosition().getValueAsDouble();
+        // Read all four CANcoders and close handles immediately after sampling.
+        try (CANcoder flEncoder = new CANcoder(Constants.CAN.FRONT_LEFT_CANCODER);
+                CANcoder frEncoder = new CANcoder(Constants.CAN.FRONT_RIGHT_CANCODER);
+                CANcoder blEncoder = new CANcoder(Constants.CAN.BACK_LEFT_CANCODER);
+                CANcoder brEncoder = new CANcoder(Constants.CAN.BACK_RIGHT_CANCODER)) {
+            flRaw = flEncoder.getAbsolutePosition().getValueAsDouble();
+            frRaw = frEncoder.getAbsolutePosition().getValueAsDouble();
+            blRaw = blEncoder.getAbsolutePosition().getValueAsDouble();
+            brRaw = brEncoder.getAbsolutePosition().getValueAsDouble();
+        }
 
-        // Print calibration values to console
-        System.out.println("╔══════════════════════════════════════════════════════╗");
-        System.out.println("║        CANCODER CALIBRATION — ALIGN WHEELS FIRST!   ║");
-        System.out.println("╠══════════════════════════════════════════════════════╣");
-        System.out.printf("║  FL Raw: %+.4f  → Offset: %+.4f%n", flRaw, -flRaw);
-        System.out.printf("║  FR Raw: %+.4f  → Offset: %+.4f%n", frRaw, -frRaw);
-        System.out.printf("║  BL Raw: %+.4f  → Offset: %+.4f%n", blRaw, -blRaw);
-        System.out.printf("║  BR Raw: %+.4f  → Offset: %+.4f%n", brRaw, -brRaw);
-        System.out.println("╠══════════════════════════════════════════════════════╣");
-        System.out.println("║  Copy these values into Constants.Swerve:           ║");
-        System.out.printf("║    FL_CANCODER_OFFSET_ROT = %.4f;%n", -flRaw);
-        System.out.printf("║    FR_CANCODER_OFFSET_ROT = %.4f;%n", -frRaw);
-        System.out.printf("║    BL_CANCODER_OFFSET_ROT = %.4f;%n", -blRaw);
-        System.out.printf("║    BR_CANCODER_OFFSET_ROT = %.4f;%n", -brRaw);
-        System.out.println("╚══════════════════════════════════════════════════════╝");
+        // Print calibration values to console using plain ASCII for terminal compatibility.
+        System.out.println("+------------------------------------------------------+");
+        System.out.println("| CANCODER CALIBRATION - ALIGN WHEELS FIRST!          |");
+        System.out.println("+------------------------------------------------------+");
+        System.out.printf("| FL Raw: %+.4f -> Offset: %+.4f%n", flRaw, -flRaw);
+        System.out.printf("| FR Raw: %+.4f -> Offset: %+.4f%n", frRaw, -frRaw);
+        System.out.printf("| BL Raw: %+.4f -> Offset: %+.4f%n", blRaw, -blRaw);
+        System.out.printf("| BR Raw: %+.4f -> Offset: %+.4f%n", brRaw, -brRaw);
+        System.out.println("+------------------------------------------------------+");
+        System.out.println("| Copy these values into Constants.Swerve:            |");
+        System.out.printf("|   FL_CANCODER_OFFSET_ROT = %.4f;%n", -flRaw);
+        System.out.printf("|   FR_CANCODER_OFFSET_ROT = %.4f;%n", -frRaw);
+        System.out.printf("|   BL_CANCODER_OFFSET_ROT = %.4f;%n", -blRaw);
+        System.out.printf("|   BR_CANCODER_OFFSET_ROT = %.4f;%n", -brRaw);
+        System.out.println("+------------------------------------------------------+");
 
         // Also publish to SmartDashboard for easy access
         SmartDashboard.putNumber("CANcoder/FL_Raw", flRaw);
@@ -69,6 +76,17 @@ public class CalibrateCANcodersCommand extends Command {
         SmartDashboard.putNumber("CANcoder/FR_Offset", -frRaw);
         SmartDashboard.putNumber("CANcoder/BL_Offset", -blRaw);
         SmartDashboard.putNumber("CANcoder/BR_Offset", -brRaw);
+
+        // Mirror to custom dashboard contract table so pit dashboard can read them too.
+        NetworkTable dashboardTable = NetworkTableInstance.getDefault().getTable("Dashboard");
+        dashboardTable.getEntry("cancoder/fl_raw_rot").setDouble(flRaw);
+        dashboardTable.getEntry("cancoder/fr_raw_rot").setDouble(frRaw);
+        dashboardTable.getEntry("cancoder/bl_raw_rot").setDouble(blRaw);
+        dashboardTable.getEntry("cancoder/br_raw_rot").setDouble(brRaw);
+        dashboardTable.getEntry("cancoder/fl_offset_rot").setDouble(-flRaw);
+        dashboardTable.getEntry("cancoder/fr_offset_rot").setDouble(-frRaw);
+        dashboardTable.getEntry("cancoder/bl_offset_rot").setDouble(-blRaw);
+        dashboardTable.getEntry("cancoder/br_offset_rot").setDouble(-brRaw);
     }
 
     @Override

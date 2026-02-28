@@ -39,6 +39,14 @@ class ReadyToScoreEvaluatorTest {
     }
 
     @Test
+    void notReadyWhenShotGeometryInvalid() {
+        ReadyToScoreResult result = ReadyToScoreEvaluator.evaluate(
+                inputs().withGeometryFeasible(false).withHasShootableTarget(false).build());
+        assertFalse(result.ready());
+        assertEquals("Shot geometry invalid", result.reason());
+    }
+
+    @Test
     void notReadyWhenYawOutOfTolerance() {
         ReadyToScoreResult result = ReadyToScoreEvaluator.evaluate(
                 inputs().withYawDeg(5.0).withYawToleranceDeg(2.0).build());

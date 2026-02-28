@@ -19,7 +19,7 @@ public class RobotDashboardService {
         void scheduleLevel1Climb();
     }
 
-    private static final String CONTRACT_VERSION = "2026.3.0";
+    private static final String CONTRACT_VERSION = "2026.4.0";
 
     private final Actions actions;
 

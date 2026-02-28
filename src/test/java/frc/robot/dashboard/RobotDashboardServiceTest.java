@@ -21,8 +21,11 @@ class RobotDashboardServiceTest {
     private RobotDashboardService service;
 
     private IntegerPublisher intakeHomeCmdPub;
+    private IntegerPublisher zeroHeadingCmdPub;
     private IntegerPublisher level1ClimbCmdPub;
     private IntegerPublisher stopDriveCmdPub;
+    private IntegerPublisher alignShootCmdPub;
+    private IntegerPublisher fallbackShootCmdPub;
 
     private StringSubscriber ackCommandSub;
     private StringSubscriber ackStatusSub;
@@ -38,8 +41,11 @@ class RobotDashboardServiceTest {
         service = new RobotDashboardService(actions, nt);
 
         intakeHomeCmdPub = table.getIntegerTopic("cmd/intake_home_seq").publish();
+        zeroHeadingCmdPub = table.getIntegerTopic("cmd/zero_heading_seq").publish();
         level1ClimbCmdPub = table.getIntegerTopic("cmd/level1_climb_seq").publish();
         stopDriveCmdPub = table.getIntegerTopic("cmd/stop_drive_seq").publish();
+        alignShootCmdPub = table.getIntegerTopic("cmd/align_shoot_seq").publish();
+        fallbackShootCmdPub = table.getIntegerTopic("cmd/fallback_shoot_seq").publish();
 
         ackCommandSub = table.getStringTopic("ack/last_command").subscribe("");
         ackStatusSub = table.getStringTopic("ack/last_status").subscribe("");
@@ -95,6 +101,51 @@ class RobotDashboardServiceTest {
         assertEquals("REJECTED", ackStatusSub.get());
         assertEquals("Requires enabled teleop and climber arm gate", ackMessageSub.get());
         assertEquals(0, actions.level1ClimbCalls);
+    }
+
+    @Test
+    void zeroHeadingAcceptedWhenDisabled() {
+        zeroHeadingCmdPub.set(1);
+        nt.flush();
+
+        service.periodic(snapshot("DISABLED", false, false, 3.5));
+        nt.flush();
+
+        assertEquals("zero_heading", ackCommandSub.get());
+        assertEquals("OK", ackStatusSub.get());
+        assertEquals(1L, ackSeqSub.get());
+        assertEquals("Accepted", ackMessageSub.get());
+        assertEquals(1, actions.zeroHeadingCalls);
+    }
+
+    @Test
+    void alignShootAcceptedWhenEnabledTeleop() {
+        alignShootCmdPub.set(1);
+        nt.flush();
+
+        service.periodic(snapshot("TELEOP", true, false, 3.75));
+        nt.flush();
+
+        assertEquals("align_shoot", ackCommandSub.get());
+        assertEquals("OK", ackStatusSub.get());
+        assertEquals(1L, ackSeqSub.get());
+        assertEquals("Accepted", ackMessageSub.get());
+        assertEquals(1, actions.alignShootCalls);
+    }
+
+    @Test
+    void fallbackShootAcceptedWhenEnabledTeleop() {
+        fallbackShootCmdPub.set(1);
+        nt.flush();
+
+        service.periodic(snapshot("TELEOP", true, false, 3.9));
+        nt.flush();
+
+        assertEquals("fallback_shoot", ackCommandSub.get());
+        assertEquals("OK", ackStatusSub.get());
+        assertEquals(1L, ackSeqSub.get());
+        assertEquals("Accepted", ackMessageSub.get());
+        assertEquals(1, actions.fallbackShootCalls);
     }
 
     @Test
