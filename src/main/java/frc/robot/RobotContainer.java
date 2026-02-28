@@ -22,6 +22,7 @@ package frc.robot;
 import com.pathplanner.lib.auto.AutoBuilder;
 import com.pathplanner.lib.auto.NamedCommands;
 import com.pathplanner.lib.commands.PathPlannerAuto;
+import com.pathplanner.lib.config.ModuleConfig;
 import com.pathplanner.lib.config.PIDConstants;
 import com.pathplanner.lib.config.RobotConfig;
 import com.pathplanner.lib.controllers.PPHolonomicDriveController;
@@ -32,6 +33,7 @@ import java.util.IdentityHashMap;
 import java.util.Map;
 
 import edu.wpi.first.math.MathUtil;
+import edu.wpi.first.math.system.plant.DCMotor;
 import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.RobotController;
 import edu.wpi.first.wpilibj.Timer;
@@ -88,6 +90,7 @@ public class RobotContainer {
     private final SendableChooser<Command> autoChooser = new SendableChooser<>();
     private final Map<Command, String> autoCommandNames = new IdentityHashMap<>();
     private boolean pathPlannerConfigured = false;
+    private boolean pathPlannerUsingFallbackConfig = false;
     private Command currentAutoCommand;
     private final RobotDashboardService dashboardService;
 
@@ -152,9 +155,9 @@ public class RobotContainer {
     // =========================================================================
     private void configurePathPlanner() {
         try {
-            // RobotConfig loads from pathplanner/robots/<name>.json in your deploy folder
-            // Create this file in the PathPlanner GUI under "Robot Config"
-            RobotConfig robotConfig = RobotConfig.fromGUISettings();
+            // Primary path: load the 2026 PathPlanner GUI settings from deploy.
+            // Fallback path: build a local config from robot constants.
+            RobotConfig robotConfig = loadPathPlannerRobotConfig();
 
             AutoBuilder.configure(
                     swerve::getPose,                    // tells PathPlanner where we are
@@ -184,14 +187,49 @@ public class RobotContainer {
                     swerve   // the swerve subsystem is required during auto paths
             );
             pathPlannerConfigured = true;
+            if (pathPlannerUsingFallbackConfig) {
+                System.err.println("[RobotContainer] PathPlanner configured with fallback robot config.");
+                System.err.println("  → Update deploy/pathplanner/settings.json to match your measured robot.");
+            }
         } catch (Exception e) {
             pathPlannerConfigured = false;
-            // If PathPlanner robot config file is missing, log an error.
+            // If AutoBuilder setup fails, log and continue with teleop only.
             // The robot will still work for teleop, just not for autos.
             System.err.println("[RobotContainer] PATHPLANNER CONFIG FAILED: " + e.getMessage());
-            System.err.println("  → Did you create a robot config in the PathPlanner GUI?");
-            System.err.println("  → File should be at: deploy/pathplanner/robots/<name>.json");
+            System.err.println("  → Check deploy/pathplanner/settings.json (2026 format) and auto files.");
         }
+    }
+
+    private RobotConfig loadPathPlannerRobotConfig() {
+        try {
+            pathPlannerUsingFallbackConfig = false;
+            return RobotConfig.fromGUISettings();
+        } catch (Exception e) {
+            pathPlannerUsingFallbackConfig = true;
+            System.err.println("[RobotContainer] PathPlanner GUI settings unavailable: " + e.getMessage());
+            System.err.println("  → Falling back to constants-based swerve config.");
+            return buildFallbackRobotConfig();
+        }
+    }
+
+    private RobotConfig buildFallbackRobotConfig() {
+        ModuleConfig moduleConfig = new ModuleConfig(
+                Constants.Swerve.WHEEL_DIAMETER_M / 2.0,
+                Constants.Swerve.MAX_TRANSLATION_MPS,
+                Constants.PathPlanner.WHEEL_COF,
+                DCMotor.getFalcon500(1),
+                Constants.Swerve.DRIVE_GEAR_RATIO,
+                Constants.PathPlanner.DRIVE_CURRENT_LIMIT_A,
+                1);
+
+        return new RobotConfig(
+                Constants.PathPlanner.ROBOT_MASS_KG,
+                Constants.PathPlanner.ROBOT_MOI,
+                moduleConfig,
+                Constants.Swerve.FRONT_LEFT_LOCATION,
+                Constants.Swerve.FRONT_RIGHT_LOCATION,
+                Constants.Swerve.BACK_LEFT_LOCATION,
+                Constants.Swerve.BACK_RIGHT_LOCATION);
     }
 
     // =========================================================================
@@ -503,6 +541,9 @@ public class RobotContainer {
     }
 
     private Command buildAlignAndShootCommand() {
+        if (!Constants.Vision.ENABLE_PHOTON) {
+            return Commands.print("[RobotContainer] AlignAndShoot unavailable: vision is disabled in Constants.");
+        }
         return new AlignAndShootCommand(swerve, shooter, feeder, hopper, intake, camera);
     }
 

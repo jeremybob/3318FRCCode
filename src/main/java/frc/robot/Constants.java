@@ -307,11 +307,30 @@ public final class Constants {
     }
 
     // =========================================================================
+    // PATHPLANNER FALLBACK CONSTANTS
+    // Used if deploy/pathplanner/settings.json is missing or malformed.
+    // These values are based on common 2026 FRC swerve setups similar to this robot.
+    // =========================================================================
+    public static final class PathPlanner {
+        public static final double ROBOT_MASS_KG = 54.43; // ~120 lb with battery + bumpers
+        public static final double ROBOT_MOI = 6.0;
+        public static final double WHEEL_COF = 1.0;
+        public static final double DRIVE_CURRENT_LIMIT_A = 60.0;
+    }
+
+    // =========================================================================
     // VISION / PHOTONVISION CONSTANTS
     // =========================================================================
     public static final class Vision {
+        // Set false for electrical bring-up when no coprocessor/camera is present.
+        public static final boolean ENABLE_PHOTON = true;
         // Name must match what you set in PhotonVision's web interface
         public static final String CAMERA_NAME = "PiCamera";  // TUNE ME
+
+        // Throttle repeated startup warnings when the vision coprocessor is offline.
+        public static final double VISION_WARN_INTERVAL_SEC = 5.0;
+        // Back off briefly after camera read errors to avoid command loop spam.
+        public static final double VISION_READ_ERROR_BACKOFF_SEC = 1.0;
 
         // Alignment is "good enough" once yaw error is within this many degrees
         public static final double YAW_TOLERANCE_DEG = 2.0;
