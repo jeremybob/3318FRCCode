@@ -20,6 +20,7 @@
 // ============================================================================
 package frc.robot.subsystems;
 
+import com.ctre.phoenix6.CANBus;
 import com.ctre.phoenix6.hardware.Pigeon2;
 
 import org.photonvision.PhotonCamera;
@@ -77,7 +78,7 @@ public class SwerveSubsystem extends SubsystemBase {
     // ---- Gyro (Pigeon 2) ----
     // The Pigeon 2 measures the robot's yaw (rotation angle on the field).
     // We use it to make driving "field-oriented" so joystick up = away from driver.
-    private final Pigeon2 pigeon = new Pigeon2(Constants.CAN.PIGEON, Constants.CAN.CTRE_CAN_BUS);
+    private final Pigeon2 pigeon = new Pigeon2(Constants.CAN.PIGEON, new CANBus(Constants.CAN.CTRE_CAN_BUS));
 
     // ---- Kinematics ----
     // SwerveDriveKinematics converts a desired chassis speed (x, y, omega)

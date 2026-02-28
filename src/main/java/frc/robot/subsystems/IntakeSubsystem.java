@@ -20,6 +20,7 @@
 // ============================================================================
 package frc.robot.subsystems;
 
+import com.ctre.phoenix6.CANBus;
 import com.ctre.phoenix6.configs.TalonFXConfiguration;
 import com.ctre.phoenix6.hardware.TalonFX;
 import com.ctre.phoenix6.signals.NeutralModeValue;
@@ -53,7 +54,8 @@ public class IntakeSubsystem extends SubsystemBase {
     private final DigitalInput homeLimitSwitch = new DigitalInput(Constants.DIO.INTAKE_HOME_SWITCH);
 
     // ---- Roller motor (TalonFX / Kraken X60) ----
-    private final TalonFX rollerMotor = new TalonFX(Constants.CAN.INTAKE_ROLLER, Constants.CAN.CTRE_CAN_BUS);
+    private final TalonFX rollerMotor =
+            new TalonFX(Constants.CAN.INTAKE_ROLLER, new CANBus(Constants.CAN.CTRE_CAN_BUS));
 
     // ---- State tracking ----
     // isHomed is false at startup until IntakeHomeCommand confirms the arm

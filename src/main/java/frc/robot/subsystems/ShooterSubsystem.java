@@ -12,6 +12,7 @@
 // ============================================================================
 package frc.robot.subsystems;
 
+import com.ctre.phoenix6.CANBus;
 import com.ctre.phoenix6.configs.TalonFXConfiguration;
 import com.ctre.phoenix6.controls.VelocityVoltage;
 import com.ctre.phoenix6.hardware.TalonFX;
@@ -27,8 +28,10 @@ import frc.robot.Constants;
 
 public class ShooterSubsystem extends SubsystemBase {
 
-    private final TalonFX leftShooter  = new TalonFX(Constants.CAN.SHOOTER_LEFT, Constants.CAN.CTRE_CAN_BUS);
-    private final TalonFX rightShooter = new TalonFX(Constants.CAN.SHOOTER_RIGHT, Constants.CAN.CTRE_CAN_BUS);
+    private final TalonFX leftShooter =
+            new TalonFX(Constants.CAN.SHOOTER_LEFT, new CANBus(Constants.CAN.CTRE_CAN_BUS));
+    private final TalonFX rightShooter =
+            new TalonFX(Constants.CAN.SHOOTER_RIGHT, new CANBus(Constants.CAN.CTRE_CAN_BUS));
 
     // VelocityVoltage: tells the motor "spin at exactly X rotations per second"
     // enableFOC = true improves efficiency and torque with Kraken's TorqueCurrentFOC
