@@ -129,8 +129,11 @@ public class SwerveModule {
         steerCfg.ClosedLoopGeneral.ContinuousWrap = true;
 
         // Position PID for steering angle control
+        // Source: CTRE official Phoenix 6 TunerConstants.java (steerGains)
         steerCfg.Slot0.kP = Constants.Swerve.STEER_kP;
         steerCfg.Slot0.kD = Constants.Swerve.STEER_kD;
+        steerCfg.Slot0.kS = Constants.Swerve.STEER_kS;
+        steerCfg.Slot0.kV = Constants.Swerve.STEER_kV;
 
         steerMotor.getConfigurator().apply(steerCfg);
     }

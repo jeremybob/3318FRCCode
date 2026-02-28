@@ -1,0 +1,61 @@
+{
+  "version": "2025.0",
+  "command": {
+    "type": "sequential",
+    "data": {
+      "commands": [
+        {
+          "type": "named",
+          "data": {
+            "name": "HomeIntake"
+          }
+        },
+        {
+          "type": "path",
+          "data": {
+            "pathName": "DriveToHub"
+          }
+        },
+        {
+          "type": "named",
+          "data": {
+            "name": "AutoShoot"
+          }
+        },
+        {
+          "type": "path",
+          "data": {
+            "pathName": "HubToDepot"
+          }
+        },
+        {
+          "type": "named",
+          "data": {
+            "name": "IntakeFuel"
+          }
+        },
+        {
+          "type": "path",
+          "data": {
+            "pathName": "DepotToHub"
+          }
+        },
+        {
+          "type": "named",
+          "data": {
+            "name": "AutoShoot"
+          }
+        },
+        {
+          "type": "named",
+          "data": {
+            "name": "Level1Climb"
+          }
+        }
+      ]
+    }
+  },
+  "resetOdom": true,
+  "folder": null,
+  "choreoAuto": false
+}

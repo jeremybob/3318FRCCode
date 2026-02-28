@@ -39,6 +39,7 @@ import edu.wpi.first.wpilibj2.command.CommandScheduler;
 import edu.wpi.first.wpilibj2.command.button.CommandXboxController;
 
 import frc.robot.commands.AlignAndShootCommand;
+import frc.robot.commands.CalibrateCANcodersCommand;
 import frc.robot.commands.IntakeHomeCommand;
 import frc.robot.commands.IntakeRollerCommand;
 import frc.robot.dashboard.DashboardSnapshot;
@@ -198,14 +199,18 @@ public class RobotContainer {
         // HomeIntake: re-home the intake at the start of auto (belt-and-suspenders)
         NamedCommands.registerCommand("HomeIntake", buildIntakeHomeCommand());
 
-        // 2026 naming: game piece intake event.
+        // IntakeFuel: deploy intake, spin rollers to pick up FUEL from the ground.
+        // Replaces the old "IntakeGamePiece" name to match REBUILT terminology.
+        NamedCommands.registerCommand("IntakeFuel", buildIntakeGamePieceCommand());
+        // Keep old name registered for backwards compatibility with existing .auto files
         NamedCommands.registerCommand("IntakeGamePiece", buildIntakeGamePieceCommand());
 
-        // AutoShoot: align to target and shoot (timeout configured in Constants.Auto)
+        // AutoShoot: align to HUB via vision and shoot FUEL (timeout in Constants.Auto)
         NamedCommands.registerCommand("AutoShoot",
                 buildAlignAndShootCommand().withTimeout(Constants.Auto.AUTO_SHOOT_TIMEOUT_SEC));
 
-        // Level1Climb: automatically extends climber to Level 1 height
+        // Level1Climb: automatically extends climber to Level 1 height.
+        // In REBUILT, Level 1 climb is worth 15 pts in auto (max 2 robots).
         NamedCommands.registerCommand("Level1Climb",
                 Commands.runOnce(climber::autoClimbLevel1, climber));
     }
@@ -228,9 +233,19 @@ public class RobotContainer {
 
         // IMPORTANT: The string names below MUST exactly match your .auto file names
         // in deploy/pathplanner/autos/ (case sensitive, no .auto extension needed)
-        addPathPlannerAutoOption("Four Piece Climb Auto", "FourPieceClimbAuto");
-        addPathPlannerAutoOption("Two Piece Auto", "TwoPieceAuto");
+        //
+        // 2026 REBUILT game: scoring elements are FUEL (5.91" foam balls).
+        // Auto strategies for REBUILT:
+        //   - Both HUBs are active during autonomous (20 seconds)
+        //   - Robots can preload up to 8 FUEL
+        //   - Winning auto determines HUB shift order in teleop
+        //   - Level 1 climb is available in auto (15 pts, max 2 robots)
+        addPathPlannerAutoOption("Eight Fuel Climb Auto", "EightFuelClimbAuto");
         addPathPlannerAutoOption("Taxi Only", "TaxiOnly");
+
+        // Calibration utility: reads CANcoder offsets and prints to console.
+        // Align all wheels forward, select this auto, and enable briefly.
+        autoChooser.addOption("Calibrate CANcoders", new CalibrateCANcodersCommand());
 
         // Publish the chooser so it shows up in SmartDashboard / Shuffleboard
         SmartDashboard.putData("Auto Selector", autoChooser);
@@ -382,6 +397,10 @@ public class RobotContainer {
 
     public void periodicDashboard() {
         dashboardService.periodic(buildDashboardSnapshot());
+
+        // 2026 REBUILT: Track HUB activity shifts for operator awareness.
+        // Publishes to SmartDashboard so operators know when to shoot vs. collect.
+        HubActivityTracker.isOurHubActive();
     }
 
     private DashboardSnapshot buildDashboardSnapshot() {

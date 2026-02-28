@@ -40,8 +40,8 @@ echo "Running robot update checks..."
 # 1) Drivetrain / Falcon constants
 assert_contains "$CONSTANTS_FILE" "public static final double DRIVE_MOTOR_FREE_SPEED_RPS = 6380.0 / 60.0;" \
   "Swerve drive free speed constant uses Falcon free speed"
-assert_contains "$CONSTANTS_FILE" "public static final double DRIVE_kV = 12.0 / DRIVE_MOTOR_FREE_SPEED_RPS;" \
-  "Swerve kV derives from configured drive free speed"
+assert_contains "$CONSTANTS_FILE" "public static final double DRIVE_kV = 0.124;" \
+  "Swerve kV set to CTRE default for Falcon 500"
 
 # 2) Intake + Hopper gearing
 assert_contains "$CONSTANTS_FILE" "public static final double TILT_POS_CONV_DEG = 360.0 / 10.0;" \
@@ -77,15 +77,15 @@ assert_contains "$CONTAINER_FILE" "operatorController.rightTrigger().onTrue(" \
 assert_contains "$CONTAINER_FILE" "return new AlignAndShootCommand(swerve, shooter, feeder, hopper, intake, camera);" \
   "Align-and-shoot builder uses the shared camera and subsystems"
 
-# 5) 2026 naming
+# 5) 2026 REBUILT naming — uses FUEL terminology, not generic "piece"
+assert_contains "$CONTAINER_FILE" "NamedCommands.registerCommand(\"IntakeFuel\"" \
+  "Path event uses REBUILT FUEL naming"
 assert_contains "$CONTAINER_FILE" "NamedCommands.registerCommand(\"IntakeGamePiece\"" \
-  "Path event uses game-piece naming"
-assert_not_contains "$CONTAINER_FILE" "NamedCommands.registerCommand(\"IntakeFuel\"" \
-  "Legacy IntakeFuel alias removed"
-assert_contains "$CONTAINER_FILE" "addPathPlannerAutoOption(\"Four Piece Climb Auto\", \"FourPieceClimbAuto\")" \
-  "Auto chooser references 2026 Four Piece file name"
-assert_contains "$CONTAINER_FILE" "addPathPlannerAutoOption(\"Two Piece Auto\", \"TwoPieceAuto\")" \
-  "Auto chooser references 2026 Two Piece file name"
+  "Legacy IntakeGamePiece alias kept for compatibility"
+assert_contains "$CONTAINER_FILE" "addPathPlannerAutoOption(\"Eight Fuel Climb Auto\", \"EightFuelClimbAuto\")" \
+  "Auto chooser references REBUILT Eight Fuel Climb file name"
+assert_contains "$CONTAINER_FILE" "addPathPlannerAutoOption(\"Taxi Only\", \"TaxiOnly\")" \
+  "Auto chooser references Taxi Only file name"
 
 # 6) Auto mode AutoShoot timeout is configurable
 assert_contains "$CONSTANTS_FILE" "public static final double AUTO_SHOOT_TIMEOUT_SEC = 6.0;" \
