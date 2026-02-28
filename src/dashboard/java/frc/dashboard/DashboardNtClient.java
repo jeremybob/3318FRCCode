@@ -64,6 +64,47 @@ public class DashboardNtClient implements AutoCloseable {
     private final BooleanSubscriber readySub = table.getBooleanTopic("shot/ready").subscribe(false);
     private final StringSubscriber readyReasonSub = table.getStringTopic("shot/ready_reason").subscribe("");
 
+    // System health
+    private final DoubleSubscriber batteryVoltageSub = table.getDoubleTopic("health/battery_voltage").subscribe(0.0);
+    private final BooleanSubscriber brownoutAlertSub = table.getBooleanTopic("health/brownout_alert").subscribe(false);
+    private final BooleanSubscriber isBrownoutSub = table.getBooleanTopic("health/is_brownout").subscribe(false);
+
+    // Auto selection & execution
+    private final StringSubscriber selectedAutoNameSub = table.getStringTopic("auto/selected_name").subscribe("");
+    private final BooleanSubscriber autoCommandRunningSub =
+            table.getBooleanTopic("auto/command_running").subscribe(false);
+
+    // Match info
+    private final IntegerSubscriber matchNumberSub = table.getIntegerTopic("match/number").subscribe(0);
+    private final StringSubscriber eventNameSub = table.getStringTopic("match/event_name").subscribe("");
+
+    // Camera / vision connection
+    private final BooleanSubscriber cameraConnectedSub =
+            table.getBooleanTopic("vision/camera_connected").subscribe(false);
+
+    // CAN bus health
+    private final DoubleSubscriber canBusUtilizationSub =
+            table.getDoubleTopic("health/can_bus_utilization").subscribe(0.0);
+    private final IntegerSubscriber canReceiveErrorCountSub =
+            table.getIntegerTopic("health/can_receive_errors").subscribe(0);
+    private final IntegerSubscriber canTransmitErrorCountSub =
+            table.getIntegerTopic("health/can_transmit_errors").subscribe(0);
+
+    // Swerve module angles
+    private final DoubleSubscriber swerveFLAngleSub = table.getDoubleTopic("swerve/fl_angle_deg").subscribe(0.0);
+    private final DoubleSubscriber swerveFRAngleSub = table.getDoubleTopic("swerve/fr_angle_deg").subscribe(0.0);
+    private final DoubleSubscriber swerveBLAngleSub = table.getDoubleTopic("swerve/bl_angle_deg").subscribe(0.0);
+    private final DoubleSubscriber swerveBRAngleSub = table.getDoubleTopic("swerve/br_angle_deg").subscribe(0.0);
+
+    // Motor temperatures
+    private final DoubleSubscriber driveFLTempSub = table.getDoubleTopic("temps/drive_fl_c").subscribe(0.0);
+    private final DoubleSubscriber driveFRTempSub = table.getDoubleTopic("temps/drive_fr_c").subscribe(0.0);
+    private final DoubleSubscriber driveBLTempSub = table.getDoubleTopic("temps/drive_bl_c").subscribe(0.0);
+    private final DoubleSubscriber driveBRTempSub = table.getDoubleTopic("temps/drive_br_c").subscribe(0.0);
+    private final DoubleSubscriber shooterLeftTempSub = table.getDoubleTopic("temps/shooter_left_c").subscribe(0.0);
+    private final DoubleSubscriber shooterRightTempSub = table.getDoubleTopic("temps/shooter_right_c").subscribe(0.0);
+
+    // Ack
     private final StringSubscriber ackCommandSub = table.getStringTopic("ack/last_command").subscribe("");
     private final StringSubscriber ackStatusSub = table.getStringTopic("ack/last_status").subscribe("");
     private final IntegerSubscriber ackSeqSub = table.getIntegerTopic("ack/last_seq").subscribe(0);
@@ -132,6 +173,35 @@ public class DashboardNtClient implements AutoCloseable {
                 alignAbortSub.get(),
                 readySub.get(),
                 readyReasonSub.get(),
+                // System health
+                batteryVoltageSub.get(),
+                brownoutAlertSub.get(),
+                isBrownoutSub.get(),
+                // Auto
+                selectedAutoNameSub.get(),
+                autoCommandRunningSub.get(),
+                // Match info
+                matchNumberSub.get(),
+                eventNameSub.get(),
+                // Camera
+                cameraConnectedSub.get(),
+                // CAN health
+                canBusUtilizationSub.get(),
+                canReceiveErrorCountSub.get(),
+                canTransmitErrorCountSub.get(),
+                // Swerve angles
+                swerveFLAngleSub.get(),
+                swerveFRAngleSub.get(),
+                swerveBLAngleSub.get(),
+                swerveBRAngleSub.get(),
+                // Motor temps
+                driveFLTempSub.get(),
+                driveFRTempSub.get(),
+                driveBLTempSub.get(),
+                driveBRTempSub.get(),
+                shooterLeftTempSub.get(),
+                shooterRightTempSub.get(),
+                // Ack
                 ackCommandSub.get(),
                 ackStatusSub.get(),
                 ackSeqSub.get(),

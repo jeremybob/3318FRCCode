@@ -152,7 +152,28 @@ class RobotDashboardServiceTest {
                 Double.NaN,
                 "",
                 false,
-                "");
+                "",
+                // System health
+                12.5,
+                false,
+                false,
+                // Auto
+                "Do Nothing",
+                false,
+                // Match info
+                0,
+                "",
+                // Camera
+                true,
+                // CAN health
+                0.0,
+                0,
+                0,
+                // Swerve angles
+                0.0, 0.0, 0.0, 0.0,
+                // Motor temps
+                0.0, 0.0, 0.0, 0.0,
+                0.0, 0.0);
     }
 
     private static final class TestActions implements RobotDashboardService.Actions {

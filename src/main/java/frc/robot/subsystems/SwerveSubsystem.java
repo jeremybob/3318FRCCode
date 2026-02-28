@@ -364,6 +364,31 @@ public class SwerveSubsystem extends SubsystemBase {
         };
     }
 
+    // Returns the absolute angle (degrees) of each swerve module: [FL, FR, BL, BR]
+    public double[] getModuleAnglesDeg() {
+        return new double[] {
+            frontLeft.getAbsoluteAngle().getDegrees(),
+            frontRight.getAbsoluteAngle().getDegrees(),
+            backLeft.getAbsoluteAngle().getDegrees(),
+            backRight.getAbsoluteAngle().getDegrees()
+        };
+    }
+
+    // Returns the drive motor temperature (Celsius) for each module: [FL, FR, BL, BR]
+    public double[] getDriveTemperaturesC() {
+        return new double[] {
+            frontLeft.getDriveTemperatureC(),
+            frontRight.getDriveTemperatureC(),
+            backLeft.getDriveTemperatureC(),
+            backRight.getDriveTemperatureC()
+        };
+    }
+
+    // Returns whether the PhotonVision camera is connected and communicating
+    public boolean isCameraConnected() {
+        return camera.isConnected();
+    }
+
     // Returns an array of module positions (distance traveled + angle)
     // The pose estimator uses this every loop to track robot location.
     private SwerveModulePosition[] getModulePositions() {

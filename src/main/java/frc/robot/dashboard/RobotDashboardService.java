@@ -19,7 +19,7 @@ public class RobotDashboardService {
         void scheduleLevel1Climb();
     }
 
-    private static final String CONTRACT_VERSION = "2026.2.0";
+    private static final String CONTRACT_VERSION = "2026.3.0";
 
     private final Actions actions;
 
@@ -62,6 +62,41 @@ public class RobotDashboardService {
 
     private final BooleanPublisher readyToScorePub;
     private final StringPublisher readyReasonPub;
+
+    // System health
+    private final DoublePublisher batteryVoltagePub;
+    private final BooleanPublisher brownoutAlertPub;
+    private final BooleanPublisher isBrownoutPub;
+
+    // Auto selection & execution
+    private final StringPublisher selectedAutoNamePub;
+    private final BooleanPublisher autoCommandRunningPub;
+
+    // Match info
+    private final IntegerPublisher matchNumberPub;
+    private final StringPublisher eventNamePub;
+
+    // Camera / vision connection
+    private final BooleanPublisher cameraConnectedPub;
+
+    // CAN bus health
+    private final DoublePublisher canBusUtilizationPub;
+    private final IntegerPublisher canReceiveErrorCountPub;
+    private final IntegerPublisher canTransmitErrorCountPub;
+
+    // Swerve module angles
+    private final DoublePublisher swerveFLAnglePub;
+    private final DoublePublisher swerveFRAnglePub;
+    private final DoublePublisher swerveBLAnglePub;
+    private final DoublePublisher swerveBRAnglePub;
+
+    // Motor temperatures
+    private final DoublePublisher driveFLTempPub;
+    private final DoublePublisher driveFRTempPub;
+    private final DoublePublisher driveBLTempPub;
+    private final DoublePublisher driveBRTempPub;
+    private final DoublePublisher shooterLeftTempPub;
+    private final DoublePublisher shooterRightTempPub;
 
     private final StringPublisher lastCommandPub;
     private final StringPublisher lastStatusPub;
@@ -132,6 +167,41 @@ public class RobotDashboardService {
         readyToScorePub = table.getBooleanTopic("shot/ready").publish();
         readyReasonPub = table.getStringTopic("shot/ready_reason").publish();
 
+        // System health
+        batteryVoltagePub = table.getDoubleTopic("health/battery_voltage").publish();
+        brownoutAlertPub = table.getBooleanTopic("health/brownout_alert").publish();
+        isBrownoutPub = table.getBooleanTopic("health/is_brownout").publish();
+
+        // Auto selection & execution
+        selectedAutoNamePub = table.getStringTopic("auto/selected_name").publish();
+        autoCommandRunningPub = table.getBooleanTopic("auto/command_running").publish();
+
+        // Match info
+        matchNumberPub = table.getIntegerTopic("match/number").publish();
+        eventNamePub = table.getStringTopic("match/event_name").publish();
+
+        // Camera / vision connection
+        cameraConnectedPub = table.getBooleanTopic("vision/camera_connected").publish();
+
+        // CAN bus health
+        canBusUtilizationPub = table.getDoubleTopic("health/can_bus_utilization").publish();
+        canReceiveErrorCountPub = table.getIntegerTopic("health/can_receive_errors").publish();
+        canTransmitErrorCountPub = table.getIntegerTopic("health/can_transmit_errors").publish();
+
+        // Swerve module angles
+        swerveFLAnglePub = table.getDoubleTopic("swerve/fl_angle_deg").publish();
+        swerveFRAnglePub = table.getDoubleTopic("swerve/fr_angle_deg").publish();
+        swerveBLAnglePub = table.getDoubleTopic("swerve/bl_angle_deg").publish();
+        swerveBRAnglePub = table.getDoubleTopic("swerve/br_angle_deg").publish();
+
+        // Motor temperatures
+        driveFLTempPub = table.getDoubleTopic("temps/drive_fl_c").publish();
+        driveFRTempPub = table.getDoubleTopic("temps/drive_fr_c").publish();
+        driveBLTempPub = table.getDoubleTopic("temps/drive_bl_c").publish();
+        driveBRTempPub = table.getDoubleTopic("temps/drive_br_c").publish();
+        shooterLeftTempPub = table.getDoubleTopic("temps/shooter_left_c").publish();
+        shooterRightTempPub = table.getDoubleTopic("temps/shooter_right_c").publish();
+
         lastCommandPub = table.getStringTopic("ack/last_command").publish();
         lastStatusPub = table.getStringTopic("ack/last_status").publish();
         lastSeqPub = table.getIntegerTopic("ack/last_seq").publish();
@@ -199,6 +269,41 @@ public class RobotDashboardService {
 
         readyToScorePub.set(snapshot.readyToScore());
         readyReasonPub.set(snapshot.readyReason());
+
+        // System health
+        batteryVoltagePub.set(snapshot.batteryVoltage());
+        brownoutAlertPub.set(snapshot.brownoutAlert());
+        isBrownoutPub.set(snapshot.isBrownout());
+
+        // Auto selection & execution
+        selectedAutoNamePub.set(snapshot.selectedAutoName());
+        autoCommandRunningPub.set(snapshot.autoCommandRunning());
+
+        // Match info
+        matchNumberPub.set(snapshot.matchNumber());
+        eventNamePub.set(snapshot.eventName());
+
+        // Camera / vision connection
+        cameraConnectedPub.set(snapshot.cameraConnected());
+
+        // CAN bus health
+        canBusUtilizationPub.set(snapshot.canBusUtilization());
+        canReceiveErrorCountPub.set(snapshot.canReceiveErrorCount());
+        canTransmitErrorCountPub.set(snapshot.canTransmitErrorCount());
+
+        // Swerve module angles
+        swerveFLAnglePub.set(snapshot.swerveFLAngleDeg());
+        swerveFRAnglePub.set(snapshot.swerveFRAngleDeg());
+        swerveBLAnglePub.set(snapshot.swerveBLAngleDeg());
+        swerveBRAnglePub.set(snapshot.swerveBRAngleDeg());
+
+        // Motor temperatures
+        driveFLTempPub.set(snapshot.driveFLTempC());
+        driveFRTempPub.set(snapshot.driveFRTempC());
+        driveBLTempPub.set(snapshot.driveBLTempC());
+        driveBRTempPub.set(snapshot.driveBRTempC());
+        shooterLeftTempPub.set(snapshot.shooterLeftTempC());
+        shooterRightTempPub.set(snapshot.shooterRightTempC());
     }
 
     private void processCommandRequests(DashboardSnapshot snapshot) {

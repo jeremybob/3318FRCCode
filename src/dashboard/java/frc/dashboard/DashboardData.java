@@ -32,6 +32,35 @@ public record DashboardData(
         String alignAbortReason,
         boolean readyToScore,
         String readyReason,
+        // System health
+        double batteryVoltage,
+        boolean brownoutAlert,
+        boolean isBrownout,
+        // Auto selection & execution
+        String selectedAutoName,
+        boolean autoCommandRunning,
+        // Match info
+        long matchNumber,
+        String eventName,
+        // Camera / vision connection
+        boolean cameraConnected,
+        // CAN bus health
+        double canBusUtilization,
+        long canReceiveErrorCount,
+        long canTransmitErrorCount,
+        // Swerve module angles
+        double swerveFLAngleDeg,
+        double swerveFRAngleDeg,
+        double swerveBLAngleDeg,
+        double swerveBRAngleDeg,
+        // Motor temperatures
+        double driveFLTempC,
+        double driveFRTempC,
+        double driveBLTempC,
+        double driveBRTempC,
+        double shooterLeftTempC,
+        double shooterRightTempC,
+        // Ack (keep at end)
         String ackLastCommand,
         String ackStatus,
         long ackSeq,
