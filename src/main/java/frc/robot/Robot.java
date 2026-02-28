@@ -15,7 +15,9 @@
 // ============================================================================
 package frc.robot;
 
+import edu.wpi.first.wpilibj.RobotController;
 import edu.wpi.first.wpilibj.TimedRobot;
+import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.CommandScheduler;
 
@@ -49,6 +51,14 @@ public class Robot extends TimedRobot {
     public void robotPeriodic() {
         CommandScheduler.getInstance().run();
         robotContainer.periodicDashboard();
+
+        // Publish battery/brownout data for driver awareness.
+        // At competition, battery voltage drops under heavy load — knowing when
+        // you're near brownout (6.3V) helps operators manage power consumption.
+        double batteryVoltage = RobotController.getBatteryVoltage();
+        SmartDashboard.putNumber("Robot/BatteryVoltage", batteryVoltage);
+        SmartDashboard.putBoolean("Robot/BrownoutAlert", batteryVoltage < 7.0);
+        SmartDashboard.putBoolean("Robot/IsBrownout", RobotController.isBrownedOut());
     }
 
     // --------------------------------------------------------------------------

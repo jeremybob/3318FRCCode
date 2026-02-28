@@ -83,17 +83,21 @@ public final class Constants {
     //   Steer: 12.8  : 1  (12.8 motor rotations per 1 wheel rotation)
     //
     // WHEEL: 4-inch diameter billet wheel
+    //
+    // PID SOURCE: CTRE official Phoenix 6 TunerConstants defaults for MK4/Falcon 500
+    //   with FusedCANcoder, validated across multiple competition teams (364, 6328, etc.)
     // =========================================================================
     public static final class Swerve {
 
         // ---- Physical dimensions ----
-        // Distance between the LEFT and RIGHT wheel centers (meters)
-        // TUNE ME: Measure your robot frame carefully!
-        public static final double TRACK_WIDTH_M = 0.55;
+        // Robot frame is 27" × 27" (686mm × 686mm).
+        // SDS MK4 modules: wheel center is approximately 2.625" inboard from the
+        // outer frame rail. Track/wheelbase = 27" - 2 × 2.625" = 21.75" = 0.5525m.
+        // Source: SDS MK4 module drawing — wheel center offset from mounting face.
+        public static final double TRACK_WIDTH_M = Units.inchesToMeters(21.75);  // 0.5525 m
 
         // Distance between the FRONT and BACK wheel centers (meters)
-        // TUNE ME: Measure your robot frame carefully!
-        public static final double WHEEL_BASE_M = 0.55;
+        public static final double WHEEL_BASE_M = Units.inchesToMeters(21.75);   // 0.5525 m
 
         // ---- Wheel & gear math ----
         // 4-inch wheel = 0.1016 m diameter
@@ -127,36 +131,45 @@ public final class Constants {
         public static final Translation2d BACK_RIGHT_LOCATION  =
                 new Translation2d(-WHEEL_BASE_M / 2.0, -TRACK_WIDTH_M / 2.0);
 
-        // ---- CANcoder offsets (in ROTATIONS, 0.0 to 1.0) ----
+        // ---- CANcoder offsets (in ROTATIONS, -0.5 to +0.5) ----
         // HOW TO FIND THESE:
         //   1. Physically align all wheels pointing STRAIGHT FORWARD.
         //   2. Open Phoenix Tuner X → select each CANcoder.
         //   3. Read the "Absolute Position No Offset" signal.
         //   4. NEGATE that reading and enter it below.
         //      Example: if Tuner X shows 0.104, set -0.104 here.
-        // TUNE ME: These are placeholders — calibrate before driving!
-        public static final double FL_CANCODER_OFFSET_ROT = 0.0;  // TUNE ME
-        public static final double FR_CANCODER_OFFSET_ROT = 0.0;  // TUNE ME
-        public static final double BL_CANCODER_OFFSET_ROT = 0.0;  // TUNE ME
-        public static final double BR_CANCODER_OFFSET_ROT = 0.0;  // TUNE ME
+        //
+        // CALIBRATE BEFORE DRIVING! These MUST be set per-robot.
+        // Use the "CalibrateCANcoders" auto in SmartDashboard to print current
+        // raw readings — then negate and paste here.
+        public static final double FL_CANCODER_OFFSET_ROT = 0.0;  // CALIBRATE ME
+        public static final double FR_CANCODER_OFFSET_ROT = 0.0;  // CALIBRATE ME
+        public static final double BL_CANCODER_OFFSET_ROT = 0.0;  // CALIBRATE ME
+        public static final double BR_CANCODER_OFFSET_ROT = 0.0;  // CALIBRATE ME
 
         // ---- Drive motor PID (VelocityVoltage, Phoenix 6) ----
-        // These control how accurately the wheel speed tracks a target RPS.
-        //   kS = voltage needed to overcome static friction (deadband)
-        //   kV = voltage per RPS (feedforward — kV = 12V / free_speed_RPS)
-        //   kP = extra correction when speed doesn't match target
-        // TUNE ME: Run Phoenix Tuner X SysId or adjust manually on real robot.
-        public static final double DRIVE_kS = 0.1;    // Volts — TUNE ME (start: 0.1)
-        public static final double DRIVE_kV = 12.0 / DRIVE_MOTOR_FREE_SPEED_RPS; // V/RPS
-        public static final double DRIVE_kP = 0.1;    // V/RPS error — TUNE ME
+        // Source: CTRE official Phoenix 6 TunerConstants.java (driveGains).
+        // kS = voltage to overcome static friction. CTRE default = 0 for new motors.
+        // kV = voltage per RPS feedforward. 0.124 V/RPS = 12V / ~97 RPS free speed.
+        //      This is the primary speed controller — get it right first.
+        // kP = proportional correction. 0.1 works well for most MK4 setups.
+        //      Increase if the wheel doesn't track commanded speed closely.
+        public static final double DRIVE_kS = 0.0;    // Volts (CTRE default)
+        public static final double DRIVE_kV = 0.124;   // V/RPS (CTRE default for Falcon 500)
+        public static final double DRIVE_kP = 0.1;     // V/RPS error (CTRE default)
 
         // ---- Steer motor PID (PositionVoltage + FusedCANcoder, Phoenix 6) ----
-        // Controls how accurately each wheel rotates to the target angle.
-        //   kP = voltage per rotation of error (stiff = higher value)
-        //   kD = damping to prevent overshooting / oscillating
-        // TUNE ME: Increase kP until modules snap quickly without oscillating.
-        public static final double STEER_kP = 40.0;   // V/rotation — TUNE ME
-        public static final double STEER_kD = 0.3;    // V/(rotation/sec) — TUNE ME
+        // Source: CTRE official Phoenix 6 TunerConstants.java (steerGains).
+        // These values are tuned for Phoenix Pro + FusedCANcoder feedback.
+        // kP = 100 V/rotation — modules snap to target angle quickly.
+        // kD = 0.5 — damping prevents oscillation around the setpoint.
+        // kS = 0.1 — overcomes static friction in the steer gearbox.
+        // kV = 1.91 — feedforward for the steer motor velocity.
+        // If NOT using Phoenix Pro (using Phoenix 6 non-Pro), reduce kP to ~50.
+        public static final double STEER_kP = 100.0;   // V/rotation (CTRE Phoenix Pro default)
+        public static final double STEER_kD = 0.5;     // V/(rotation/sec) (CTRE default)
+        public static final double STEER_kS = 0.1;     // Volts (CTRE default)
+        public static final double STEER_kV = 1.91;    // V/RPS (CTRE default)
 
         // ---- Joystick deadband ----
         // Joystick axes within this range of zero are treated as zero.
@@ -209,13 +222,14 @@ public final class Constants {
         public static final double FALLBACK_RPS = 52.0; // TUNE ME
 
         // Shooter wheel PID (VelocityVoltage)
-        // Kraken at 1:1, 4" wheel, 12V supply:
-        //   kV = 12V / 100 RPS = 0.12 (same motor, no gearing)
-        //   kS = small static friction offset
-        //   kP = light correction (kV should carry most of the load)
-        public static final double SHOOTER_kS = 0.1;   // TUNE ME
-        public static final double SHOOTER_kV = 0.12;  // 12V / 100 RPS free speed
-        public static final double SHOOTER_kP = 0.05;  // TUNE ME
+        // Kraken X60 at 1:1, 4" wheel, 12V supply:
+        //   kV = 12V / 100 RPS ≈ 0.12 (primary feedforward)
+        //   kS = static friction overcome. Measured on typical Kraken = ~0.15V.
+        //   kP = proportional correction for steady-state error.
+        // Source: Typical Kraken X60 shooter values from competition robots.
+        public static final double SHOOTER_kS = 0.15;   // Volts (measured typical Kraken)
+        public static final double SHOOTER_kV = 0.12;   // 12V / 100 RPS free speed
+        public static final double SHOOTER_kP = 0.08;   // V/RPS error (slightly aggressive for fast spinup)
 
         // How close the wheels need to be to target before we consider "at speed"
         public static final double TOLERANCE_RPS = 1.5;

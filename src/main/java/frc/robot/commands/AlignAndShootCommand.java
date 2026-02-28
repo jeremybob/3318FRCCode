@@ -34,6 +34,7 @@ import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;  // ← not CommandBase
 
 import frc.robot.Constants;
+import frc.robot.HubActivityTracker;
 import frc.robot.subsystems.*;
 
 public class AlignAndShootCommand extends Command {
@@ -143,6 +144,17 @@ public class AlignAndShootCommand extends Command {
         telemetryYawDeg = Double.NaN;
         telemetryPitchDeg = Double.NaN;
         telemetryLastAbortReason = "";
+
+        // 2026 REBUILT: Warn the operator if the HUB is currently inactive.
+        // Shooting at an inactive HUB wastes FUEL (scores 0 points).
+        // The command still proceeds — the operator may be pre-staging for the
+        // next active window, or it may become active during feed.
+        if (!HubActivityTracker.isOurHubActive()) {
+            System.out.println("[AlignAndShoot] WARNING: Alliance HUB is currently INACTIVE!");
+            SmartDashboard.putBoolean("AlignShoot/HubInactiveWarning", true);
+        } else {
+            SmartDashboard.putBoolean("AlignShoot/HubInactiveWarning", false);
+        }
 
         // Start spinning shooter wheels at default warmup speed.
         // The actual speed will be recalculated based on distance once we see a HUB tag.
