@@ -73,6 +73,12 @@ public record DashboardData(
         double driveBRTempC,
         double shooterLeftTempC,
         double shooterRightTempC,
+        // Controller diagnostics
+        String driverButtonsActive,
+        String operatorButtonsActive,
+        long controlEventSeq,
+        double controlEventTimestampSec,
+        String controlEventMessage,
         // Ack (keep at end)
         String ackLastCommand,
         String ackStatus,

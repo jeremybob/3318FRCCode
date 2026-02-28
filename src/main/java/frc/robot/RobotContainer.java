@@ -29,7 +29,9 @@ import com.pathplanner.lib.controllers.PPHolonomicDriveController;
 
 import org.photonvision.PhotonCamera;
 
+import java.util.ArrayList;
 import java.util.IdentityHashMap;
+import java.util.List;
 import java.util.Map;
 
 import edu.wpi.first.math.MathUtil;
@@ -93,6 +95,10 @@ public class RobotContainer {
     private boolean pathPlannerUsingFallbackConfig = false;
     private Command currentAutoCommand;
     private final RobotDashboardService dashboardService;
+    private static final double TRIGGER_ACTIVE_THRESHOLD = 0.20;
+    private long controlEventSeq = 0;
+    private double controlEventTimestampSec = 0.0;
+    private String controlEventMessage = "";
 
     // =========================================================================
     // CONSTRUCTOR
@@ -102,6 +108,7 @@ public class RobotContainer {
         registerPathPlannerCommands();
         configureAutoChooser();
         configureBindings();
+        configureCommandEventLogging();
 
         // Schedule intake homing at startup so the arm finds its zero position.
         // This runs once when the robot first enables (CommandScheduler won't
@@ -140,6 +147,16 @@ public class RobotContainer {
                 RobotContainer.this.scheduleLevel1Climb();
             }
         });
+    }
+
+    private void configureCommandEventLogging() {
+        CommandScheduler scheduler = CommandScheduler.getInstance();
+        scheduler.onCommandInitialize(command ->
+                logControlEvent("CMD INIT", command.getName()));
+        scheduler.onCommandFinish(command ->
+                logControlEvent("CMD FINISH", command.getName()));
+        scheduler.onCommandInterrupt(command ->
+                logControlEvent("CMD INTERRUPT", command.getName()));
     }
 
     // =========================================================================
@@ -356,15 +373,23 @@ public class RobotContainer {
         // Y button: Zero the gyro heading.
         // Use this when field-oriented drive drifts — face the robot away from you and press Y.
         driverController.y().onTrue(
-                Commands.runOnce(this::zeroHeading, swerve));
+                Commands.runOnce(() -> {
+                    logControlEvent("Driver:Y", "zeroHeading()");
+                    zeroHeading();
+                }, swerve));
 
         // B button: Emergency stop — immediately stops ALL drive motors
-        driverController.b().onTrue(Commands.runOnce(this::stopDrive, swerve));
+        driverController.b().onTrue(Commands.runOnce(() -> {
+            logControlEvent("Driver:B", "stopDrive()");
+            stopDrive();
+        }, swerve));
 
         // X button: X-Lock — all wheels point inward at 45° to resist being pushed.
         // Hold to maintain the lock; releasing returns to normal drive.
         driverController.x().whileTrue(
-                Commands.run(swerve::xLock, swerve));
+                Commands.run(swerve::xLock, swerve)
+                        .beforeStarting(() -> logControlEvent("Driver:X", "xLock() hold start"))
+                        .finallyDo(() -> logControlEvent("Driver:X", "xLock() hold end")));
 
         // ---- OPERATOR CONTROLLER BINDINGS ----
 
@@ -396,35 +421,56 @@ public class RobotContainer {
                 .and(operatorController.start())
                 .and(operatorController.back())
                 .onTrue(
-                buildLevel1ClimbCommand());
+                        Commands.sequence(
+                                Commands.runOnce(() -> logControlEvent("Operator:A+Start+Back", "Level1 climb requested")),
+                                buildLevel1ClimbCommand()));
 
         // B button: Stop climber immediately
         operatorController.b().onTrue(
-                Commands.runOnce(climber::stop, climber));
+                Commands.runOnce(() -> {
+                    logControlEvent("Operator:B", "climber.stop()");
+                    climber.stop();
+                }, climber));
 
         // Right Trigger: Vision-required align-and-shoot (operator controls scoring).
         operatorController.rightTrigger().onTrue(
-                buildAlignAndShootCommand());
+                Commands.sequence(
+                        Commands.runOnce(() -> logControlEvent("Operator:RT", "AlignAndShoot requested")),
+                        buildAlignAndShootCommand()));
 
         // Right Bumper: OVERRIDE shot at fallback speed (no alignment/vision required).
         operatorController.rightBumper().onTrue(
-                buildFallbackShootCommand());
+                Commands.sequence(
+                        Commands.runOnce(() -> logControlEvent("Operator:RB", "Fallback shot requested")),
+                        buildFallbackShootCommand()));
 
         // Left Trigger: Manual intake roller — spin forward with stall detection.
         // If the roller jams, it automatically reverses and retries (up to 3 times).
         operatorController.leftTrigger().whileTrue(
-                new IntakeRollerCommand(intake, 0.6));
+                new IntakeRollerCommand(intake, 0.6)
+                        .beforeStarting(() -> logControlEvent("Operator:LT", "IntakeRollerCommand start"))
+                        .finallyDo(() -> logControlEvent("Operator:LT", "IntakeRollerCommand end")));
 
         // Left Bumper: Manual intake roller — reverse / eject
         operatorController.leftBumper().whileTrue(
                 Commands.run(() -> intake.setRollerPower(-0.4), intake)
-                        .finallyDo(() -> intake.setRollerPower(0)));
+                        .beforeStarting(() -> logControlEvent("Operator:LB", "Manual reverse start"))
+                        .finallyDo(() -> {
+                            intake.setRollerPower(0);
+                            logControlEvent("Operator:LB", "Manual reverse end");
+                        }));
 
         // X button: Re-home intake (operator can trigger this too)
-        operatorController.x().onTrue(buildIntakeHomeCommand());
+        operatorController.x().onTrue(
+                Commands.sequence(
+                        Commands.runOnce(() -> logControlEvent("Operator:X", "IntakeHome requested")),
+                        buildIntakeHomeCommand()));
 
         // Y button: Toggle intake tilt between down (deployed) and up (stowed)
-        operatorController.y().onTrue(buildIntakeTiltToggleCommand());
+        operatorController.y().onTrue(
+                Commands.sequence(
+                        Commands.runOnce(() -> logControlEvent("Operator:Y", "Intake tilt toggle requested")),
+                        buildIntakeTiltToggleCommand()));
     }
 
     // =========================================================================
@@ -537,7 +583,13 @@ public class RobotContainer {
                 // Motor temperatures
                 driveTemps[0], driveTemps[1], driveTemps[2], driveTemps[3],
                 shooter.getLeftTemperatureC(),
-                shooter.getRightTemperatureC());
+                shooter.getRightTemperatureC(),
+                // Controller diagnostics
+                activeControls(driverController),
+                activeControls(operatorController),
+                controlEventSeq,
+                controlEventTimestampSec,
+                controlEventMessage);
     }
 
     private Command buildAlignAndShootCommand() {
@@ -586,18 +638,22 @@ public class RobotContainer {
     }
 
     private void scheduleAlignAndShoot() {
+        logControlEvent("Dashboard", "scheduleAlignAndShoot()");
         CommandScheduler.getInstance().schedule(buildAlignAndShootCommand());
     }
 
     private void scheduleFallbackShoot() {
+        logControlEvent("Dashboard", "scheduleFallbackShoot()");
         CommandScheduler.getInstance().schedule(buildFallbackShootCommand());
     }
 
     private void scheduleIntakeHome() {
+        logControlEvent("Dashboard", "scheduleIntakeHome()");
         CommandScheduler.getInstance().schedule(buildIntakeHomeCommand());
     }
 
     private void scheduleLevel1Climb() {
+        logControlEvent("Dashboard", "scheduleLevel1Climb()");
         CommandScheduler.getInstance().schedule(buildLevel1ClimbCommand());
     }
 
@@ -618,6 +674,47 @@ public class RobotContainer {
 
     private boolean isClimberArmed() {
         return operatorController.start().getAsBoolean() && operatorController.back().getAsBoolean();
+    }
+
+    private void logControlEvent(String source, String detail) {
+        controlEventSeq++;
+        controlEventTimestampSec = Timer.getFPGATimestamp();
+        controlEventMessage = source + " -> " + detail;
+    }
+
+    private static String activeControls(CommandXboxController controller) {
+        var hid = controller.getHID();
+        List<String> pressed = new ArrayList<>(16);
+
+        if (hid.getAButton()) pressed.add("A");
+        if (hid.getBButton()) pressed.add("B");
+        if (hid.getXButton()) pressed.add("X");
+        if (hid.getYButton()) pressed.add("Y");
+        if (hid.getLeftBumperButton()) pressed.add("LB");
+        if (hid.getRightBumperButton()) pressed.add("RB");
+        if (hid.getBackButton()) pressed.add("BACK");
+        if (hid.getStartButton()) pressed.add("START");
+        if (hid.getLeftStickButton()) pressed.add("LS");
+        if (hid.getRightStickButton()) pressed.add("RS");
+
+        double leftTrigger = hid.getLeftTriggerAxis();
+        if (leftTrigger > TRIGGER_ACTIVE_THRESHOLD) {
+            pressed.add("LT");
+        }
+        double rightTrigger = hid.getRightTriggerAxis();
+        if (rightTrigger > TRIGGER_ACTIVE_THRESHOLD) {
+            pressed.add("RT");
+        }
+
+        int pov = hid.getPOV();
+        if (pov >= 0) {
+            pressed.add("POV " + pov + "deg");
+        }
+
+        if (pressed.isEmpty()) {
+            return "--";
+        }
+        return String.join(", ", pressed);
     }
 
     private static String getRobotMode() {

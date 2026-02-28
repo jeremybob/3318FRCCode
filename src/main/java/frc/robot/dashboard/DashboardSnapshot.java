@@ -62,5 +62,11 @@ public record DashboardSnapshot(
         double driveBLTempC,
         double driveBRTempC,
         double shooterLeftTempC,
-        double shooterRightTempC) {
+        double shooterRightTempC,
+        // Controller diagnostics
+        String driverButtonsActive,
+        String operatorButtonsActive,
+        long controlEventSeq,
+        double controlEventTimestampSec,
+        String controlEventMessage) {
 }

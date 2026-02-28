@@ -63,6 +63,7 @@ public class DashboardFrame extends JFrame {
     private static final DecimalFormat ZERO_DECIMAL = new DecimalFormat("0");
     private static final DateTimeFormatter LOG_TIME_FORMAT = DateTimeFormatter.ofPattern("HH:mm:ss");
     private static final int MAX_EVENT_LINES = 70;
+    private static final int MAX_CONTROL_EVENT_LINES = 140;
 
     // Thermal thresholds (TalonFX processor temp, Celsius)
     private static final double TEMP_WARN_C = 60.0;
@@ -142,6 +143,12 @@ public class DashboardFrame extends JFrame {
 
     // Pit tab
     private final JTextArea pitRawArea = new JTextArea();
+    // Controls tab
+    private final JLabel driverButtonsLabel = new JLabel("Driver buttons: --");
+    private final JLabel operatorButtonsLabel = new JLabel("Operator buttons: --");
+    private final JLabel controlLastEventLabel = new JLabel("Last event: --");
+    private final JTextArea controlLogArea = new JTextArea();
+    private final ArrayDeque<String> controlEventLines = new ArrayDeque<>();
 
     // Buttons
     private JButton zeroHeadingButton;
@@ -159,6 +166,8 @@ public class DashboardFrame extends JFrame {
     private boolean lastConnected = false;
     private boolean readyInitialized = false;
     private boolean lastReady = false;
+    private boolean controlEventsInitialized = false;
+    private long lastControlEventSeqLogged = 0;
 
     public DashboardFrame(DashboardNtClient client) {
         super("3318 Competition Dashboard");
@@ -216,6 +225,7 @@ public class DashboardFrame extends JFrame {
         tabs.setForeground(TEXT);
         tabs.addTab("Driver", buildDriverTab());
         tabs.addTab("Operator", buildOperatorTab());
+        tabs.addTab("Controls", buildControlsTab());
         tabs.addTab("Pit", buildPitTab());
         return tabs;
     }
@@ -315,6 +325,32 @@ public class DashboardFrame extends JFrame {
         eventScroll.getViewport().setBackground(CARD_ALT);
         eventScroll.setPreferredSize(new Dimension(100, 160));
         root.add(wrapCard("Event Feed", eventScroll), BorderLayout.SOUTH);
+        return root;
+    }
+
+    // =========================================================================
+    // CONTROLS TAB
+    // =========================================================================
+    private JPanel buildControlsTab() {
+        JPanel root = new JPanel(new BorderLayout(10, 10));
+        root.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        root.setBackground(BG);
+
+        styleMetricLabel(driverButtonsLabel);
+        styleMetricLabel(operatorButtonsLabel);
+        styleMetricLabel(controlLastEventLabel);
+
+        JPanel top = new JPanel(new GridLayout(1, 3, 10, 10));
+        top.setBackground(BG);
+        top.add(wrapLabelCard("Driver Buttons", driverButtonsLabel));
+        top.add(wrapLabelCard("Operator Buttons", operatorButtonsLabel));
+        top.add(wrapLabelCard("Last Trigger", controlLastEventLabel));
+        root.add(top, BorderLayout.NORTH);
+
+        JScrollPane controlLogScroll = new JScrollPane(controlLogArea);
+        controlLogScroll.setBorder(BorderFactory.createLineBorder(BORDER, 1));
+        controlLogScroll.getViewport().setBackground(CARD_ALT);
+        root.add(wrapCard("Control Trigger Feed", controlLogScroll), BorderLayout.CENTER);
         return root;
     }
 
@@ -500,6 +536,12 @@ public class DashboardFrame extends JFrame {
         eventLogArea.setForeground(TEXT);
         eventLogArea.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
 
+        controlLogArea.setEditable(false);
+        controlLogArea.setFont(MONO_FONT);
+        controlLogArea.setBackground(CARD_ALT);
+        controlLogArea.setForeground(TEXT);
+        controlLogArea.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
+
         pitRawArea.setEditable(false);
         pitRawArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 14));
         pitRawArea.setBackground(CARD_ALT);
@@ -637,6 +679,14 @@ public class DashboardFrame extends JFrame {
                 + "  " + sanitize(data.ackStatus())
                 + "  " + sanitize(data.ackMessage()));
         ackLabel.setForeground("OK".equals(data.ackStatus()) ? OK : WARN);
+
+        // Controls tab: active buttons + trigger events
+        driverButtonsLabel.setText("Driver buttons: " + sanitize(data.driverButtonsActive()));
+        operatorButtonsLabel.setText("Operator buttons: " + sanitize(data.operatorButtonsActive()));
+        controlLastEventLabel.setText("Last event #" + data.controlEventSeq()
+                + " @ " + formatMaybe(data.controlEventTimestampSec())
+                + "s  " + sanitize(data.controlEventMessage()));
+        updateControlEventFeed(data);
 
         updateCommandAvailability(data);
         updateEventFeed(data);
@@ -828,6 +878,45 @@ public class DashboardFrame extends JFrame {
     }
 
     // =========================================================================
+    // CONTROL EVENT FEED
+    // =========================================================================
+    private void updateControlEventFeed(DashboardData data) {
+        if (!controlEventsInitialized) {
+            controlEventsInitialized = true;
+            lastControlEventSeqLogged = data.controlEventSeq();
+            if (data.controlEventSeq() > 0) {
+                appendControlEvent("Event #" + data.controlEventSeq() + ": " + sanitize(data.controlEventMessage()));
+            } else {
+                appendControlEvent("Waiting for control trigger events");
+            }
+            return;
+        }
+
+        if (data.controlEventSeq() < lastControlEventSeqLogged) {
+            appendControlEvent("Control event sequence reset detected");
+            lastControlEventSeqLogged = data.controlEventSeq();
+            return;
+        }
+
+        if (data.controlEventSeq() > lastControlEventSeqLogged) {
+            lastControlEventSeqLogged = data.controlEventSeq();
+            appendControlEvent("Event #" + data.controlEventSeq()
+                    + " @ " + formatMaybe(data.controlEventTimestampSec()) + "s: "
+                    + sanitize(data.controlEventMessage()));
+        }
+    }
+
+    private void appendControlEvent(String message) {
+        String timestamp = LocalTime.now().format(LOG_TIME_FORMAT);
+        controlEventLines.addLast(timestamp + "  " + message);
+        while (controlEventLines.size() > MAX_CONTROL_EVENT_LINES) {
+            controlEventLines.removeFirst();
+        }
+        controlLogArea.setText(String.join("\n", controlEventLines));
+        controlLogArea.setCaretPosition(controlLogArea.getDocument().getLength());
+    }
+
+    // =========================================================================
     // EVENT FEED
     // =========================================================================
     private void updateEventFeed(DashboardData data) {
@@ -942,6 +1031,11 @@ public class DashboardFrame extends JFrame {
                 .append(" abort='").append(sanitize(data.alignAbortReason())).append("'\n");
         sb.append("ReadyToScore: ").append(data.readyToScore())
                 .append(" reason='").append(sanitize(data.readyReason())).append("'\n");
+        sb.append("DriverButtons: ").append(sanitize(data.driverButtonsActive())).append('\n');
+        sb.append("OperatorButtons: ").append(sanitize(data.operatorButtonsActive())).append('\n');
+        sb.append("ControlEvent: seq=").append(data.controlEventSeq())
+                .append(" ts=").append(data.controlEventTimestampSec())
+                .append(" msg='").append(sanitize(data.controlEventMessage())).append("'\n");
         sb.append("Ack: cmd='").append(sanitize(data.ackLastCommand()))
                 .append("' seq=").append(data.ackSeq())
                 .append(" status='").append(sanitize(data.ackStatus()))

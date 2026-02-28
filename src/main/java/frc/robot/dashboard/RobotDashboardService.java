@@ -19,7 +19,7 @@ public class RobotDashboardService {
         void scheduleLevel1Climb();
     }
 
-    private static final String CONTRACT_VERSION = "2026.5.0";
+    private static final String CONTRACT_VERSION = "2026.6.0";
 
     private final Actions actions;
 
@@ -100,6 +100,13 @@ public class RobotDashboardService {
     private final DoublePublisher driveBRTempPub;
     private final DoublePublisher shooterLeftTempPub;
     private final DoublePublisher shooterRightTempPub;
+
+    // Controller diagnostics
+    private final StringPublisher driverButtonsActivePub;
+    private final StringPublisher operatorButtonsActivePub;
+    private final IntegerPublisher controlEventSeqPub;
+    private final DoublePublisher controlEventTimestampPub;
+    private final StringPublisher controlEventMessagePub;
 
     private final StringPublisher lastCommandPub;
     private final StringPublisher lastStatusPub;
@@ -208,6 +215,13 @@ public class RobotDashboardService {
         shooterLeftTempPub = table.getDoubleTopic("temps/shooter_left_c").publish();
         shooterRightTempPub = table.getDoubleTopic("temps/shooter_right_c").publish();
 
+        // Controller diagnostics
+        driverButtonsActivePub = table.getStringTopic("controls/driver_buttons_active").publish();
+        operatorButtonsActivePub = table.getStringTopic("controls/operator_buttons_active").publish();
+        controlEventSeqPub = table.getIntegerTopic("controls/last_event_seq").publish();
+        controlEventTimestampPub = table.getDoubleTopic("controls/last_event_timestamp_sec").publish();
+        controlEventMessagePub = table.getStringTopic("controls/last_event_message").publish();
+
         lastCommandPub = table.getStringTopic("ack/last_command").publish();
         lastStatusPub = table.getStringTopic("ack/last_status").publish();
         lastSeqPub = table.getIntegerTopic("ack/last_seq").publish();
@@ -313,6 +327,13 @@ public class RobotDashboardService {
         driveBRTempPub.set(snapshot.driveBRTempC());
         shooterLeftTempPub.set(snapshot.shooterLeftTempC());
         shooterRightTempPub.set(snapshot.shooterRightTempC());
+
+        // Controller diagnostics
+        driverButtonsActivePub.set(snapshot.driverButtonsActive());
+        operatorButtonsActivePub.set(snapshot.operatorButtonsActive());
+        controlEventSeqPub.set(snapshot.controlEventSeq());
+        controlEventTimestampPub.set(snapshot.controlEventTimestampSec());
+        controlEventMessagePub.set(snapshot.controlEventMessage());
     }
 
     private void processCommandRequests(DashboardSnapshot snapshot) {
