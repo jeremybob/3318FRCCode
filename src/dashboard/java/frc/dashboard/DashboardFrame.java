@@ -141,7 +141,8 @@ public class DashboardFrame extends JFrame {
     private final JTextArea eventLogArea = new JTextArea();
     private final ArrayDeque<String> eventLogLines = new ArrayDeque<>();
 
-    // Pit tab
+    // Bring-up / pit tabs
+    private final JTextArea bringUpArea = new JTextArea();
     private final JTextArea pitRawArea = new JTextArea();
     // Controls tab
     private final JLabel driverButtonsLabel = new JLabel("Driver buttons: --");
@@ -226,6 +227,7 @@ public class DashboardFrame extends JFrame {
         tabs.addTab("Driver", buildDriverTab());
         tabs.addTab("Operator", buildOperatorTab());
         tabs.addTab("Controls", buildControlsTab());
+        tabs.addTab("Bring-up", buildBringUpTab());
         tabs.addTab("Pit", buildPitTab());
         return tabs;
     }
@@ -351,6 +353,21 @@ public class DashboardFrame extends JFrame {
         controlLogScroll.setBorder(BorderFactory.createLineBorder(BORDER, 1));
         controlLogScroll.getViewport().setBackground(CARD_ALT);
         root.add(wrapCard("Control Trigger Feed", controlLogScroll), BorderLayout.CENTER);
+        return root;
+    }
+
+    // =========================================================================
+    // BRING-UP TAB
+    // =========================================================================
+    private JPanel buildBringUpTab() {
+        JPanel root = new JPanel(new BorderLayout(8, 8));
+        root.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        root.setBackground(BG);
+
+        JScrollPane bringUpScroll = new JScrollPane(bringUpArea);
+        bringUpScroll.setBorder(BorderFactory.createLineBorder(BORDER, 1));
+        bringUpScroll.getViewport().setBackground(CARD_ALT);
+        root.add(bringUpScroll, BorderLayout.CENTER);
         return root;
     }
 
@@ -542,6 +559,14 @@ public class DashboardFrame extends JFrame {
         controlLogArea.setForeground(TEXT);
         controlLogArea.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
 
+        bringUpArea.setEditable(false);
+        bringUpArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 14));
+        bringUpArea.setBackground(CARD_ALT);
+        bringUpArea.setForeground(TEXT);
+        bringUpArea.setLineWrap(true);
+        bringUpArea.setWrapStyleWord(true);
+        bringUpArea.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+
         pitRawArea.setEditable(false);
         pitRawArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 14));
         pitRawArea.setBackground(CARD_ALT);
@@ -692,6 +717,9 @@ public class DashboardFrame extends JFrame {
         updateEventFeed(data);
 
         fieldPanel.updatePose(data.poseX_m(), data.poseY_m(), data.headingDeg(), data.mode());
+        long telemetryAgeMs = Math.max(0L, (nowNanos - lastTimestampSeenNanos) / 1_000_000L);
+        bringUpArea.setText(buildBringUpText(data, telemetryAgeMs));
+        bringUpArea.setCaretPosition(0);
         pitRawArea.setText(buildRawText(data));
     }
 
@@ -1042,6 +1070,232 @@ public class DashboardFrame extends JFrame {
                 .append("' msg='").append(sanitize(data.ackMessage()))
                 .append("' ts=").append(data.ackTimestampSec()).append('\n');
         return sb.toString();
+    }
+
+    private String buildBringUpText(DashboardData data, long telemetryAgeMs) {
+        StringBuilder sb = new StringBuilder();
+        boolean connected = data.connected();
+        boolean liveTelemetry = connected && telemetryAgeMs <= 1000;
+
+        sb.append("3318 DEVICE BRING-UP / DEBUG VIEW\n");
+        sb.append("=================================\n");
+        sb.append("Link: ").append(statusForLink(connected, telemetryAgeMs))
+                .append(" (connected=").append(connected)
+                .append(", ageMs=").append(telemetryAgeMs).append(")\n");
+        sb.append("Mode: ").append(data.mode()).append(" enabled=").append(data.enabled()).append('\n');
+        sb.append('\n');
+
+        sb.append("[Power + CAN]\n");
+        appendDeviceLine(
+                sb,
+                statusFromBoolean(connected, liveTelemetry, data.batteryVoltage() >= 11.5, "WARN"),
+                "Battery",
+                ONE_DECIMAL.format(data.batteryVoltage()) + "V brownout="
+                        + data.isBrownout() + " alert=" + data.brownoutAlert());
+        appendDeviceLine(
+                sb,
+                statusFromBoolean(
+                        connected,
+                        liveTelemetry,
+                        data.canReceiveErrorCount() == 0 && data.canTransmitErrorCount() == 0,
+                        "WARN"),
+                "CAN bus",
+                ONE_DECIMAL.format(data.canBusUtilization() * 100.0) + "% util"
+                        + " rxErr=" + data.canReceiveErrorCount()
+                        + " txErr=" + data.canTransmitErrorCount());
+        sb.append('\n');
+
+        sb.append("[IMU + Vision]\n");
+        appendDeviceLine(
+                sb,
+                statusFromBoolean(
+                        connected,
+                        liveTelemetry,
+                        Double.isFinite(data.pigeonYawDeg())
+                                && Double.isFinite(data.pigeonPitchDeg())
+                                && Double.isFinite(data.pigeonRollDeg()),
+                        "CHECK"),
+                "Pigeon2 (CAN " + Constants.CAN.PIGEON + ")",
+                "yaw=" + formatMaybe(data.pigeonYawDeg())
+                        + " pitch=" + formatMaybe(data.pigeonPitchDeg())
+                        + " roll=" + formatMaybe(data.pigeonRollDeg()));
+        appendDeviceLine(
+                sb,
+                statusFromBoolean(connected, liveTelemetry, data.cameraConnected(), "WARN"),
+                "PhotonVision camera",
+                "connected=" + data.cameraConnected());
+        sb.append('\n');
+
+        sb.append("[Swerve]\n");
+        appendSwerveModule(
+                sb,
+                connected,
+                liveTelemetry,
+                "Front Left",
+                Constants.CAN.FRONT_LEFT_DRIVE,
+                Constants.CAN.FRONT_LEFT_STEER,
+                Constants.CAN.FRONT_LEFT_CANCODER,
+                data.swerveFLAngleDeg(),
+                data.driveFLTempC(),
+                data.cancoderFLRawRot(),
+                data.cancoderFLOffsetRot());
+        appendSwerveModule(
+                sb,
+                connected,
+                liveTelemetry,
+                "Front Right",
+                Constants.CAN.FRONT_RIGHT_DRIVE,
+                Constants.CAN.FRONT_RIGHT_STEER,
+                Constants.CAN.FRONT_RIGHT_CANCODER,
+                data.swerveFRAngleDeg(),
+                data.driveFRTempC(),
+                data.cancoderFRRawRot(),
+                data.cancoderFROffsetRot());
+        appendSwerveModule(
+                sb,
+                connected,
+                liveTelemetry,
+                "Back Left",
+                Constants.CAN.BACK_LEFT_DRIVE,
+                Constants.CAN.BACK_LEFT_STEER,
+                Constants.CAN.BACK_LEFT_CANCODER,
+                data.swerveBLAngleDeg(),
+                data.driveBLTempC(),
+                data.cancoderBLRawRot(),
+                data.cancoderBLOffsetRot());
+        appendSwerveModule(
+                sb,
+                connected,
+                liveTelemetry,
+                "Back Right",
+                Constants.CAN.BACK_RIGHT_DRIVE,
+                Constants.CAN.BACK_RIGHT_STEER,
+                Constants.CAN.BACK_RIGHT_CANCODER,
+                data.swerveBRAngleDeg(),
+                data.driveBRTempC(),
+                data.cancoderBRRawRot(),
+                data.cancoderBROffsetRot());
+        sb.append('\n');
+
+        sb.append("[Shooter]\n");
+        appendDeviceLine(
+                sb,
+                statusFromTemp(connected, liveTelemetry, data.shooterLeftTempC()),
+                "Shooter Left TalonFX (CAN " + Constants.CAN.SHOOTER_LEFT + ")",
+                "rps=" + ONE_DECIMAL.format(data.shooterLeftRps())
+                        + " temp=" + ONE_DECIMAL.format(data.shooterLeftTempC()) + "C");
+        appendDeviceLine(
+                sb,
+                statusFromTemp(connected, liveTelemetry, data.shooterRightTempC()),
+                "Shooter Right TalonFX (CAN " + Constants.CAN.SHOOTER_RIGHT + ")",
+                "rps=" + ONE_DECIMAL.format(data.shooterRightRps())
+                        + " temp=" + ONE_DECIMAL.format(data.shooterRightTempC()) + "C");
+        sb.append('\n');
+
+        sb.append("[Intake + Conveyor]\n");
+        appendDeviceLine(
+                sb,
+                statusFromBoolean(connected, liveTelemetry, data.intakeHomed(), "CHECK"),
+                "Intake Tilt SparkMax (CAN " + Constants.CAN.INTAKE_TILT_NEO + ")",
+                "tiltDeg=" + ONE_DECIMAL.format(data.intakeTiltDeg())
+                        + " homed=" + data.intakeHomed()
+                        + " limitSwitch=" + data.intakeLimitSwitchPressed());
+        appendDeviceLine(
+                sb,
+                statusFromBoolean(connected, liveTelemetry, Double.isFinite(data.intakeRollerCurrentAmps()), "CHECK"),
+                "Intake Roller TalonFX (CAN " + Constants.CAN.INTAKE_ROLLER + ")",
+                "current=" + ONE_DECIMAL.format(data.intakeRollerCurrentAmps()) + "A");
+        appendDeviceLine(
+                sb,
+                statusFromBoolean(connected, liveTelemetry, Double.isFinite(data.hopperCurrentAmps()), "CHECK"),
+                "Hopper SparkMax (CAN " + Constants.CAN.HOPPER_FLOOR_NEO + ")",
+                "current=" + ONE_DECIMAL.format(data.hopperCurrentAmps()) + "A");
+        appendDeviceLine(
+                sb,
+                statusFromBoolean(connected, liveTelemetry, Double.isFinite(data.feederCurrentAmps()), "CHECK"),
+                "Feeder SparkMax (CAN " + Constants.CAN.FEEDER_NEO + ")",
+                "current=" + ONE_DECIMAL.format(data.feederCurrentAmps()) + "A");
+        sb.append('\n');
+
+        sb.append("[Climber]\n");
+        appendDeviceLine(
+                sb,
+                statusFromBoolean(connected, liveTelemetry, Double.isFinite(data.climberPositionRot()), "CHECK"),
+                "Climber Leader TalonFX (CAN " + Constants.CAN.CLIMBER_LEADER + ")",
+                "position=" + ONE_DECIMAL.format(data.climberPositionRot())
+                        + " rot current=" + ONE_DECIMAL.format(data.climberCurrentAmps())
+                        + "A armed=" + data.climberArmed());
+        appendDeviceLine(
+                sb,
+                statusFromBoolean(connected, liveTelemetry, data.climberArmed(), "CHECK"),
+                "Climber Follower TalonFX (CAN " + Constants.CAN.CLIMBER_FOLLOWER + ")",
+                "inferred from leader telemetry + climber arm gate");
+        sb.append('\n');
+
+        sb.append("[Notes]\n");
+        sb.append("- Some statuses are inferred because direct per-device fault topics are not published yet.\n");
+        sb.append("- CANcoder raw/offset telemetry appears after running the calibration command.\n");
+
+        return sb.toString();
+    }
+
+    private static void appendSwerveModule(
+            StringBuilder sb,
+            boolean connected,
+            boolean liveTelemetry,
+            String name,
+            int driveCanId,
+            int steerCanId,
+            int cancoderCanId,
+            double moduleAngleDeg,
+            double driveTempC,
+            double cancoderRawRot,
+            double cancoderOffsetRot) {
+        appendDeviceLine(
+                sb,
+                statusFromTemp(connected, liveTelemetry, driveTempC),
+                name + " Drive TalonFX (CAN " + driveCanId + ")",
+                "temp=" + ONE_DECIMAL.format(driveTempC) + "C");
+        appendDeviceLine(
+                sb,
+                statusFromBoolean(connected, liveTelemetry, Double.isFinite(moduleAngleDeg), "CHECK"),
+                name + " Steer TalonFX (CAN " + steerCanId + ")",
+                "moduleAngle=" + formatMaybe(moduleAngleDeg) + " deg");
+        appendDeviceLine(
+                sb,
+                statusFromBoolean(connected, liveTelemetry, Double.isFinite(cancoderRawRot), "CHECK"),
+                name + " CANcoder (CAN " + cancoderCanId + ")",
+                "rawRot=" + formatMaybe(cancoderRawRot)
+                        + " offsetRot=" + formatMaybe(cancoderOffsetRot));
+    }
+
+    private static void appendDeviceLine(StringBuilder sb, String status, String name, String details) {
+        sb.append('[').append(status).append("] ").append(name).append(": ").append(details).append('\n');
+    }
+
+    private static String statusForLink(boolean connected, long telemetryAgeMs) {
+        if (!connected) return "OFFLINE";
+        if (telemetryAgeMs > 1000) return "STALE";
+        if (telemetryAgeMs > 250) return "DELAY";
+        return "LIVE";
+    }
+
+    private static String statusFromTemp(boolean connected, boolean liveTelemetry, double tempC) {
+        if (!connected) return "OFFLINE";
+        if (!liveTelemetry) return "STALE";
+        if (!Double.isFinite(tempC)) return "CHECK";
+        if (tempC >= TEMP_WARN_C) return "WARN";
+        return "OK";
+    }
+
+    private static String statusFromBoolean(
+            boolean connected,
+            boolean liveTelemetry,
+            boolean pass,
+            String failStatus) {
+        if (!connected) return "OFFLINE";
+        if (!liveTelemetry) return "STALE";
+        return pass ? "OK" : failStatus;
     }
 
     // =========================================================================

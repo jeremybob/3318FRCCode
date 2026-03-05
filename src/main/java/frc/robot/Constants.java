@@ -39,11 +39,11 @@ public final class Constants {
         // Each corner has 3 devices: Drive TalonFX, Steer TalonFX, CANcoder
         public static final int FRONT_LEFT_DRIVE    = 3;
         public static final int FRONT_LEFT_STEER    = 4;
-        public static final int FRONT_LEFT_CANCODER = 10;
+        public static final int FRONT_LEFT_CANCODER = 9;
 
         public static final int FRONT_RIGHT_DRIVE    = 1;
         public static final int FRONT_RIGHT_STEER    = 2;
-        public static final int FRONT_RIGHT_CANCODER = 9;
+        public static final int FRONT_RIGHT_CANCODER = 10;
 
         public static final int BACK_LEFT_DRIVE    = 7;
         public static final int BACK_LEFT_STEER    = 8;
