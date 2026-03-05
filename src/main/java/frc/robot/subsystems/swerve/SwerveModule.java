@@ -37,8 +37,8 @@ import edu.wpi.first.math.kinematics.SwerveModuleState;
 import frc.robot.Constants;
 
 public class SwerveModule {
-    // Odometry/control signals should stay high-rate to avoid stale reads.
-    private static final double CONTROL_SIGNAL_HZ = 100.0;
+    // 50 Hz matches the robot loop and is usually plenty for reliable CAN traffic.
+    private static final double CONTROL_SIGNAL_HZ = 50.0;
     private static final double TELEMETRY_SIGNAL_HZ = 20.0;
     // Set true only if Phoenix Pro is licensed on all required devices.
     private static final boolean USE_PHOENIX_PRO_FEATURES = false;
@@ -150,10 +150,13 @@ public class SwerveModule {
                 "Steer TalonFX config (id=" + steerId + ")");
 
         // Explicit signal rates + bus optimization reduces CAN stale-frame behavior.
+        // RemoteCANcoder feedback relies on CANcoder position/velocity frames.
         applyOrThrow(
                 BaseStatusSignal.setUpdateFrequencyForAll(
                         CONTROL_SIGNAL_HZ,
                         cancoder.getAbsolutePosition(),
+                        cancoder.getPosition(),
+                        cancoder.getVelocity(),
                         driveMotor.getVelocity(),
                         driveMotor.getPosition()),
                 "Swerve control signal update rates");
