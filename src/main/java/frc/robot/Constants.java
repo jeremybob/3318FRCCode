@@ -37,34 +37,34 @@ public final class Constants {
 
         // ---- Swerve drive motors & encoders ----
         // Each corner has 3 devices: Drive TalonFX, Steer TalonFX, CANcoder
-        public static final int FRONT_LEFT_DRIVE    = 1;
-        public static final int FRONT_LEFT_STEER    = 2;
-        public static final int FRONT_LEFT_CANCODER = 3;
+        public static final int FRONT_LEFT_DRIVE    = 3;
+        public static final int FRONT_LEFT_STEER    = 4;
+        public static final int FRONT_LEFT_CANCODER = 10;
 
-        public static final int FRONT_RIGHT_DRIVE    = 4;
-        public static final int FRONT_RIGHT_STEER    = 5;
-        public static final int FRONT_RIGHT_CANCODER = 6;
+        public static final int FRONT_RIGHT_DRIVE    = 1;
+        public static final int FRONT_RIGHT_STEER    = 2;
+        public static final int FRONT_RIGHT_CANCODER = 9;
 
         public static final int BACK_LEFT_DRIVE    = 7;
         public static final int BACK_LEFT_STEER    = 8;
-        public static final int BACK_LEFT_CANCODER = 9;
+        public static final int BACK_LEFT_CANCODER = 12;
 
         // NOTE: Back-right IDs jump from 9 to 12 — IDs 10 and 11 are shooter.
         // Steer is on 19 to avoid conflict with Pigeon on 13.
-        public static final int BACK_RIGHT_DRIVE    = 12;
-        public static final int BACK_RIGHT_STEER    = 19;
-        public static final int BACK_RIGHT_CANCODER = 14;
+        public static final int BACK_RIGHT_DRIVE    = 15;
+        public static final int BACK_RIGHT_STEER    = 6;
+        public static final int BACK_RIGHT_CANCODER = 11;
 
         // ---- Shooter (TalonFX / Kraken X60) ----
-        public static final int SHOOTER_LEFT  = 10;
-        public static final int SHOOTER_RIGHT = 11;
+        public static final int SHOOTER_LEFT  = 16;
+        public static final int SHOOTER_RIGHT = 17;
 
         // ---- Intake ----
-        public static final int INTAKE_TILT_NEO = 15;  // REV SparkMax
-        public static final int INTAKE_ROLLER   = 16;  // TalonFX (Kraken)
+        public static final int INTAKE_TILT_NEO = 14;  // REV SparkMax
+        public static final int INTAKE_ROLLER   = 15;  // TalonFX (Kraken)
 
         // ---- Hopper & Feeder (REV SparkMax) ----
-        public static final int HOPPER_FLOOR_NEO = 17;
+        public static final int HOPPER_FLOOR_NEO = 19;
         public static final int FEEDER_NEO       = 18;
 
         // ---- Climber (TalonFX) ----
