@@ -48,13 +48,13 @@ Then confirm vendor JSONs exist in `vendordeps/`:
 | Device | CAN ID |
 | --- | --- |
 | Pigeon 2 | 13 |
-| Front Left Drive / Steer / CANcoder | 1 / 2 / 3 |
-| Front Right Drive / Steer / CANcoder | 4 / 5 / 6 |
-| Back Left Drive / Steer / CANcoder | 7 / 8 / 9 |
-| Shooter Left / Right | 10 / 11 |
-| Back Right Drive / Steer / CANcoder | 12 / 19 / 14 |
-| Intake Tilt (SparkMax) / Roller (TalonFX) | 15 / 16 |
-| Hopper Floor (SparkMax) | 17 |
+| Front Left Drive / Steer / CANcoder | 3 / 4 / 10 |
+| Front Right Drive / Steer / CANcoder | 1 / 2 / 9 |
+| Back Left Drive / Steer / CANcoder | 7 / 8 / 12 |
+| Shooter Left / Right | 16 / 17 |
+| Back Right Drive / Steer / CANcoder | 5 / 6 / 11 |
+| Intake Tilt (SparkMax) / Roller (TalonFX) | 14 / 15 |
+| Hopper Floor (SparkMax) | 19 |
 | Feeder (SparkMax) | 18 |
 | Climber Leader / Follower | 20 / 21 |
 
