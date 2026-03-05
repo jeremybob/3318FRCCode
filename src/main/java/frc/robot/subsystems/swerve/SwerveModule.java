@@ -18,7 +18,6 @@
 package frc.robot.subsystems.swerve;
 
 import com.ctre.phoenix6.CANBus;
-import com.ctre.phoenix6.BaseStatusSignal;
 import com.ctre.phoenix6.StatusCode;
 import com.ctre.phoenix6.configs.CANcoderConfiguration;
 import com.ctre.phoenix6.configs.TalonFXConfiguration;
@@ -37,9 +36,6 @@ import edu.wpi.first.math.kinematics.SwerveModuleState;
 import frc.robot.Constants;
 
 public class SwerveModule {
-    // 50 Hz matches the robot loop and is usually plenty for reliable CAN traffic.
-    private static final double CONTROL_SIGNAL_HZ = 50.0;
-    private static final double TELEMETRY_SIGNAL_HZ = 20.0;
     // Set true only if Phoenix Pro is licensed on all required devices.
     private static final boolean USE_PHOENIX_PRO_FEATURES = false;
 
@@ -149,29 +145,8 @@ public class SwerveModule {
         applyOrThrow(steerMotor.getConfigurator().apply(steerCfg),
                 "Steer TalonFX config (id=" + steerId + ")");
 
-        // Explicit signal rates + bus optimization reduces CAN stale-frame behavior.
-        // RemoteCANcoder feedback relies on CANcoder position/velocity frames.
-        applyOrThrow(
-                BaseStatusSignal.setUpdateFrequencyForAll(
-                        CONTROL_SIGNAL_HZ,
-                        cancoder.getAbsolutePosition(),
-                        cancoder.getPosition(),
-                        cancoder.getVelocity(),
-                        driveMotor.getVelocity(),
-                        driveMotor.getPosition()),
-                "Swerve control signal update rates");
-        applyOrThrow(
-                BaseStatusSignal.setUpdateFrequencyForAll(
-                        TELEMETRY_SIGNAL_HZ,
-                        driveMotor.getDeviceTemp(),
-                        steerMotor.getDeviceTemp()),
-                "Swerve telemetry signal update rates");
-        applyOrThrow(cancoder.optimizeBusUtilization(),
-                "CANcoder bus optimization (id=" + cancoderId + ")");
-        applyOrThrow(driveMotor.optimizeBusUtilization(),
-                "Drive TalonFX bus optimization (id=" + driveId + ")");
-        applyOrThrow(steerMotor.optimizeBusUtilization(),
-                "Steer TalonFX bus optimization (id=" + steerId + ")");
+        // Leave Phoenix status frame frequencies at defaults.
+        // RemoteCANcoder feedback uses Position, which defaults high-rate on CAN 2.0.
     }
 
     // --------------------------------------------------------------------------
@@ -211,12 +186,12 @@ public class SwerveModule {
     // getAbsoluteAngle()
     //
     // Returns the current wheel angle as a Rotation2d object.
-    // Uses the CANcoder's absolute position, which never loses track — even
-    // after the robot is turned off and back on.
+    // Uses CANcoder Position for runtime control (higher default update rate than
+    // AbsolutePosition). Magnet offset is still applied in device config.
     // --------------------------------------------------------------------------
     public Rotation2d getAbsoluteAngle() {
-        return Rotation2d.fromRotations(
-                cancoder.getAbsolutePosition().getValueAsDouble());
+        // false = use last cached frame, do not force immediate CAN refresh.
+        return Rotation2d.fromRotations(cancoder.getPosition(false).getValueAsDouble());
     }
 
     // --------------------------------------------------------------------------
@@ -227,7 +202,7 @@ public class SwerveModule {
     // --------------------------------------------------------------------------
     public SwerveModuleState getState() {
         // Convert drive motor RPS back to wheel surface speed (m/s)
-        double motorRPS    = driveMotor.getVelocity().getValueAsDouble();
+        double motorRPS    = driveMotor.getVelocity(false).getValueAsDouble();
         double wheelRPS    = motorRPS / Constants.Swerve.DRIVE_GEAR_RATIO;
         double speedMps    = wheelRPS * Constants.Swerve.WHEEL_CIRCUMFERENCE_M;
         return new SwerveModuleState(speedMps, getAbsoluteAngle());
@@ -241,7 +216,7 @@ public class SwerveModule {
     // --------------------------------------------------------------------------
     public SwerveModulePosition getPosition() {
         // Convert drive motor accumulated rotations to distance traveled
-        double motorRotations  = driveMotor.getPosition().getValueAsDouble();
+        double motorRotations  = driveMotor.getPosition(false).getValueAsDouble();
         double wheelRotations  = motorRotations / Constants.Swerve.DRIVE_GEAR_RATIO;
         double distanceMeters  = wheelRotations * Constants.Swerve.WHEEL_CIRCUMFERENCE_M;
         return new SwerveModulePosition(distanceMeters, getAbsoluteAngle());
@@ -255,7 +230,7 @@ public class SwerveModule {
     // at high temps and will eventually fault.
     // --------------------------------------------------------------------------
     public double getDriveTemperatureC() {
-        return driveMotor.getDeviceTemp().getValueAsDouble();
+        return driveMotor.getDeviceTemp(false).getValueAsDouble();
     }
 
     // --------------------------------------------------------------------------
