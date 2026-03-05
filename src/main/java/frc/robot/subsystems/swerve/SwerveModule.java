@@ -18,6 +18,8 @@
 package frc.robot.subsystems.swerve;
 
 import com.ctre.phoenix6.CANBus;
+import com.ctre.phoenix6.BaseStatusSignal;
+import com.ctre.phoenix6.StatusCode;
 import com.ctre.phoenix6.configs.CANcoderConfiguration;
 import com.ctre.phoenix6.configs.TalonFXConfiguration;
 import com.ctre.phoenix6.controls.VelocityVoltage;
@@ -35,6 +37,9 @@ import edu.wpi.first.math.kinematics.SwerveModuleState;
 import frc.robot.Constants;
 
 public class SwerveModule {
+    // Odometry/control signals should stay high-rate to avoid stale reads.
+    private static final double CONTROL_SIGNAL_HZ = 100.0;
+    private static final double TELEMETRY_SIGNAL_HZ = 20.0;
 
     // The three hardware devices on this corner
     private final TalonFX driveMotor;
@@ -76,7 +81,8 @@ public class SwerveModule {
         ccfg.MagnetSensor.MagnetOffset = cancoderOffsetRot;
         // CCW positive means turning left increases the angle value (WPILib convention)
         ccfg.MagnetSensor.SensorDirection = SensorDirectionValue.CounterClockwise_Positive;
-        cancoder.getConfigurator().apply(ccfg);
+        applyOrThrow(cancoder.getConfigurator().apply(ccfg),
+                "CANcoder config (id=" + cancoderId + ")");
 
         // ---- Configure the DRIVE motor -------------------------------------
         TalonFXConfiguration driveCfg = new TalonFXConfiguration();
@@ -98,7 +104,8 @@ public class SwerveModule {
         driveCfg.Slot0.kV = Constants.Swerve.DRIVE_kV;
         driveCfg.Slot0.kP = Constants.Swerve.DRIVE_kP;
 
-        driveMotor.getConfigurator().apply(driveCfg);
+        applyOrThrow(driveMotor.getConfigurator().apply(driveCfg),
+                "Drive TalonFX config (id=" + driveId + ")");
 
         // ---- Configure the STEER motor ------------------------------------
         TalonFXConfiguration steerCfg = new TalonFXConfiguration();
@@ -136,7 +143,29 @@ public class SwerveModule {
         steerCfg.Slot0.kS = Constants.Swerve.STEER_kS;
         steerCfg.Slot0.kV = Constants.Swerve.STEER_kV;
 
-        steerMotor.getConfigurator().apply(steerCfg);
+        applyOrThrow(steerMotor.getConfigurator().apply(steerCfg),
+                "Steer TalonFX config (id=" + steerId + ")");
+
+        // Explicit signal rates + bus optimization reduces CAN stale-frame behavior.
+        applyOrThrow(
+                BaseStatusSignal.setUpdateFrequencyForAll(
+                        CONTROL_SIGNAL_HZ,
+                        cancoder.getAbsolutePosition(),
+                        driveMotor.getVelocity(),
+                        driveMotor.getPosition()),
+                "Swerve control signal update rates");
+        applyOrThrow(
+                BaseStatusSignal.setUpdateFrequencyForAll(
+                        TELEMETRY_SIGNAL_HZ,
+                        driveMotor.getDeviceTemp(),
+                        steerMotor.getDeviceTemp()),
+                "Swerve telemetry signal update rates");
+        applyOrThrow(cancoder.optimizeBusUtilization(),
+                "CANcoder bus optimization (id=" + cancoderId + ")");
+        applyOrThrow(driveMotor.optimizeBusUtilization(),
+                "Drive TalonFX bus optimization (id=" + driveId + ")");
+        applyOrThrow(steerMotor.optimizeBusUtilization(),
+                "Steer TalonFX bus optimization (id=" + steerId + ")");
     }
 
     // --------------------------------------------------------------------------
@@ -232,5 +261,11 @@ public class SwerveModule {
     public void stop() {
         driveMotor.stopMotor();
         steerMotor.stopMotor();
+    }
+
+    private static void applyOrThrow(StatusCode code, String action) {
+        if (!code.isOK()) {
+            throw new IllegalStateException("[SwerveModule] Failed " + action + ": " + code.getName());
+        }
     }
 }
