@@ -5,6 +5,7 @@ import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.Font;
+import java.awt.FontMetrics;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.GridBagConstraints;
@@ -716,7 +717,7 @@ public class DashboardFrame extends JFrame {
         updateCommandAvailability(data);
         updateEventFeed(data);
 
-        fieldPanel.updatePose(data.poseX_m(), data.poseY_m(), data.headingDeg(), data.mode());
+        fieldPanel.update(data);
         long telemetryAgeMs = Math.max(0L, (nowNanos - lastTimestampSeenNanos) / 1_000_000L);
         bringUpArea.setText(buildBringUpText(data, telemetryAgeMs));
         bringUpArea.setCaretPosition(0);
@@ -1012,6 +1013,8 @@ public class DashboardFrame extends JFrame {
         sb.append("Match: #").append(data.matchNumber())
                 .append(" event='").append(sanitize(data.eventName())).append("'\n");
         sb.append("Camera: connected=").append(data.cameraConnected()).append('\n');
+        sb.append("Vision: tagId=").append(data.visionTagId())
+                .append(" distM=").append(formatMaybe(data.visionDistanceM())).append('\n');
         sb.append("CAN: util=").append(ONE_DECIMAL.format(data.canBusUtilization() * 100.0)).append("%")
                 .append(" rxErr=").append(data.canReceiveErrorCount())
                 .append(" txErr=").append(data.canTransmitErrorCount()).append('\n');
@@ -1432,21 +1435,51 @@ public class DashboardFrame extends JFrame {
         private double poseY_m;
         private double headingDeg;
         private String mode = "UNKNOWN";
+        private String alliance = "UNKNOWN";
+        private boolean cameraConnected;
+        private boolean hasTarget;
+        private int visionTagId = -1;
+        private double visionDistanceM = Double.NaN;
+        private double alignYawDeg = Double.NaN;
 
-        // Approximate full-field dimensions in meters for scaling.
         private static final double FIELD_LENGTH_M = 17.6;
         private static final double FIELD_WIDTH_M = 8.0;
+
+        // HUB center positions (meters)
+        private static final double RED_HUB_X = 11.92;
+        private static final double RED_HUB_Y = 4.03;
+        private static final double BLUE_HUB_X = 4.63;
+        private static final double BLUE_HUB_Y = 4.03;
+        private static final double HUB_RADIUS_M = 0.85;
+
+        // Red and Blue HUB tag IDs (matching Constants.Vision)
+        private static final int[] RED_HUB_TAG_IDS = {2, 3, 4, 5, 8, 9, 10, 11};
+        private static final int[] BLUE_HUB_TAG_IDS = {18, 19, 20, 21, 24, 25, 26, 27};
+
+        private static final Color HUB_RED = new Color(180, 40, 40, 100);
+        private static final Color HUB_BLUE = new Color(40, 40, 180, 100);
+        private static final Color HUB_RED_BORDER = new Color(220, 80, 80, 180);
+        private static final Color HUB_BLUE_BORDER = new Color(80, 80, 220, 180);
+        private static final Color VISION_LINE = new Color(0, 255, 100, 120);
+        private static final Font INFO_FONT = new Font("Segoe UI", Font.BOLD, 13);
+        private static final Font TAG_FONT = new Font("Segoe UI", Font.BOLD, 11);
 
         FieldPanel() {
             setBackground(new Color(9, 14, 24));
             setBorder(BorderFactory.createLineBorder(new Color(60, 87, 120), 2));
         }
 
-        void updatePose(double x_m, double y_m, double heading_deg, String mode) {
-            this.poseX_m = x_m;
-            this.poseY_m = y_m;
-            this.headingDeg = heading_deg;
-            this.mode = mode;
+        void update(DashboardData data) {
+            this.poseX_m = data.poseX_m();
+            this.poseY_m = data.poseY_m();
+            this.headingDeg = data.headingDeg();
+            this.mode = data.mode();
+            this.alliance = data.alliance();
+            this.cameraConnected = data.cameraConnected();
+            this.hasTarget = data.alignHasTarget();
+            this.visionTagId = data.visionTagId();
+            this.visionDistanceM = data.visionDistanceM();
+            this.alignYawDeg = data.alignYawDeg();
             repaint();
         }
 
@@ -1460,34 +1493,159 @@ public class DashboardFrame extends JFrame {
             int width = getWidth() - (pad * 2);
             int height = getHeight() - (pad * 2);
 
+            // Field background
             g2.setColor(new Color(20, 43, 70));
             g2.fillRoundRect(pad, pad, width, height, 18, 18);
             g2.setColor(new Color(85, 122, 165));
             g2.setStroke(new BasicStroke(2f));
             g2.drawRoundRect(pad, pad, width, height, 18, 18);
 
+            // Center lines
             g2.setColor(new Color(70, 100, 130));
             g2.drawLine(pad + width / 2, pad, pad + width / 2, pad + height);
             g2.drawLine(pad, pad + height / 2, pad + width, pad + height / 2);
 
+            // Draw HUBs
+            drawHub(g2, pad, width, height, RED_HUB_X, RED_HUB_Y,
+                    HUB_RED, HUB_RED_BORDER, "RED HUB", RED_HUB_TAG_IDS);
+            drawHub(g2, pad, width, height, BLUE_HUB_X, BLUE_HUB_Y,
+                    HUB_BLUE, HUB_BLUE_BORDER, "BLUE HUB", BLUE_HUB_TAG_IDS);
+
+            // Robot position
             int robotX = pad + (int) Math.round(clamp(poseX_m / FIELD_LENGTH_M, 0.0, 1.0) * width);
             int robotY = pad + height - (int) Math.round(clamp(poseY_m / FIELD_WIDTH_M, 0.0, 1.0) * height);
 
+            // Draw vision line to target HUB if we have a target
+            if (hasTarget && visionTagId >= 0) {
+                double hubX = isRedTag(visionTagId) ? RED_HUB_X : BLUE_HUB_X;
+                double hubY = isRedTag(visionTagId) ? RED_HUB_Y : BLUE_HUB_Y;
+                int hubPxX = pad + (int) Math.round(clamp(hubX / FIELD_LENGTH_M, 0.0, 1.0) * width);
+                int hubPxY = pad + height - (int) Math.round(clamp(hubY / FIELD_WIDTH_M, 0.0, 1.0) * height);
+
+                g2.setColor(VISION_LINE);
+                g2.setStroke(new BasicStroke(2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND,
+                        0, new float[]{8, 6}, 0));
+                g2.drawLine(robotX, robotY, hubPxX, hubPxY);
+                g2.setStroke(new BasicStroke(2f));
+            }
+
+            // Robot dot
             g2.setColor("AUTONOMOUS".equals(mode) ? WARN : OK);
             g2.fillOval(robotX - 10, robotY - 10, 20, 20);
 
+            // Heading arrow
             double radians = Math.toRadians(headingDeg);
             int arrowX = robotX + (int) Math.round(Math.cos(radians) * 28.0);
             int arrowY = robotY - (int) Math.round(Math.sin(radians) * 28.0);
             g2.setStroke(new BasicStroke(3f));
             g2.drawLine(robotX, robotY, arrowX, arrowY);
 
-            g2.setColor(TEXT);
+            // ---- Top-left: Pose + heading ----
             g2.setFont(new Font("Segoe UI", Font.BOLD, 16));
+            g2.setColor(TEXT);
             g2.drawString("Pose (" + ONE_DECIMAL.format(poseX_m) + ", "
                     + ONE_DECIMAL.format(poseY_m) + ")  Heading "
-                    + ONE_DECIMAL.format(headingDeg) + " deg", pad, 22);
+                    + ONE_DECIMAL.format(headingDeg) + "\u00B0", pad, 22);
+
+            // ---- Top-right: Vision status indicator ----
+            int statusX = pad + width - 8;
+            g2.setFont(INFO_FONT);
+            if (cameraConnected) {
+                if (hasTarget) {
+                    g2.setColor(OK);
+                    String tagLabel = "TAG #" + visionTagId;
+                    int labelW = g2.getFontMetrics().stringWidth(tagLabel);
+                    g2.fillOval(statusX - labelW - 20, 10, 12, 12);
+                    g2.drawString(tagLabel, statusX - labelW, 22);
+                } else {
+                    g2.setColor(WARN);
+                    int labelW = g2.getFontMetrics().stringWidth("NO TARGET");
+                    g2.fillOval(statusX - labelW - 20, 10, 12, 12);
+                    g2.drawString("NO TARGET", statusX - labelW, 22);
+                }
+            } else {
+                g2.setColor(BAD);
+                int labelW = g2.getFontMetrics().stringWidth("CAM OFF");
+                g2.fillOval(statusX - labelW - 20, 10, 12, 12);
+                g2.drawString("CAM OFF", statusX - labelW, 22);
+            }
+
+            // ---- Bottom-left: Distance + yaw info ----
+            int bottomY = pad + height + 20;
+            g2.setFont(INFO_FONT);
+            g2.setColor(TEXT);
+            StringBuilder info = new StringBuilder();
+            if (Double.isFinite(visionDistanceM)) {
+                info.append("Dist: ").append(ONE_DECIMAL.format(visionDistanceM)).append("m");
+            }
+            if (Double.isFinite(alignYawDeg)) {
+                if (info.length() > 0) info.append("  ");
+                info.append("Yaw: ").append(ONE_DECIMAL.format(alignYawDeg)).append("\u00B0");
+            }
+            if (info.length() > 0) {
+                g2.drawString(info.toString(), pad, bottomY);
+            }
+
+            // ---- Bottom-right: Odometry-only warning ----
+            if (!cameraConnected || !hasTarget) {
+                g2.setColor(WARN);
+                String warn = "ODOMETRY ONLY";
+                int warnW = g2.getFontMetrics().stringWidth(warn);
+                g2.drawString(warn, statusX - warnW, bottomY);
+            }
+
             g2.dispose();
+        }
+
+        private void drawHub(Graphics2D g2, int pad, int fieldW, int fieldH,
+                             double hubX_m, double hubY_m,
+                             Color fill, Color border, String label, int[] tagIds) {
+            int cx = pad + (int) Math.round(clamp(hubX_m / FIELD_LENGTH_M, 0.0, 1.0) * fieldW);
+            int cy = pad + fieldH - (int) Math.round(clamp(hubY_m / FIELD_WIDTH_M, 0.0, 1.0) * fieldH);
+            int radiusPx = (int) Math.round((HUB_RADIUS_M / FIELD_LENGTH_M) * fieldW);
+
+            // Hub fill
+            g2.setColor(fill);
+            g2.fillOval(cx - radiusPx, cy - radiusPx, radiusPx * 2, radiusPx * 2);
+
+            // Hub border — highlight if our active tag belongs to this hub
+            boolean active = isTagInSet(visionTagId, tagIds) && hasTarget;
+            g2.setColor(active ? border.brighter() : border);
+            g2.setStroke(new BasicStroke(active ? 3f : 1.5f));
+            g2.drawOval(cx - radiusPx, cy - radiusPx, radiusPx * 2, radiusPx * 2);
+
+            // Hub label
+            g2.setFont(TAG_FONT);
+            g2.setColor(new Color(200, 200, 200, 180));
+            FontMetrics fm = g2.getFontMetrics();
+            g2.drawString(label, cx - fm.stringWidth(label) / 2, cy - 2);
+
+            // Tag IDs under hub label
+            String ids = formatTagIds(tagIds);
+            g2.setFont(new Font("Segoe UI", Font.PLAIN, 10));
+            fm = g2.getFontMetrics();
+            g2.drawString(ids, cx - fm.stringWidth(ids) / 2, cy + fm.getAscent() + 1);
+        }
+
+        private static String formatTagIds(int[] ids) {
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < ids.length; i++) {
+                if (i > 0) sb.append(",");
+                sb.append(ids[i]);
+            }
+            return sb.toString();
+        }
+
+        private static boolean isRedTag(int tagId) {
+            return isTagInSet(tagId, RED_HUB_TAG_IDS);
+        }
+
+        private static boolean isTagInSet(int tagId, int[] ids) {
+            if (tagId < 0) return false;
+            for (int id : ids) {
+                if (id == tagId) return true;
+            }
+            return false;
         }
 
         private static double clamp(double value, double min, double max) {

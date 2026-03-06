@@ -47,6 +47,9 @@ public record DashboardSnapshot(
         String eventName,
         // Camera / vision connection
         boolean cameraConnected,
+        // Vision tag detection (from background vision thread)
+        int visionTagId,
+        double visionDistanceM,
         // CAN bus health
         double canBusUtilization,
         int canReceiveErrorCount,

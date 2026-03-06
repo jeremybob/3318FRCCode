@@ -547,6 +547,14 @@ public class RobotContainer {
                         AlignAndShootCommand.getTelemetryYawDeg(),
                         Constants.Vision.YAW_TOLERANCE_DEG));
 
+        VisionResult latestVision = visionResult.get();
+        int visionTagId = latestVision != null ? latestVision.tagId() : -1;
+        double visionDistanceM = latestVision != null
+                ? latestVision.estimateDistanceM(
+                        Constants.Vision.TAG_HEIGHT_M,
+                        Constants.Vision.FOCAL_LENGTH_PIXELS)
+                : Double.NaN;
+
         double batteryVoltage = RobotController.getBatteryVoltage();
         var canStatus = RobotController.getCANStatus();
         double[] swerveAngles = swerve.getModuleAnglesDeg();
@@ -602,6 +610,8 @@ public class RobotContainer {
                 DriverStation.getEventName(),
                 // Camera
                 swerve.isCameraConnected(),
+                visionTagId,
+                visionDistanceM,
                 // CAN health
                 canStatus.percentBusUtilization,
                 canStatus.receiveErrorCount,

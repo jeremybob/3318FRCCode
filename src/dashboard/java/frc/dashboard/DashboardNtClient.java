@@ -92,6 +92,10 @@ public class DashboardNtClient implements AutoCloseable {
     // Camera / vision connection
     private final BooleanSubscriber cameraConnectedSub =
             table.getBooleanTopic("vision/camera_connected").subscribe(false);
+    private final IntegerSubscriber visionTagIdSub =
+            table.getIntegerTopic("vision/tag_id").subscribe(-1);
+    private final DoubleSubscriber visionDistanceSub =
+            table.getDoubleTopic("vision/distance_m").subscribe(Double.NaN);
 
     // CAN bus health
     private final DoubleSubscriber canBusUtilizationSub =
@@ -244,6 +248,8 @@ public class DashboardNtClient implements AutoCloseable {
                 eventNameSub.get(),
                 // Camera
                 cameraConnectedSub.get(),
+                (int) visionTagIdSub.get(),
+                visionDistanceSub.get(),
                 // CAN health
                 canBusUtilizationSub.get(),
                 canReceiveErrorCountSub.get(),
