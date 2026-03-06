@@ -118,37 +118,42 @@ public final class Constants {
     // =========================================================================
     // SWERVE DRIVE CONSTANTS
     //
-    // Hardware: SDS MK4 L2 modules, Falcon 500 motors (TalonFX), CTRE CANcoder, Pigeon 2
+    // Hardware: SDS MK4i L2 modules, Falcon 500 motors (TalonFX), CTRE CANcoder, Pigeon 2
     //
-    // GEAR RATIOS (from SDS documentation):
-    //   Drive:  6.75 : 1  (6.75 motor rotations per 1 wheel rotation)
-    //   Steer: 12.8  : 1  (12.8 motor rotations per 1 wheel rotation)
+    // GEAR RATIOS (from CTRE Tuner X measurement):
+    //   Drive:  6.746 : 1  (motor rotations per 1 wheel rotation)
+    //   Steer: 21.43  : 1  (motor rotations per 1 wheel rotation — MK4i, NOT MK4)
     //
     // WHEEL: 4-inch diameter billet wheel
     //
-    // PID SOURCE: CTRE official Phoenix 6 TunerConstants defaults for MK4/Falcon 500
-    //   with FusedCANcoder, validated across multiple competition teams (364, 6328, etc.)
+    // PID SOURCE: CTRE Tuner X generated TunerConstants for this specific robot
     // =========================================================================
     public static final class Swerve {
 
         // ---- Physical dimensions ----
-        // Robot frame is 27" × 27" (686mm × 686mm).
-        // SDS MK4 modules: wheel center is approximately 2.625" inboard from the
-        // outer frame rail. Track/wheelbase = 27" - 2 × 2.625" = 21.75" = 0.5525m.
-        // Source: SDS MK4 module drawing — wheel center offset from mounting face.
-        public static final double TRACK_WIDTH_M = Units.inchesToMeters(21.75);  // 0.5525 m
+        // Module positions from CTRE Tuner X: 11 inches from center in each direction.
+        // Track width = 22 inches, wheelbase = 22 inches.
+        public static final double TRACK_WIDTH_M = Units.inchesToMeters(22.0);   // 0.5588 m
 
         // Distance between the FRONT and BACK wheel centers (meters)
-        public static final double WHEEL_BASE_M = Units.inchesToMeters(21.75);   // 0.5525 m
+        public static final double WHEEL_BASE_M = Units.inchesToMeters(22.0);    // 0.5588 m
 
         // ---- Wheel & gear math ----
         // 4-inch wheel = 0.1016 m diameter
         public static final double WHEEL_DIAMETER_M     = Units.inchesToMeters(4.0);
         public static final double WHEEL_CIRCUMFERENCE_M = Math.PI * WHEEL_DIAMETER_M; // ~0.319 m
 
-        // MK4 L2 gear ratios from the SDS datasheet
-        public static final double DRIVE_GEAR_RATIO = 6.75;  // motor turns per 1 wheel turn
-        public static final double STEER_GEAR_RATIO = 12.8;  // motor turns per 1 wheel turn
+        // Gear ratios from CTRE Tuner X measurement on this robot.
+        // Drive: ~6.75 (SDS MK4i L2 spec = 6.75, Tuner X measured 6.746).
+        // Steer: 21.43 (SDS MK4i spec — NOT 12.8 which is the MK4 non-i).
+        //   Getting the steer ratio wrong causes the RotorToSensorRatio to be
+        //   wrong, which makes the PID loop see the wrong position and oscillate.
+        public static final double DRIVE_GEAR_RATIO = 6.746031746031747;  // motor turns per 1 wheel turn
+        public static final double STEER_GEAR_RATIO = 21.428571428571427; // motor turns per 1 wheel turn
+
+        // Every 1 rotation of the azimuth results in this many drive motor turns.
+        // Used to compensate drive encoder readings during steering motion.
+        public static final double COUPLE_RATIO = 3.5714285714285716;
 
         // ---- Speed limits ----
         // Falcon 500 free speed ≈ 6380 RPM = 106.33 RPS
@@ -188,10 +193,12 @@ public final class Constants {
         // CALIBRATE BEFORE DRIVING! These MUST be set per-robot.
         // Use the "CalibrateCANcoders" auto in SmartDashboard to print current
         // raw readings — then negate and paste here.
-        public static final double FL_CANCODER_OFFSET_ROT = 0.006104;  // CALIBRATE ME
-        public static final double FR_CANCODER_OFFSET_ROT = -0.439209;  // CALIBRATE ME
-        public static final double BL_CANCODER_OFFSET_ROT = 0.329346;  // CALIBRATE ME
-        public static final double BR_CANCODER_OFFSET_ROT = -0.438477;  // CALIBRATE ME
+        // Values from CTRE Tuner X calibration (TunerConstants).
+        // Re-run CalibrateCANcodersCommand if wheels have been removed/reinstalled.
+        public static final double FL_CANCODER_OFFSET_ROT = -0.35888671875;
+        public static final double FR_CANCODER_OFFSET_ROT =  0.197021484375;
+        public static final double BL_CANCODER_OFFSET_ROT = -0.03271484375;
+        public static final double BR_CANCODER_OFFSET_ROT =  0.36474609375;
 
         // ---- CANcoder direction ----
         // Calibration only sets the zero point. If a module runs away while
@@ -202,17 +209,18 @@ public final class Constants {
         public static final boolean BR_CANCODER_CLOCKWISE_POSITIVE = false;
 
         // ---- Motor inversion ----
-        // Keep these explicit per module so wiring / gearbox swaps do not require code spelunking.
-        // One wrong inversion here can make the module "fight itself" and chatter at enable.
+        // From CTRE Tuner X TunerConstants: left drive NOT inverted, right drive inverted.
+        // ALL steer motors inverted (MK4i bevel gear flips steer direction).
+        // Getting these wrong causes the module to "fight itself" and oscillate wildly.
         public static final boolean FL_DRIVE_INVERTED = false;
-        public static final boolean FR_DRIVE_INVERTED = false;
+        public static final boolean FR_DRIVE_INVERTED = true;   // right side inverted
         public static final boolean BL_DRIVE_INVERTED = false;
-        public static final boolean BR_DRIVE_INVERTED = false;
+        public static final boolean BR_DRIVE_INVERTED = true;   // right side inverted
 
-        public static final boolean FL_STEER_INVERTED = false;
-        public static final boolean FR_STEER_INVERTED = false;
-        public static final boolean BL_STEER_INVERTED = false;
-        public static final boolean BR_STEER_INVERTED = false;
+        public static final boolean FL_STEER_INVERTED = true;   // MK4i: all steer inverted
+        public static final boolean FR_STEER_INVERTED = true;   // MK4i: all steer inverted
+        public static final boolean BL_STEER_INVERTED = true;   // MK4i: all steer inverted
+        public static final boolean BR_STEER_INVERTED = true;   // MK4i: all steer inverted
 
         // ---- Drive motor PID (VelocityVoltage, Phoenix 6) ----
         // Source: CTRE official Phoenix 6 TunerConstants.java (driveGains).
@@ -236,7 +244,7 @@ public final class Constants {
         public static final double STEER_kD_PRO = 0.5;         // V/(rotation/sec)
         public static final double STEER_kD_NON_PRO = 0.2;     // moderate damping without matching fused-sensor aggressiveness
         public static final double STEER_kS = 0.1;             // Volts
-        public static final double STEER_kV = 1.91;            // V/RPS
+        public static final double STEER_kV = 2.66;            // V/RPS (from Tuner X measurement)
 
         // ---- Low-speed anti-jitter ----
         // Hold the last steer angle when the requested wheel speed is tiny so

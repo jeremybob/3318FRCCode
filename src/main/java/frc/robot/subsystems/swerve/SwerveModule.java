@@ -257,7 +257,12 @@ public class SwerveModule {
 
     public SwerveModulePosition getPosition() {
         double motorRotations  = drivePosition.refresh().getValueAsDouble();
-        double wheelRotations  = motorRotations / Constants.Swerve.DRIVE_GEAR_RATIO;
+        // Compensate for coupling: steering the module causes the drive motor
+        // to spin slightly. Subtract that parasitic motion for accurate odometry.
+        double steerRotations  = cancoderPosition.refresh().getValueAsDouble();
+        double coupledMotorRot = steerRotations * Constants.Swerve.COUPLE_RATIO;
+        double correctedMotorRot = motorRotations - coupledMotorRot;
+        double wheelRotations  = correctedMotorRot / Constants.Swerve.DRIVE_GEAR_RATIO;
         double distanceMeters  = wheelRotations * Constants.Swerve.WHEEL_CIRCUMFERENCE_M;
         return new SwerveModulePosition(distanceMeters, getAbsoluteAngle());
     }

@@ -226,6 +226,11 @@ public class SwerveSubsystem extends SubsystemBase {
     }
 
     private void setModuleStates(ChassisSpeeds speeds) {
+        // Discretize corrects for the fact that the robot is moving while turning.
+        // Without this, translating while rotating causes drift perpendicular to
+        // the direction of travel (a well-known second-order kinematics issue).
+        speeds = ChassisSpeeds.discretize(speeds, 0.02);
+
         SwerveModuleState[] states = kinematics.toSwerveModuleStates(speeds);
         SwerveDriveKinematics.desaturateWheelSpeeds(states, Constants.Swerve.MAX_TRANSLATION_MPS);
         for (int i = 0; i < modules.length; i++) {
