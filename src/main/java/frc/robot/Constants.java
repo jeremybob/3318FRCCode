@@ -188,10 +188,18 @@ public final class Constants {
         // CALIBRATE BEFORE DRIVING! These MUST be set per-robot.
         // Use the "CalibrateCANcoders" auto in SmartDashboard to print current
         // raw readings — then negate and paste here.
-        public static final double FL_CANCODER_OFFSET_ROT = -0.364258;  // CALIBRATE ME
-        public static final double FR_CANCODER_OFFSET_ROT = -0.364258;  // CALIBRATE ME
-        public static final double BL_CANCODER_OFFSET_ROT = -0.362305;  // CALIBRATE ME
-        public static final double BR_CANCODER_OFFSET_ROT = -0.197266;  // CALIBRATE ME
+        public static final double FL_CANCODER_OFFSET_ROT = 0.006104;  // CALIBRATE ME
+        public static final double FR_CANCODER_OFFSET_ROT = -0.439209;  // CALIBRATE ME
+        public static final double BL_CANCODER_OFFSET_ROT = 0.329346;  // CALIBRATE ME
+        public static final double BR_CANCODER_OFFSET_ROT = -0.438477;  // CALIBRATE ME
+
+        // ---- CANcoder direction ----
+        // Calibration only sets the zero point. If a module runs away while
+        // steering, the encoder sign is wrong for that module's mounting.
+        public static final boolean FL_CANCODER_CLOCKWISE_POSITIVE = false;
+        public static final boolean FR_CANCODER_CLOCKWISE_POSITIVE = false;
+        public static final boolean BL_CANCODER_CLOCKWISE_POSITIVE = false;
+        public static final boolean BR_CANCODER_CLOCKWISE_POSITIVE = false;
 
         // ---- Motor inversion ----
         // Keep these explicit per module so wiring / gearbox swaps do not require code spelunking.

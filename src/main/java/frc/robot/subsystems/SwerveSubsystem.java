@@ -45,6 +45,7 @@ public class SwerveSubsystem extends SubsystemBase {
             Constants.CAN.FRONT_LEFT_STEER,
             Constants.CAN.FRONT_LEFT_CANCODER,
             Constants.Swerve.FL_CANCODER_OFFSET_ROT,
+            Constants.Swerve.FL_CANCODER_CLOCKWISE_POSITIVE,
             Constants.Swerve.FL_DRIVE_INVERTED,
             Constants.Swerve.FL_STEER_INVERTED,
             "FL");
@@ -54,6 +55,7 @@ public class SwerveSubsystem extends SubsystemBase {
             Constants.CAN.FRONT_RIGHT_STEER,
             Constants.CAN.FRONT_RIGHT_CANCODER,
             Constants.Swerve.FR_CANCODER_OFFSET_ROT,
+            Constants.Swerve.FR_CANCODER_CLOCKWISE_POSITIVE,
             Constants.Swerve.FR_DRIVE_INVERTED,
             Constants.Swerve.FR_STEER_INVERTED,
             "FR");
@@ -63,6 +65,7 @@ public class SwerveSubsystem extends SubsystemBase {
             Constants.CAN.BACK_LEFT_STEER,
             Constants.CAN.BACK_LEFT_CANCODER,
             Constants.Swerve.BL_CANCODER_OFFSET_ROT,
+            Constants.Swerve.BL_CANCODER_CLOCKWISE_POSITIVE,
             Constants.Swerve.BL_DRIVE_INVERTED,
             Constants.Swerve.BL_STEER_INVERTED,
             "BL");
@@ -72,6 +75,7 @@ public class SwerveSubsystem extends SubsystemBase {
             Constants.CAN.BACK_RIGHT_STEER,
             Constants.CAN.BACK_RIGHT_CANCODER,
             Constants.Swerve.BR_CANCODER_OFFSET_ROT,
+            Constants.Swerve.BR_CANCODER_CLOCKWISE_POSITIVE,
             Constants.Swerve.BR_DRIVE_INVERTED,
             Constants.Swerve.BR_STEER_INVERTED,
             "BR");
@@ -181,6 +185,13 @@ public class SwerveSubsystem extends SubsystemBase {
 
     public void drive(double xVelocity, double yVelocity,
                       double rotationalVelocity, boolean fieldRelative) {
+        if (Math.abs(xVelocity) < 1e-3
+                && Math.abs(yVelocity) < 1e-3
+                && Math.abs(rotationalVelocity) < 1e-3) {
+            stop();
+            return;
+        }
+
         ChassisSpeeds speeds;
         if (fieldRelative) {
             speeds = ChassisSpeeds.fromFieldRelativeSpeeds(

@@ -79,12 +79,14 @@ public class SwerveModule {
     //   cancoderId     - CAN ID of the CANcoder on this corner
     //   cancoderOffsetRot - The offset (in rotations) to make "0" = forward
     //                       Find this in Phoenix Tuner X (see Constants.java notes)
+    //   cancoderClockwisePositive - true if clockwise hand motion increases the CANcoder reading
     //   driveInverted  - true if positive drive command spins the wheel backward
     //   steerInverted  - true if positive steer command moves opposite the CANcoder
     //   moduleName     - Human-readable name for diagnostics (e.g. "FL")
     // --------------------------------------------------------------------------
     public SwerveModule(int driveId, int steerId, int cancoderId,
                         double cancoderOffsetRot,
+                        boolean cancoderClockwisePositive,
                         boolean driveInverted,
                         boolean steerInverted,
                         String moduleName) {
@@ -100,7 +102,7 @@ public class SwerveModule {
         CANcoderConfiguration ccfg = new CANcoderConfiguration();
         ccfg.MagnetSensor.AbsoluteSensorDiscontinuityPoint = 0.5;
         ccfg.MagnetSensor.MagnetOffset = cancoderOffsetRot;
-        ccfg.MagnetSensor.SensorDirection = SensorDirectionValue.CounterClockwise_Positive;
+        ccfg.MagnetSensor.SensorDirection = sensorDirection(cancoderClockwisePositive);
         applyWithRetry(() -> cancoder.getConfigurator().apply(ccfg),
                 "CANcoder config (id=" + cancoderId + ")");
 
@@ -285,5 +287,11 @@ public class SwerveModule {
         return inverted
                 ? InvertedValue.Clockwise_Positive
                 : InvertedValue.CounterClockwise_Positive;
+    }
+
+    private static SensorDirectionValue sensorDirection(boolean clockwisePositive) {
+        return clockwisePositive
+                ? SensorDirectionValue.Clockwise_Positive
+                : SensorDirectionValue.CounterClockwise_Positive;
     }
 }
