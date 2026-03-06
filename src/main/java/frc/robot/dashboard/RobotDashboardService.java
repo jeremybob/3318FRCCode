@@ -6,7 +6,9 @@ import edu.wpi.first.networktables.IntegerPublisher;
 import edu.wpi.first.networktables.IntegerSubscriber;
 import edu.wpi.first.networktables.NetworkTable;
 import edu.wpi.first.networktables.NetworkTableInstance;
+import edu.wpi.first.networktables.StringArrayPublisher;
 import edu.wpi.first.networktables.StringPublisher;
+import edu.wpi.first.networktables.StringSubscriber;
 
 public class RobotDashboardService {
 
@@ -17,6 +19,7 @@ public class RobotDashboardService {
         void scheduleAlignAndShoot();
         void scheduleFallbackShoot();
         void scheduleLevel1Climb();
+        void selectAutoByName(String autoName);
     }
 
     private static final String CONTRACT_VERSION = "2026.8.0";
@@ -73,6 +76,8 @@ public class RobotDashboardService {
 
     // Auto selection & execution
     private final StringPublisher selectedAutoNamePub;
+    private final StringPublisher selectedAutoSourcePub;
+    private final StringArrayPublisher autoOptionsPub;
     private final BooleanPublisher autoCommandRunningPub;
 
     // Match info
@@ -136,6 +141,8 @@ public class RobotDashboardService {
     private final IntegerSubscriber alignShootCmdSub;
     private final IntegerSubscriber fallbackShootCmdSub;
     private final IntegerSubscriber level1ClimbCmdSub;
+    private final StringSubscriber selectAutoNameCmdSub;
+    private final IntegerSubscriber selectAutoCmdSub;
 
     private long zeroHeadingSeqSeen = 0;
     private long stopDriveSeqSeen = 0;
@@ -143,6 +150,7 @@ public class RobotDashboardService {
     private long alignShootSeqSeen = 0;
     private long fallbackShootSeqSeen = 0;
     private long level1ClimbSeqSeen = 0;
+    private long selectAutoSeqSeen = 0;
 
     public RobotDashboardService(Actions actions) {
         this(actions, NetworkTableInstance.getDefault());
@@ -203,6 +211,8 @@ public class RobotDashboardService {
 
         // Auto selection & execution
         selectedAutoNamePub = table.getStringTopic("auto/selected_name").publish();
+        selectedAutoSourcePub = table.getStringTopic("auto/selected_source").publish();
+        autoOptionsPub = table.getStringArrayTopic("auto/options").publish();
         autoCommandRunningPub = table.getBooleanTopic("auto/command_running").publish();
 
         // Match info
@@ -266,6 +276,8 @@ public class RobotDashboardService {
         alignShootCmdSub = table.getIntegerTopic("cmd/align_shoot_seq").subscribe(0);
         fallbackShootCmdSub = table.getIntegerTopic("cmd/fallback_shoot_seq").subscribe(0);
         level1ClimbCmdSub = table.getIntegerTopic("cmd/level1_climb_seq").subscribe(0);
+        selectAutoNameCmdSub = table.getStringTopic("cmd/select_auto_name").subscribe("");
+        selectAutoCmdSub = table.getIntegerTopic("cmd/select_auto_seq").subscribe(0);
 
         // Ignore any stale sequence values already present when robot code starts.
         zeroHeadingSeqSeen = zeroHeadingCmdSub.get();
@@ -274,6 +286,7 @@ public class RobotDashboardService {
         alignShootSeqSeen = alignShootCmdSub.get();
         fallbackShootSeqSeen = fallbackShootCmdSub.get();
         level1ClimbSeqSeen = level1ClimbCmdSub.get();
+        selectAutoSeqSeen = selectAutoCmdSub.get();
     }
 
     public void periodic(DashboardSnapshot snapshot) {
@@ -332,6 +345,8 @@ public class RobotDashboardService {
 
         // Auto selection & execution
         selectedAutoNamePub.set(snapshot.selectedAutoName());
+        selectedAutoSourcePub.set(snapshot.selectedAutoSource());
+        autoOptionsPub.set(snapshot.autoOptions());
         autoCommandRunningPub.set(snapshot.autoCommandRunning());
 
         // Match info
@@ -443,6 +458,14 @@ public class RobotDashboardService {
                 teleopEnabled && snapshot.climberArmed(),
                 "Requires enabled teleop and climber arm gate",
                 snapshot.timestampSec());
+
+        selectAutoSeqSeen = runAutoSelectionIfNew(
+                snapshot,
+                selectAutoCmdSub,
+                selectAutoNameCmdSub,
+                selectAutoSeqSeen,
+                snapshot.timestampSec(),
+                disabled);
     }
 
     private long runCommandIfNew(
@@ -465,6 +488,51 @@ public class RobotDashboardService {
             publishAck(commandName, "REJECTED", seq, rejectedReason, timestampSec);
         }
         return seq;
+    }
+
+    private long runAutoSelectionIfNew(
+            DashboardSnapshot snapshot,
+            IntegerSubscriber sequenceSubscriber,
+            StringSubscriber nameSubscriber,
+            long lastSeen,
+            double timestampSec,
+            boolean disabled) {
+        long seq = sequenceSubscriber.get();
+        if (seq <= lastSeen) {
+            return lastSeen;
+        }
+
+        String requestedAutoName = nameSubscriber.get();
+        String normalizedAutoName = requestedAutoName == null ? "" : requestedAutoName.trim();
+        if (!disabled) {
+            publishAck("select_auto", "REJECTED", seq, "Only allowed while robot is disabled", timestampSec);
+            return seq;
+        }
+        if (normalizedAutoName.isEmpty()) {
+            publishAck("select_auto", "REJECTED", seq, "No auto name provided", timestampSec);
+            return seq;
+        }
+        if (!containsAutoOption(snapshot.autoOptions(), normalizedAutoName)) {
+            publishAck("select_auto", "REJECTED", seq, "Unknown auto: " + normalizedAutoName, timestampSec);
+            return seq;
+        }
+
+        actions.selectAutoByName(normalizedAutoName);
+        publishAck("select_auto", "OK", seq, "Selected " + normalizedAutoName, timestampSec);
+        return seq;
+    }
+
+    private static boolean containsAutoOption(String[] autoOptions, String requestedAutoName) {
+        if (autoOptions == null) {
+            return false;
+        }
+
+        for (String autoOption : autoOptions) {
+            if (requestedAutoName.equals(autoOption)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void publishAck(

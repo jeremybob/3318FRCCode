@@ -23,6 +23,7 @@ import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.JButton;
 import javax.swing.JComponent;
+import javax.swing.JComboBox;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
@@ -89,7 +90,11 @@ public class DashboardFrame extends JFrame {
 
     // Driver tab: auto selector & execution
     private final JLabel autoSelectorLabel = new JLabel("Auto: --");
+    private final JLabel autoSourceLabel = new JLabel("Source: --");
     private final JLabel autoExecutionLabel = new JLabel("Status: Idle");
+    private final JLabel autoChooserStatusLabel = new JLabel("Chooser: --");
+    private JComboBox<String> autoChooserCombo;
+    private JButton autoApplyButton;
 
     // Driver tab: pre-match checklist
     private final JLabel preMatchBatteryLabel = createChecklistLabel("Battery");
@@ -170,6 +175,12 @@ public class DashboardFrame extends JFrame {
     private boolean lastReady = false;
     private boolean controlEventsInitialized = false;
     private long lastControlEventSeqLogged = 0;
+    private boolean autoSelectionEventsInitialized = false;
+    private String lastSelectedAutoName = "";
+    private String lastSelectedAutoSource = "";
+    private boolean updatingAutoChooserModel = false;
+    private String pendingAutoSelectionName;
+    private String lastRobotSelectedAutoNameForChooser;
 
     public DashboardFrame(DashboardNtClient client) {
         super("3318 Competition Dashboard");
@@ -253,7 +264,9 @@ public class DashboardFrame extends JFrame {
         styleMetricLabel(readyReasonLabel);
         styleMetricLabel(nextActionLabel);
         styleMetricLabel(autoSelectorLabel);
+        styleMetricLabel(autoSourceLabel);
         styleMetricLabel(autoExecutionLabel);
+        styleCompactLabel(autoChooserStatusLabel);
         styleCompactLabel(alignPhaseLabel);
         styleCompactLabel(yawLabel);
         styleCompactLabel(pitchLabel);
@@ -265,7 +278,7 @@ public class DashboardFrame extends JFrame {
         side.setLayout(new BoxLayout(side, BoxLayout.Y_AXIS));
         side.setBackground(BG);
 
-        addSideCard(side, wrapLabelCard("Auto Selection", autoSelectorLabel, autoExecutionLabel));
+        addSideCard(side, buildAutoSelectionCard());
         addSideCard(side, buildPreMatchChecklistCard());
         addSideCard(side, wrapLabelCard("Shot Readiness", readyLabel, readyReasonLabel, nextActionLabel));
         addSideCard(side, buildChecklistCard());
@@ -422,6 +435,55 @@ public class DashboardFrame extends JFrame {
         panel.add(visionLabel);
         panel.add(abortLabel);
         return wrapCard("Align Pipeline", panel);
+    }
+
+    private JPanel buildAutoSelectionCard() {
+        JPanel panel = new JPanel();
+        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+        panel.setBackground(CARD);
+
+        autoChooserCombo = new JComboBox<>();
+        autoChooserCombo.setFont(ACTION_FONT);
+        autoChooserCombo.setBackground(CARD_ALT);
+        autoChooserCombo.setForeground(TEXT);
+        autoChooserCombo.setFocusable(false);
+        autoChooserCombo.addActionListener(e -> {
+            if (updatingAutoChooserModel) {
+                return;
+            }
+            Object selectedItem = autoChooserCombo.getSelectedItem();
+            pendingAutoSelectionName = selectedItem == null ? null : selectedItem.toString();
+        });
+
+        autoApplyButton = new JButton("Apply");
+        autoApplyButton.setFocusPainted(false);
+        autoApplyButton.setFont(ACTION_FONT);
+        autoApplyButton.setBackground(BUTTON_ACTIVE);
+        autoApplyButton.setForeground(TEXT);
+        autoApplyButton.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
+        autoApplyButton.addActionListener(e -> {
+            if (pendingAutoSelectionName == null || pendingAutoSelectionName.isBlank()) {
+                return;
+            }
+            client.sendAutoSelection(pendingAutoSelectionName);
+        });
+
+        JPanel controls = new JPanel(new GridLayout(1, 2, 8, 0));
+        controls.setBackground(CARD);
+        controls.add(autoChooserCombo);
+        controls.add(autoApplyButton);
+
+        panel.add(autoSelectorLabel);
+        panel.add(Box.createVerticalStrut(4));
+        panel.add(autoSourceLabel);
+        panel.add(Box.createVerticalStrut(4));
+        panel.add(autoExecutionLabel);
+        panel.add(Box.createVerticalStrut(4));
+        panel.add(autoChooserStatusLabel);
+        panel.add(Box.createVerticalStrut(10));
+        panel.add(controls);
+
+        return wrapCard("Auto Selection", panel);
     }
 
     private JPanel buildDriverActionCard() {
@@ -597,25 +659,7 @@ public class DashboardFrame extends JFrame {
         updateMatchInfoLabel(data);
 
         // Auto selector & execution (Driver tab)
-        String autoName = sanitize(data.selectedAutoName());
-        autoSelectorLabel.setText("Auto: " + autoName);
-        if ("Do Nothing".equals(data.selectedAutoName())) {
-            autoSelectorLabel.setForeground(WARN);
-        } else if ("--".equals(autoName)) {
-            autoSelectorLabel.setForeground(BAD);
-        } else {
-            autoSelectorLabel.setForeground(OK);
-        }
-        if (data.autoCommandRunning()) {
-            autoExecutionLabel.setText("Status: RUNNING");
-            autoExecutionLabel.setForeground(OK);
-        } else if ("AUTONOMOUS".equals(data.mode()) && data.enabled()) {
-            autoExecutionLabel.setText("Status: FINISHED");
-            autoExecutionLabel.setForeground(MUTED);
-        } else {
-            autoExecutionLabel.setText("Status: Idle");
-            autoExecutionLabel.setForeground(MUTED);
-        }
+        updateAutoSelectionCard(data);
 
         // Pre-match checklist
         updateChecklist(preMatchBatteryLabel, "Battery",
@@ -814,6 +858,42 @@ public class DashboardFrame extends JFrame {
         shooterTempLabel.setForeground(tempColor(maxShooterTemp));
     }
 
+    private void updateAutoSelectionCard(DashboardData data) {
+        String selectedAutoName = sanitize(data.selectedAutoName());
+        autoSelectorLabel.setText("Auto: " + selectedAutoName);
+        if ("Do Nothing".equals(data.selectedAutoName())) {
+            autoSelectorLabel.setForeground(WARN);
+        } else if ("--".equals(selectedAutoName)) {
+            autoSelectorLabel.setForeground(BAD);
+        } else {
+            autoSelectorLabel.setForeground(OK);
+        }
+
+        String source = formatAutoSource(data.selectedAutoSource());
+        autoSourceLabel.setText("Source: " + source);
+        if ("CUSTOM DASHBOARD".equals(data.selectedAutoSource())) {
+            autoSourceLabel.setForeground(INFO);
+        } else if ("SMARTDASHBOARD".equals(data.selectedAutoSource())) {
+            autoSourceLabel.setForeground(OK);
+        } else {
+            autoSourceLabel.setForeground(MUTED);
+        }
+
+        if (data.autoCommandRunning()) {
+            autoExecutionLabel.setText("Status: RUNNING");
+            autoExecutionLabel.setForeground(OK);
+        } else if ("AUTONOMOUS".equals(data.mode()) && data.enabled()) {
+            autoExecutionLabel.setText("Status: FINISHED");
+            autoExecutionLabel.setForeground(MUTED);
+        } else {
+            autoExecutionLabel.setText("Status: Idle");
+            autoExecutionLabel.setForeground(MUTED);
+        }
+
+        syncAutoChooserModel(data);
+        updateAutoChooserControls(data, selectedAutoName);
+    }
+
     private static Color tempColor(double tempC) {
         if (tempC >= TEMP_CRITICAL_C) return BAD;
         if (tempC >= TEMP_WARN_C) return WARN;
@@ -977,6 +1057,19 @@ public class DashboardFrame extends JFrame {
                     : "Shot readiness dropped: " + sanitize(data.readyReason()));
         }
 
+        String selectedAutoName = sanitize(data.selectedAutoName());
+        String selectedAutoSource = formatAutoSource(data.selectedAutoSource());
+        if (!autoSelectionEventsInitialized) {
+            autoSelectionEventsInitialized = true;
+            lastSelectedAutoName = selectedAutoName;
+            lastSelectedAutoSource = selectedAutoSource;
+        } else if (!selectedAutoName.equals(lastSelectedAutoName)
+                || !selectedAutoSource.equals(lastSelectedAutoSource)) {
+            lastSelectedAutoName = selectedAutoName;
+            lastSelectedAutoSource = selectedAutoSource;
+            appendEvent("Auto selected: " + selectedAutoName + " via " + selectedAutoSource);
+        }
+
         if (data.ackSeq() > lastAckSeqLogged) {
             lastAckSeqLogged = data.ackSeq();
             appendEvent("Command ack: " + sanitize(data.ackLastCommand())
@@ -1009,7 +1102,9 @@ public class DashboardFrame extends JFrame {
                 .append(" brownout=").append(data.isBrownout())
                 .append(" alert=").append(data.brownoutAlert()).append('\n');
         sb.append("Auto: '").append(sanitize(data.selectedAutoName()))
-                .append("' running=").append(data.autoCommandRunning()).append('\n');
+                .append("' source='").append(formatAutoSource(data.selectedAutoSource()))
+                .append("' options=[").append(joinAutoOptions(data.autoOptions()))
+                .append("] running=").append(data.autoCommandRunning()).append('\n');
         sb.append("Match: #").append(data.matchNumber())
                 .append(" event='").append(sanitize(data.eventName())).append("'\n");
         sb.append("Camera: connected=").append(data.cameraConnected()).append('\n');
@@ -1139,6 +1234,13 @@ public class DashboardFrame extends JFrame {
                 statusFromBoolean(connected, liveTelemetry, data.cameraConnected(), "WARN"),
                 "USB camera (C920)",
                 "connected=" + data.cameraConnected());
+        appendDeviceLine(
+                sb,
+                statusFromBoolean(connected, liveTelemetry, data.autoOptions().length > 0, "CHECK"),
+                "Auto selection",
+                "selected=" + sanitize(data.selectedAutoName())
+                        + " source=" + formatAutoSource(data.selectedAutoSource())
+                        + " options=" + joinAutoOptions(data.autoOptions()));
         sb.append('\n');
 
         sb.append("[Swerve]\n");
@@ -1341,12 +1443,178 @@ public class DashboardFrame extends JFrame {
         return value == null || value.isBlank() ? "--" : value;
     }
 
+    private static String formatAutoSource(String value) {
+        if (value == null || value.isBlank()) {
+            return "--";
+        }
+        return switch (value) {
+            case "CUSTOM DASHBOARD" -> "Custom Dashboard";
+            case "SMARTDASHBOARD" -> "SmartDashboard";
+            case "DEFAULT" -> "Default";
+            default -> value;
+        };
+    }
+
+    private static String joinAutoOptions(String[] autoOptions) {
+        if (autoOptions == null || autoOptions.length == 0) {
+            return "--";
+        }
+        return String.join(", ", autoOptions);
+    }
+
     private static String formatMaybe(double value) {
         return Double.isFinite(value) ? ONE_DECIMAL.format(value) : "--";
     }
 
     private static String yesNo(boolean value) {
         return value ? "YES" : "NO";
+    }
+
+    private void syncAutoChooserModel(DashboardData data) {
+        if (autoChooserCombo == null) {
+            return;
+        }
+
+        String[] autoOptions = data.autoOptions();
+        if (autoOptions == null) {
+            autoOptions = new String[0];
+        }
+
+        String currentSelection = comboSelection();
+        boolean optionsChanged = autoChooserCombo.getItemCount() != autoOptions.length;
+        if (!optionsChanged) {
+            for (int i = 0; i < autoOptions.length; i++) {
+                if (!autoOptions[i].equals(autoChooserCombo.getItemAt(i))) {
+                    optionsChanged = true;
+                    break;
+                }
+            }
+        }
+
+        if (optionsChanged) {
+            updatingAutoChooserModel = true;
+            autoChooserCombo.removeAllItems();
+            for (String autoOption : autoOptions) {
+                autoChooserCombo.addItem(autoOption);
+            }
+            updatingAutoChooserModel = false;
+        }
+
+        String selectedAutoName = sanitize(data.selectedAutoName());
+        if (pendingAutoSelectionName == null
+                || pendingAutoSelectionName.isBlank()
+                || pendingAutoSelectionName.equals(lastRobotSelectedAutoNameForChooser)) {
+            pendingAutoSelectionName = selectedAutoName;
+        }
+
+        if (!containsAutoOption(autoOptions, pendingAutoSelectionName)) {
+            pendingAutoSelectionName = containsAutoOption(autoOptions, selectedAutoName)
+                    ? selectedAutoName
+                    : (autoOptions.length > 0 ? autoOptions[0] : null);
+        }
+
+        String desiredSelection = pendingAutoSelectionName;
+        if (desiredSelection == null && autoOptions.length > 0) {
+            desiredSelection = autoOptions[0];
+        }
+
+        if (desiredSelection != null && !desiredSelection.equals(currentSelection)) {
+            updatingAutoChooserModel = true;
+            autoChooserCombo.setSelectedItem(desiredSelection);
+            updatingAutoChooserModel = false;
+        }
+
+        lastRobotSelectedAutoNameForChooser = selectedAutoName;
+    }
+
+    private void updateAutoChooserControls(DashboardData data, String selectedAutoName) {
+        boolean connected = data.connected();
+        boolean disabled = "DISABLED".equals(data.mode());
+        String[] autoOptions = data.autoOptions();
+        boolean hasOptions = autoOptions != null && autoOptions.length > 0;
+        boolean pendingValid = pendingAutoSelectionName != null && !pendingAutoSelectionName.isBlank();
+        boolean hasPendingChange = pendingValid && !pendingAutoSelectionName.equals(selectedAutoName);
+
+        if (autoChooserCombo != null) {
+            autoChooserCombo.setEnabled(connected && disabled && hasOptions);
+            autoChooserCombo.setToolTipText(autoChooserTooltip(connected, disabled, hasOptions));
+        }
+
+        if (!connected) {
+            autoChooserStatusLabel.setText("Chooser: OFFLINE");
+            autoChooserStatusLabel.setForeground(BAD);
+        } else if (!hasOptions) {
+            autoChooserStatusLabel.setText("Chooser: Waiting for robot auto list");
+            autoChooserStatusLabel.setForeground(WARN);
+        } else if (!disabled) {
+            autoChooserStatusLabel.setText("Chooser: LOCKED while enabled");
+            autoChooserStatusLabel.setForeground(WARN);
+        } else if (hasPendingChange) {
+            autoChooserStatusLabel.setText("Chooser: Pending apply -> " + pendingAutoSelectionName);
+            autoChooserStatusLabel.setForeground(PENDING);
+        } else {
+            autoChooserStatusLabel.setText("Chooser: Synced and ready");
+            autoChooserStatusLabel.setForeground(OK);
+        }
+
+        setButtonState(
+                autoApplyButton,
+                connected && disabled && hasOptions && hasPendingChange,
+                "Apply the pending auto selection while disabled",
+                autoApplyTooltip(connected, disabled, hasOptions, hasPendingChange));
+    }
+
+    private String comboSelection() {
+        if (autoChooserCombo == null) {
+            return null;
+        }
+        Object selectedItem = autoChooserCombo.getSelectedItem();
+        return selectedItem == null ? null : selectedItem.toString();
+    }
+
+    private static boolean containsAutoOption(String[] autoOptions, String candidate) {
+        if (candidate == null || autoOptions == null) {
+            return false;
+        }
+        for (String autoOption : autoOptions) {
+            if (candidate.equals(autoOption)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static String autoChooserTooltip(boolean connected, boolean disabled, boolean hasOptions) {
+        if (!connected) {
+            return "No robot connection";
+        }
+        if (!hasOptions) {
+            return "Waiting for auto options from robot";
+        }
+        if (!disabled) {
+            return "Auto selection is only allowed while disabled";
+        }
+        return "Pick an autonomous routine";
+    }
+
+    private static String autoApplyTooltip(
+            boolean connected,
+            boolean disabled,
+            boolean hasOptions,
+            boolean hasPendingChange) {
+        if (!connected) {
+            return "No robot connection";
+        }
+        if (!hasOptions) {
+            return "Waiting for auto options from robot";
+        }
+        if (!disabled) {
+            return "Auto selection is only allowed while disabled";
+        }
+        if (!hasPendingChange) {
+            return "Pick a different auto to apply";
+        }
+        return "Send the selected auto to the robot";
     }
 
     private static String nextAction(DashboardData data) {
