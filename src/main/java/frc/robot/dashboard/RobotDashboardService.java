@@ -10,6 +10,9 @@ import edu.wpi.first.networktables.StringArrayPublisher;
 import edu.wpi.first.networktables.StringPublisher;
 import edu.wpi.first.networktables.StringSubscriber;
 
+import frc.robot.subsystems.swerve.SwerveCorner;
+import frc.robot.subsystems.swerve.SwerveValidationMode;
+
 public class RobotDashboardService {
 
     public interface Actions {
@@ -19,10 +22,13 @@ public class RobotDashboardService {
         void scheduleAlignAndShoot();
         void scheduleFallbackShoot();
         void scheduleLevel1Climb();
+        void scheduleCANcoderCalibration();
+        void requestSwerveValidation(String moduleName, String modeName);
+        void stopSwerveValidation();
         void selectAutoByName(String autoName);
     }
 
-    private static final String CONTRACT_VERSION = "2026.8.0";
+    private static final String CONTRACT_VERSION = "2026.9.0";
 
     private final Actions actions;
 
@@ -129,6 +135,18 @@ public class RobotDashboardService {
     private final DoublePublisher controlEventTimestampPub;
     private final StringPublisher controlEventMessagePub;
 
+    private final BooleanPublisher swerveValidationActivePub;
+    private final StringPublisher swerveValidationModuleTokenPub;
+    private final StringPublisher swerveValidationModuleDisplayPub;
+    private final StringPublisher swerveValidationModeTokenPub;
+    private final StringPublisher swerveValidationModeDisplayPub;
+    private final DoublePublisher swerveValidationDrivePercentPub;
+    private final DoublePublisher swerveValidationSteerPercentPub;
+    private final DoublePublisher swerveValidationStartAnglePub;
+    private final DoublePublisher swerveValidationAngleDeltaPub;
+    private final DoublePublisher swerveValidationStartCANcoderPub;
+    private final DoublePublisher swerveValidationCANcoderDeltaPub;
+
     private final StringPublisher lastCommandPub;
     private final StringPublisher lastStatusPub;
     private final IntegerPublisher lastSeqPub;
@@ -141,6 +159,11 @@ public class RobotDashboardService {
     private final IntegerSubscriber alignShootCmdSub;
     private final IntegerSubscriber fallbackShootCmdSub;
     private final IntegerSubscriber level1ClimbCmdSub;
+    private final IntegerSubscriber calibrateCANcodersCmdSub;
+    private final StringSubscriber swerveValidationModuleCmdSub;
+    private final StringSubscriber swerveValidationModeCmdSub;
+    private final IntegerSubscriber swerveValidationCmdSub;
+    private final IntegerSubscriber stopSwerveValidationCmdSub;
     private final StringSubscriber selectAutoNameCmdSub;
     private final IntegerSubscriber selectAutoCmdSub;
 
@@ -150,6 +173,9 @@ public class RobotDashboardService {
     private long alignShootSeqSeen = 0;
     private long fallbackShootSeqSeen = 0;
     private long level1ClimbSeqSeen = 0;
+    private long calibrateCANcodersSeqSeen = 0;
+    private long swerveValidationSeqSeen = 0;
+    private long stopSwerveValidationSeqSeen = 0;
     private long selectAutoSeqSeen = 0;
 
     public RobotDashboardService(Actions actions) {
@@ -264,6 +290,18 @@ public class RobotDashboardService {
         controlEventTimestampPub = table.getDoubleTopic("controls/last_event_timestamp_sec").publish();
         controlEventMessagePub = table.getStringTopic("controls/last_event_message").publish();
 
+        swerveValidationActivePub = table.getBooleanTopic("swerve/validation_active").publish();
+        swerveValidationModuleTokenPub = table.getStringTopic("swerve/validation_module_token").publish();
+        swerveValidationModuleDisplayPub = table.getStringTopic("swerve/validation_module_display").publish();
+        swerveValidationModeTokenPub = table.getStringTopic("swerve/validation_mode_token").publish();
+        swerveValidationModeDisplayPub = table.getStringTopic("swerve/validation_mode_display").publish();
+        swerveValidationDrivePercentPub = table.getDoubleTopic("swerve/validation_drive_percent").publish();
+        swerveValidationSteerPercentPub = table.getDoubleTopic("swerve/validation_steer_percent").publish();
+        swerveValidationStartAnglePub = table.getDoubleTopic("swerve/validation_start_angle_deg").publish();
+        swerveValidationAngleDeltaPub = table.getDoubleTopic("swerve/validation_angle_delta_deg").publish();
+        swerveValidationStartCANcoderPub = table.getDoubleTopic("swerve/validation_start_cancoder_rot").publish();
+        swerveValidationCANcoderDeltaPub = table.getDoubleTopic("swerve/validation_cancoder_delta_rot").publish();
+
         lastCommandPub = table.getStringTopic("ack/last_command").publish();
         lastStatusPub = table.getStringTopic("ack/last_status").publish();
         lastSeqPub = table.getIntegerTopic("ack/last_seq").publish();
@@ -276,6 +314,11 @@ public class RobotDashboardService {
         alignShootCmdSub = table.getIntegerTopic("cmd/align_shoot_seq").subscribe(0);
         fallbackShootCmdSub = table.getIntegerTopic("cmd/fallback_shoot_seq").subscribe(0);
         level1ClimbCmdSub = table.getIntegerTopic("cmd/level1_climb_seq").subscribe(0);
+        calibrateCANcodersCmdSub = table.getIntegerTopic("cmd/calibrate_cancoders_seq").subscribe(0);
+        swerveValidationModuleCmdSub = table.getStringTopic("cmd/swerve_validation_module").subscribe("");
+        swerveValidationModeCmdSub = table.getStringTopic("cmd/swerve_validation_mode").subscribe("");
+        swerveValidationCmdSub = table.getIntegerTopic("cmd/swerve_validation_seq").subscribe(0);
+        stopSwerveValidationCmdSub = table.getIntegerTopic("cmd/stop_swerve_validation_seq").subscribe(0);
         selectAutoNameCmdSub = table.getStringTopic("cmd/select_auto_name").subscribe("");
         selectAutoCmdSub = table.getIntegerTopic("cmd/select_auto_seq").subscribe(0);
 
@@ -286,6 +329,9 @@ public class RobotDashboardService {
         alignShootSeqSeen = alignShootCmdSub.get();
         fallbackShootSeqSeen = fallbackShootCmdSub.get();
         level1ClimbSeqSeen = level1ClimbCmdSub.get();
+        calibrateCANcodersSeqSeen = calibrateCANcodersCmdSub.get();
+        swerveValidationSeqSeen = swerveValidationCmdSub.get();
+        stopSwerveValidationSeqSeen = stopSwerveValidationCmdSub.get();
         selectAutoSeqSeen = selectAutoCmdSub.get();
     }
 
@@ -397,11 +443,25 @@ public class RobotDashboardService {
         controlEventSeqPub.set(snapshot.controlEventSeq());
         controlEventTimestampPub.set(snapshot.controlEventTimestampSec());
         controlEventMessagePub.set(snapshot.controlEventMessage());
+
+        swerveValidationActivePub.set(snapshot.swerveValidationActive());
+        swerveValidationModuleTokenPub.set(snapshot.swerveValidationModuleToken());
+        swerveValidationModuleDisplayPub.set(snapshot.swerveValidationModuleDisplayName());
+        swerveValidationModeTokenPub.set(snapshot.swerveValidationModeToken());
+        swerveValidationModeDisplayPub.set(snapshot.swerveValidationModeDisplayName());
+        swerveValidationDrivePercentPub.set(snapshot.swerveValidationDrivePercent());
+        swerveValidationSteerPercentPub.set(snapshot.swerveValidationSteerPercent());
+        swerveValidationStartAnglePub.set(snapshot.swerveValidationStartAngleDeg());
+        swerveValidationAngleDeltaPub.set(snapshot.swerveValidationAngleDeltaDeg());
+        swerveValidationStartCANcoderPub.set(snapshot.swerveValidationStartCANcoderRot());
+        swerveValidationCANcoderDeltaPub.set(snapshot.swerveValidationCANcoderDeltaRot());
     }
 
     private void processCommandRequests(DashboardSnapshot snapshot) {
         boolean disabled = "DISABLED".equals(snapshot.robotMode());
         boolean teleopEnabled = snapshot.enabled() && "TELEOP".equals(snapshot.robotMode());
+        boolean validationEnabled = snapshot.enabled()
+                && ("TELEOP".equals(snapshot.robotMode()) || "TEST".equals(snapshot.robotMode()));
         boolean intakeHomeEnabled = snapshot.enabled()
                 && ("TELEOP".equals(snapshot.robotMode()) || "TEST".equals(snapshot.robotMode()));
 
@@ -459,6 +519,33 @@ public class RobotDashboardService {
                 "Requires enabled teleop and climber arm gate",
                 snapshot.timestampSec());
 
+        calibrateCANcodersSeqSeen = runCommandIfNew(
+                calibrateCANcodersCmdSub,
+                calibrateCANcodersSeqSeen,
+                "calibrate_cancoders",
+                actions::scheduleCANcoderCalibration,
+                true,
+                "Accepted",
+                snapshot.timestampSec());
+
+        swerveValidationSeqSeen = runSwerveValidationIfNew(
+                snapshot,
+                swerveValidationCmdSub,
+                swerveValidationModuleCmdSub,
+                swerveValidationModeCmdSub,
+                swerveValidationSeqSeen,
+                snapshot.timestampSec(),
+                validationEnabled);
+
+        stopSwerveValidationSeqSeen = runCommandIfNew(
+                stopSwerveValidationCmdSub,
+                stopSwerveValidationSeqSeen,
+                "stop_swerve_validation",
+                actions::stopSwerveValidation,
+                true,
+                "Accepted",
+                snapshot.timestampSec());
+
         selectAutoSeqSeen = runAutoSelectionIfNew(
                 snapshot,
                 selectAutoCmdSub,
@@ -487,6 +574,43 @@ public class RobotDashboardService {
         } else {
             publishAck(commandName, "REJECTED", seq, rejectedReason, timestampSec);
         }
+        return seq;
+    }
+
+    private long runSwerveValidationIfNew(
+            DashboardSnapshot snapshot,
+            IntegerSubscriber sequenceSubscriber,
+            StringSubscriber moduleSubscriber,
+            StringSubscriber modeSubscriber,
+            long lastSeen,
+            double timestampSec,
+            boolean allowed) {
+        long seq = sequenceSubscriber.get();
+        if (seq <= lastSeen) {
+            return lastSeen;
+        }
+
+        String moduleName = moduleSubscriber.get();
+        String modeName = modeSubscriber.get();
+        if (!allowed) {
+            publishAck("swerve_validation", "REJECTED", seq,
+                    "Requires enabled teleop/test", timestampSec);
+            return seq;
+        }
+        if (moduleName == null || moduleName.isBlank() || modeName == null || modeName.isBlank()) {
+            publishAck("swerve_validation", "REJECTED", seq,
+                    "Module and mode are required", timestampSec);
+            return seq;
+        }
+        if (SwerveCorner.fromToken(moduleName) == null || SwerveValidationMode.fromToken(modeName) == null) {
+            publishAck("swerve_validation", "REJECTED", seq,
+                    "Unknown module or mode", timestampSec);
+            return seq;
+        }
+
+        actions.requestSwerveValidation(moduleName, modeName);
+        publishAck("swerve_validation", "OK", seq,
+                "Accepted " + moduleName + " / " + modeName, timestampSec);
         return seq;
     }
 

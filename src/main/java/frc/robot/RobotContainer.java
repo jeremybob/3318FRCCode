@@ -52,11 +52,14 @@ import frc.robot.commands.AlignAndShootCommand;
 import frc.robot.commands.CalibrateCANcodersCommand;
 import frc.robot.commands.IntakeHomeCommand;
 import frc.robot.commands.IntakeRollerCommand;
+import frc.robot.commands.ValidateSwerveModuleCommand;
 import frc.robot.dashboard.DashboardSnapshot;
 import frc.robot.dashboard.ReadyToScoreEvaluator;
 import frc.robot.dashboard.ReadyToScoreResult;
 import frc.robot.dashboard.RobotDashboardService;
 import frc.robot.subsystems.*;
+import frc.robot.subsystems.swerve.SwerveCorner;
+import frc.robot.subsystems.swerve.SwerveValidationMode;
 import frc.robot.vision.RioVisionThread;
 import frc.robot.vision.VisionResult;
 
@@ -112,6 +115,7 @@ public class RobotContainer {
     private double lastClimberPower = 0.0;
     private double lastHopperPower = 0.0;
     private boolean lastClimbArmed = false;
+    private Command currentSwerveValidationCommand;
 
     // =========================================================================
     // CONSTRUCTOR
@@ -163,6 +167,21 @@ public class RobotContainer {
             @Override
             public void scheduleLevel1Climb() {
                 RobotContainer.this.scheduleLevel1Climb();
+            }
+
+            @Override
+            public void scheduleCANcoderCalibration() {
+                RobotContainer.this.scheduleCANcoderCalibration();
+            }
+
+            @Override
+            public void requestSwerveValidation(String moduleName, String modeName) {
+                RobotContainer.this.requestSwerveValidation(moduleName, modeName);
+            }
+
+            @Override
+            public void stopSwerveValidation() {
+                RobotContainer.this.stopSwerveValidation();
             }
 
             @Override
@@ -630,6 +649,7 @@ public class RobotContainer {
         boolean[] ccOk = swerve.getCANcoderOkStates();
         double[] driveTemps = swerve.getDriveTemperaturesC();
         boolean autoRunning = currentAutoCommand != null && currentAutoCommand.isScheduled();
+        SwerveSubsystem.ValidationStatus validationStatus = swerve.getValidationStatus();
 
         return new DashboardSnapshot(
                 Timer.getFPGATimestamp(),
@@ -700,7 +720,18 @@ public class RobotContainer {
                 formatControlState(activeControls(operatorController), operatorCommandSummary),
                 controlEventSeq,
                 controlEventTimestampSec,
-                controlEventMessage);
+                controlEventMessage,
+                validationStatus.active(),
+                validationStatus.moduleToken(),
+                validationStatus.moduleDisplayName(),
+                validationStatus.modeToken(),
+                validationStatus.modeDisplayName(),
+                validationStatus.drivePercent(),
+                validationStatus.steerPercent(),
+                validationStatus.startAngleDeg(),
+                validationStatus.angleDeltaDeg(),
+                validationStatus.startCANcoderRot(),
+                validationStatus.cancoderDeltaRot());
     }
 
     private Command buildAlignAndShootCommand() {
@@ -733,6 +764,11 @@ public class RobotContainer {
 
     private Command buildIntakeHomeCommand() {
         return new IntakeHomeCommand(intake).withName("IntakeHome");
+    }
+
+    private Command buildSwerveValidationCommand(SwerveCorner corner, SwerveValidationMode mode) {
+        return new ValidateSwerveModuleCommand(swerve, corner, mode)
+                .withName("ValidateSwerve" + corner.token() + mode.token());
     }
 
     private Command buildIntakeGamePieceCommand() {
@@ -788,6 +824,40 @@ public class RobotContainer {
         CommandScheduler.getInstance().schedule(buildLevel1ClimbCommand());
     }
 
+    private void scheduleCANcoderCalibration() {
+        logControlEvent("Dashboard", "scheduleCANcoderCalibration()");
+        CommandScheduler.getInstance().schedule(new CalibrateCANcodersCommand().withName("CalibrateCANcoders"));
+    }
+
+    private void requestSwerveValidation(String moduleName, String modeName) {
+        SwerveCorner corner = SwerveCorner.fromToken(moduleName);
+        SwerveValidationMode mode = SwerveValidationMode.fromToken(modeName);
+        if (corner == null || mode == null) {
+            logControlEvent("Dashboard",
+                    "requestSwerveValidation() rejected: module=" + moduleName + " mode=" + modeName);
+            return;
+        }
+        if (!DriverStation.isEnabled()
+                || !(DriverStation.isTeleopEnabled() || DriverStation.isTestEnabled())) {
+            logControlEvent("Dashboard", "requestSwerveValidation() rejected: enabled teleop/test required");
+            return;
+        }
+
+        stopSwerveValidation();
+        currentSwerveValidationCommand = buildSwerveValidationCommand(corner, mode);
+        logControlEvent("Dashboard", "requestSwerveValidation(" + corner.token() + ", " + mode.token() + ")");
+        CommandScheduler.getInstance().schedule(currentSwerveValidationCommand);
+    }
+
+    private void stopSwerveValidation() {
+        if (currentSwerveValidationCommand != null && currentSwerveValidationCommand.isScheduled()) {
+            currentSwerveValidationCommand.cancel();
+        } else {
+            swerve.stopValidation();
+        }
+        currentSwerveValidationCommand = null;
+    }
+
     private Command buildLevel1ClimbCommand() {
         return Commands.run(climber::autoClimbLevel1, climber)
                 .until(climber::isAtLevel1Target)
@@ -801,6 +871,7 @@ public class RobotContainer {
     }
 
     private void stopDrive() {
+        stopSwerveValidation();
         swerve.stop();
     }
 

@@ -18,7 +18,9 @@ public class DashboardNtClient implements AutoCloseable {
         INTAKE_HOME,
         ALIGN_SHOOT,
         FALLBACK_SHOOT,
-        LEVEL1_CLIMB
+        LEVEL1_CLIMB,
+        CALIBRATE_CANCODERS,
+        STOP_SWERVE_VALIDATION
     }
 
     private final NetworkTableInstance nt = NetworkTableInstance.create();
@@ -164,6 +166,29 @@ public class DashboardNtClient implements AutoCloseable {
     private final StringSubscriber controlEventMessageSub =
             table.getStringTopic("controls/last_event_message").subscribe("");
 
+    private final BooleanSubscriber swerveValidationActiveSub =
+            table.getBooleanTopic("swerve/validation_active").subscribe(false);
+    private final StringSubscriber swerveValidationModuleTokenSub =
+            table.getStringTopic("swerve/validation_module_token").subscribe("NONE");
+    private final StringSubscriber swerveValidationModuleDisplaySub =
+            table.getStringTopic("swerve/validation_module_display").subscribe("--");
+    private final StringSubscriber swerveValidationModeTokenSub =
+            table.getStringTopic("swerve/validation_mode_token").subscribe("IDLE");
+    private final StringSubscriber swerveValidationModeDisplaySub =
+            table.getStringTopic("swerve/validation_mode_display").subscribe("Idle");
+    private final DoubleSubscriber swerveValidationDrivePercentSub =
+            table.getDoubleTopic("swerve/validation_drive_percent").subscribe(0.0);
+    private final DoubleSubscriber swerveValidationSteerPercentSub =
+            table.getDoubleTopic("swerve/validation_steer_percent").subscribe(0.0);
+    private final DoubleSubscriber swerveValidationStartAngleSub =
+            table.getDoubleTopic("swerve/validation_start_angle_deg").subscribe(Double.NaN);
+    private final DoubleSubscriber swerveValidationAngleDeltaSub =
+            table.getDoubleTopic("swerve/validation_angle_delta_deg").subscribe(Double.NaN);
+    private final DoubleSubscriber swerveValidationStartCANcoderSub =
+            table.getDoubleTopic("swerve/validation_start_cancoder_rot").subscribe(Double.NaN);
+    private final DoubleSubscriber swerveValidationCANcoderDeltaSub =
+            table.getDoubleTopic("swerve/validation_cancoder_delta_rot").subscribe(Double.NaN);
+
     // Ack
     private final StringSubscriber ackCommandSub = table.getStringTopic("ack/last_command").subscribe("");
     private final StringSubscriber ackStatusSub = table.getStringTopic("ack/last_status").subscribe("");
@@ -177,6 +202,11 @@ public class DashboardNtClient implements AutoCloseable {
     private final IntegerPublisher alignShootPub = table.getIntegerTopic("cmd/align_shoot_seq").publish();
     private final IntegerPublisher fallbackShootPub = table.getIntegerTopic("cmd/fallback_shoot_seq").publish();
     private final IntegerPublisher level1ClimbPub = table.getIntegerTopic("cmd/level1_climb_seq").publish();
+    private final IntegerPublisher calibrateCANcodersPub = table.getIntegerTopic("cmd/calibrate_cancoders_seq").publish();
+    private final StringPublisher swerveValidationModulePub = table.getStringTopic("cmd/swerve_validation_module").publish();
+    private final StringPublisher swerveValidationModePub = table.getStringTopic("cmd/swerve_validation_mode").publish();
+    private final IntegerPublisher swerveValidationPub = table.getIntegerTopic("cmd/swerve_validation_seq").publish();
+    private final IntegerPublisher stopSwerveValidationPub = table.getIntegerTopic("cmd/stop_swerve_validation_seq").publish();
     private final StringPublisher selectAutoNamePub = table.getStringTopic("cmd/select_auto_name").publish();
     private final IntegerPublisher selectAutoPub = table.getIntegerTopic("cmd/select_auto_seq").publish();
     private final IntegerSubscriber zeroHeadingSeqSub = table.getIntegerTopic("cmd/zero_heading_seq").subscribe(0);
@@ -185,6 +215,10 @@ public class DashboardNtClient implements AutoCloseable {
     private final IntegerSubscriber alignShootSeqSub = table.getIntegerTopic("cmd/align_shoot_seq").subscribe(0);
     private final IntegerSubscriber fallbackShootSeqSub = table.getIntegerTopic("cmd/fallback_shoot_seq").subscribe(0);
     private final IntegerSubscriber level1ClimbSeqSub = table.getIntegerTopic("cmd/level1_climb_seq").subscribe(0);
+    private final IntegerSubscriber calibrateCANcodersSeqSub = table.getIntegerTopic("cmd/calibrate_cancoders_seq").subscribe(0);
+    private final IntegerSubscriber swerveValidationSeqSub = table.getIntegerTopic("cmd/swerve_validation_seq").subscribe(0);
+    private final IntegerSubscriber stopSwerveValidationSeqSub =
+            table.getIntegerTopic("cmd/stop_swerve_validation_seq").subscribe(0);
     private final IntegerSubscriber selectAutoSeqSub = table.getIntegerTopic("cmd/select_auto_seq").subscribe(0);
 
     private long zeroHeadingSeq = 0;
@@ -193,6 +227,9 @@ public class DashboardNtClient implements AutoCloseable {
     private long alignShootSeq = 0;
     private long fallbackShootSeq = 0;
     private long level1ClimbSeq = 0;
+    private long calibrateCANcodersSeq = 0;
+    private long swerveValidationSeq = 0;
+    private long stopSwerveValidationSeq = 0;
     private long selectAutoSeq = 0;
 
     public DashboardNtClient(String clientName, int teamNumber, String hostOverride) {
@@ -304,6 +341,17 @@ public class DashboardNtClient implements AutoCloseable {
                 controlEventSeqSub.get(),
                 controlEventTimestampSub.get(),
                 controlEventMessageSub.get(),
+                swerveValidationActiveSub.get(),
+                swerveValidationModuleTokenSub.get(),
+                swerveValidationModuleDisplaySub.get(),
+                swerveValidationModeTokenSub.get(),
+                swerveValidationModeDisplaySub.get(),
+                swerveValidationDrivePercentSub.get(),
+                swerveValidationSteerPercentSub.get(),
+                swerveValidationStartAngleSub.get(),
+                swerveValidationAngleDeltaSub.get(),
+                swerveValidationStartCANcoderSub.get(),
+                swerveValidationCANcoderDeltaSub.get(),
                 // Ack
                 ackCommandSub.get(),
                 ackStatusSub.get(),
@@ -345,6 +393,16 @@ public class DashboardNtClient implements AutoCloseable {
                 level1ClimbSeq = nextCommandSequence(level1ClimbSeq, level1ClimbSeqSub.get());
                 level1ClimbPub.set(level1ClimbSeq);
             }
+            case CALIBRATE_CANCODERS -> {
+                calibrateCANcodersSeq = nextCommandSequence(calibrateCANcodersSeq, calibrateCANcodersSeqSub.get());
+                calibrateCANcodersPub.set(calibrateCANcodersSeq);
+            }
+            case STOP_SWERVE_VALIDATION -> {
+                stopSwerveValidationSeq = nextCommandSequence(
+                        stopSwerveValidationSeq,
+                        stopSwerveValidationSeqSub.get());
+                stopSwerveValidationPub.set(stopSwerveValidationSeq);
+            }
             default -> throw new IllegalStateException("Unhandled command " + command);
         }
     }
@@ -357,6 +415,17 @@ public class DashboardNtClient implements AutoCloseable {
         selectAutoSeq = nextCommandSequence(selectAutoSeq, selectAutoSeqSub.get());
         selectAutoNamePub.set(autoName);
         selectAutoPub.set(selectAutoSeq);
+    }
+
+    public synchronized void sendSwerveValidation(String moduleToken, String modeToken) {
+        if (moduleToken == null || moduleToken.isBlank() || modeToken == null || modeToken.isBlank()) {
+            return;
+        }
+
+        swerveValidationSeq = nextCommandSequence(swerveValidationSeq, swerveValidationSeqSub.get());
+        swerveValidationModulePub.set(moduleToken);
+        swerveValidationModePub.set(modeToken);
+        swerveValidationPub.set(swerveValidationSeq);
     }
 
     static long nextCommandSequence(long localSeq, long topicSeq) {

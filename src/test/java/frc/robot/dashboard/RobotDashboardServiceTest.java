@@ -28,6 +28,11 @@ class RobotDashboardServiceTest {
     private IntegerPublisher stopDriveCmdPub;
     private IntegerPublisher alignShootCmdPub;
     private IntegerPublisher fallbackShootCmdPub;
+    private IntegerPublisher calibrateCANcodersCmdPub;
+    private IntegerPublisher swerveValidationCmdPub;
+    private IntegerPublisher stopSwerveValidationCmdPub;
+    private StringPublisher swerveValidationModuleCmdPub;
+    private StringPublisher swerveValidationModeCmdPub;
     private IntegerPublisher selectAutoCmdPub;
     private StringPublisher selectAutoNameCmdPub;
 
@@ -58,6 +63,11 @@ class RobotDashboardServiceTest {
         stopDriveCmdPub = table.getIntegerTopic("cmd/stop_drive_seq").publish();
         alignShootCmdPub = table.getIntegerTopic("cmd/align_shoot_seq").publish();
         fallbackShootCmdPub = table.getIntegerTopic("cmd/fallback_shoot_seq").publish();
+        calibrateCANcodersCmdPub = table.getIntegerTopic("cmd/calibrate_cancoders_seq").publish();
+        swerveValidationCmdPub = table.getIntegerTopic("cmd/swerve_validation_seq").publish();
+        stopSwerveValidationCmdPub = table.getIntegerTopic("cmd/stop_swerve_validation_seq").publish();
+        swerveValidationModuleCmdPub = table.getStringTopic("cmd/swerve_validation_module").publish();
+        swerveValidationModeCmdPub = table.getStringTopic("cmd/swerve_validation_mode").publish();
         selectAutoCmdPub = table.getIntegerTopic("cmd/select_auto_seq").publish();
         selectAutoNameCmdPub = table.getStringTopic("cmd/select_auto_name").publish();
 
@@ -332,6 +342,72 @@ class RobotDashboardServiceTest {
         assertEquals(0, actions.selectAutoCalls);
     }
 
+    @Test
+    void calibrateCANcodersAcceptedInDisabled() {
+        calibrateCANcodersCmdPub.set(1);
+        nt.flush();
+
+        service.periodic(snapshot("DISABLED", false, false, 64.0));
+        nt.flush();
+
+        assertEquals("calibrate_cancoders", ackCommandSub.get());
+        assertEquals("OK", ackStatusSub.get());
+        assertEquals(1L, ackSeqSub.get());
+        assertEquals("Accepted", ackMessageSub.get());
+        assertEquals(1, actions.calibrateCANcodersCalls);
+    }
+
+    @Test
+    void swerveValidationAcceptedWhenEnabledTest() {
+        swerveValidationModuleCmdPub.set("FR");
+        swerveValidationModeCmdPub.set("STEER_POSITIVE");
+        swerveValidationCmdPub.set(1);
+        nt.flush();
+
+        service.periodic(snapshot("TEST", true, false, 65.0));
+        nt.flush();
+
+        assertEquals("swerve_validation", ackCommandSub.get());
+        assertEquals("OK", ackStatusSub.get());
+        assertEquals(1L, ackSeqSub.get());
+        assertEquals("Accepted FR / STEER_POSITIVE", ackMessageSub.get());
+        assertEquals(1, actions.swerveValidationCalls);
+        assertEquals("FR", actions.lastValidationModule);
+        assertEquals("STEER_POSITIVE", actions.lastValidationMode);
+    }
+
+    @Test
+    void swerveValidationRejectedWhenModeUnknown() {
+        swerveValidationModuleCmdPub.set("FR");
+        swerveValidationModeCmdPub.set("NOPE");
+        swerveValidationCmdPub.set(2);
+        nt.flush();
+
+        service.periodic(snapshot("TEST", true, false, 66.0));
+        nt.flush();
+
+        assertEquals("swerve_validation", ackCommandSub.get());
+        assertEquals("REJECTED", ackStatusSub.get());
+        assertEquals(2L, ackSeqSub.get());
+        assertEquals("Unknown module or mode", ackMessageSub.get());
+        assertEquals(0, actions.swerveValidationCalls);
+    }
+
+    @Test
+    void stopSwerveValidationAcceptedWhenConnected() {
+        stopSwerveValidationCmdPub.set(1);
+        nt.flush();
+
+        service.periodic(snapshot("DISABLED", false, false, 67.0));
+        nt.flush();
+
+        assertEquals("stop_swerve_validation", ackCommandSub.get());
+        assertEquals("OK", ackStatusSub.get());
+        assertEquals(1L, ackSeqSub.get());
+        assertEquals("Accepted", ackMessageSub.get());
+        assertEquals(1, actions.stopSwerveValidationCalls);
+    }
+
     private static DashboardSnapshot snapshot(
             String mode,
             boolean enabled,
@@ -418,7 +494,18 @@ class RobotDashboardServiceTest {
                 operatorButtonsActive,
                 controlEventSeq,
                 controlEventTimestampSec,
-                controlEventMessage);
+                controlEventMessage,
+                false,
+                "NONE",
+                "--",
+                "IDLE",
+                "Idle",
+                0.0,
+                0.0,
+                Double.NaN,
+                Double.NaN,
+                Double.NaN,
+                Double.NaN);
     }
 
     private static final class TestActions implements RobotDashboardService.Actions {
@@ -428,8 +515,13 @@ class RobotDashboardServiceTest {
         int alignShootCalls;
         int fallbackShootCalls;
         int level1ClimbCalls;
+        int calibrateCANcodersCalls;
+        int swerveValidationCalls;
+        int stopSwerveValidationCalls;
         int selectAutoCalls;
         String lastSelectedAutoName;
+        String lastValidationModule;
+        String lastValidationMode;
 
         @Override
         public void zeroHeading() {
@@ -459,6 +551,23 @@ class RobotDashboardServiceTest {
         @Override
         public void scheduleLevel1Climb() {
             level1ClimbCalls++;
+        }
+
+        @Override
+        public void scheduleCANcoderCalibration() {
+            calibrateCANcodersCalls++;
+        }
+
+        @Override
+        public void requestSwerveValidation(String moduleName, String modeName) {
+            swerveValidationCalls++;
+            lastValidationModule = moduleName;
+            lastValidationMode = modeName;
+        }
+
+        @Override
+        public void stopSwerveValidation() {
+            stopSwerveValidationCalls++;
         }
 
         @Override

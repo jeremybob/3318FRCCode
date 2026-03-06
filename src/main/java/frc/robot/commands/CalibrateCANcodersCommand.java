@@ -19,6 +19,7 @@
 package frc.robot.commands;
 
 import com.ctre.phoenix6.CANBus;
+import com.ctre.phoenix6.configs.CANcoderConfiguration;
 import com.ctre.phoenix6.hardware.CANcoder;
 
 import edu.wpi.first.networktables.NetworkTable;
@@ -27,6 +28,7 @@ import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;
 
 import frc.robot.Constants;
+import frc.robot.subsystems.swerve.SwerveCalibrationUtil;
 
 public class CalibrateCANcodersCommand extends Command {
 
@@ -36,10 +38,10 @@ public class CalibrateCANcodersCommand extends Command {
 
     @Override
     public void initialize() {
-        double flRaw;
-        double frRaw;
-        double blRaw;
-        double brRaw;
+        SwerveCalibrationUtil.CalibrationSample flSample;
+        SwerveCalibrationUtil.CalibrationSample frSample;
+        SwerveCalibrationUtil.CalibrationSample blSample;
+        SwerveCalibrationUtil.CalibrationSample brSample;
 
         // Read all four CANcoders and close handles immediately after sampling.
         try (CANcoder flEncoder = new CANcoder(Constants.CAN.FRONT_LEFT_CANCODER,
@@ -50,52 +52,70 @@ public class CalibrateCANcodersCommand extends Command {
                         new CANBus(Constants.CAN.CTRE_CAN_BUS));
                 CANcoder brEncoder = new CANcoder(Constants.CAN.BACK_RIGHT_CANCODER,
                         new CANBus(Constants.CAN.CTRE_CAN_BUS))) {
-            flRaw = flEncoder.getAbsolutePosition().getValueAsDouble();
-            frRaw = frEncoder.getAbsolutePosition().getValueAsDouble();
-            blRaw = blEncoder.getAbsolutePosition().getValueAsDouble();
-            brRaw = brEncoder.getAbsolutePosition().getValueAsDouble();
+            flSample = sampleCalibration(flEncoder);
+            frSample = sampleCalibration(frEncoder);
+            blSample = sampleCalibration(blEncoder);
+            brSample = sampleCalibration(brEncoder);
         }
 
         // Print calibration values to console using plain ASCII for terminal compatibility.
         System.out.println("+------------------------------------------------------+");
         System.out.println("| CANCODER CALIBRATION - ALIGN WHEELS FIRST!          |");
         System.out.println("+------------------------------------------------------+");
-        System.out.printf("| FL Raw: %+.4f -> Offset: %+.4f%n", flRaw, -flRaw);
-        System.out.printf("| FR Raw: %+.4f -> Offset: %+.4f%n", frRaw, -frRaw);
-        System.out.printf("| BL Raw: %+.4f -> Offset: %+.4f%n", blRaw, -blRaw);
-        System.out.printf("| BR Raw: %+.4f -> Offset: %+.4f%n", brRaw, -brRaw);
+        System.out.printf("| FL NoOffset: %+.6f -> Offset: %+.6f%n",
+                flSample.noOffsetRot(), flSample.recommendedOffsetRot());
+        System.out.printf("| FR NoOffset: %+.6f -> Offset: %+.6f%n",
+                frSample.noOffsetRot(), frSample.recommendedOffsetRot());
+        System.out.printf("| BL NoOffset: %+.6f -> Offset: %+.6f%n",
+                blSample.noOffsetRot(), blSample.recommendedOffsetRot());
+        System.out.printf("| BR NoOffset: %+.6f -> Offset: %+.6f%n",
+                brSample.noOffsetRot(), brSample.recommendedOffsetRot());
         System.out.println("+------------------------------------------------------+");
         System.out.println("| Copy these values into Constants.Swerve:            |");
-        System.out.printf("|   FL_CANCODER_OFFSET_ROT = %.4f;%n", -flRaw);
-        System.out.printf("|   FR_CANCODER_OFFSET_ROT = %.4f;%n", -frRaw);
-        System.out.printf("|   BL_CANCODER_OFFSET_ROT = %.4f;%n", -blRaw);
-        System.out.printf("|   BR_CANCODER_OFFSET_ROT = %.4f;%n", -brRaw);
+        System.out.printf("|   FL_CANCODER_OFFSET_ROT = %.6f;%n", flSample.recommendedOffsetRot());
+        System.out.printf("|   FR_CANCODER_OFFSET_ROT = %.6f;%n", frSample.recommendedOffsetRot());
+        System.out.printf("|   BL_CANCODER_OFFSET_ROT = %.6f;%n", blSample.recommendedOffsetRot());
+        System.out.printf("|   BR_CANCODER_OFFSET_ROT = %.6f;%n", brSample.recommendedOffsetRot());
         System.out.println("+------------------------------------------------------+");
 
         // Also publish to SmartDashboard for easy access
-        SmartDashboard.putNumber("CANcoder/FL_Raw", flRaw);
-        SmartDashboard.putNumber("CANcoder/FR_Raw", frRaw);
-        SmartDashboard.putNumber("CANcoder/BL_Raw", blRaw);
-        SmartDashboard.putNumber("CANcoder/BR_Raw", brRaw);
-        SmartDashboard.putNumber("CANcoder/FL_Offset", -flRaw);
-        SmartDashboard.putNumber("CANcoder/FR_Offset", -frRaw);
-        SmartDashboard.putNumber("CANcoder/BL_Offset", -blRaw);
-        SmartDashboard.putNumber("CANcoder/BR_Offset", -brRaw);
+        SmartDashboard.putNumber("CANcoder/FL_Raw", flSample.noOffsetRot());
+        SmartDashboard.putNumber("CANcoder/FR_Raw", frSample.noOffsetRot());
+        SmartDashboard.putNumber("CANcoder/BL_Raw", blSample.noOffsetRot());
+        SmartDashboard.putNumber("CANcoder/BR_Raw", brSample.noOffsetRot());
+        SmartDashboard.putNumber("CANcoder/FL_Offset", flSample.recommendedOffsetRot());
+        SmartDashboard.putNumber("CANcoder/FR_Offset", frSample.recommendedOffsetRot());
+        SmartDashboard.putNumber("CANcoder/BL_Offset", blSample.recommendedOffsetRot());
+        SmartDashboard.putNumber("CANcoder/BR_Offset", brSample.recommendedOffsetRot());
 
         // Mirror to custom dashboard contract table so pit dashboard can read them too.
         NetworkTable dashboardTable = NetworkTableInstance.getDefault().getTable("Dashboard");
-        dashboardTable.getEntry("cancoder/fl_raw_rot").setDouble(flRaw);
-        dashboardTable.getEntry("cancoder/fr_raw_rot").setDouble(frRaw);
-        dashboardTable.getEntry("cancoder/bl_raw_rot").setDouble(blRaw);
-        dashboardTable.getEntry("cancoder/br_raw_rot").setDouble(brRaw);
-        dashboardTable.getEntry("cancoder/fl_offset_rot").setDouble(-flRaw);
-        dashboardTable.getEntry("cancoder/fr_offset_rot").setDouble(-frRaw);
-        dashboardTable.getEntry("cancoder/bl_offset_rot").setDouble(-blRaw);
-        dashboardTable.getEntry("cancoder/br_offset_rot").setDouble(-brRaw);
+        dashboardTable.getEntry("cancoder/fl_raw_rot").setDouble(flSample.noOffsetRot());
+        dashboardTable.getEntry("cancoder/fr_raw_rot").setDouble(frSample.noOffsetRot());
+        dashboardTable.getEntry("cancoder/bl_raw_rot").setDouble(blSample.noOffsetRot());
+        dashboardTable.getEntry("cancoder/br_raw_rot").setDouble(brSample.noOffsetRot());
+        dashboardTable.getEntry("cancoder/fl_offset_rot").setDouble(flSample.recommendedOffsetRot());
+        dashboardTable.getEntry("cancoder/fr_offset_rot").setDouble(frSample.recommendedOffsetRot());
+        dashboardTable.getEntry("cancoder/bl_offset_rot").setDouble(blSample.recommendedOffsetRot());
+        dashboardTable.getEntry("cancoder/br_offset_rot").setDouble(brSample.recommendedOffsetRot());
     }
 
     @Override
     public boolean isFinished() {
         return true; // runs once and finishes
+    }
+
+    @Override
+    public boolean runsWhenDisabled() {
+        return true;
+    }
+
+    private static SwerveCalibrationUtil.CalibrationSample sampleCalibration(CANcoder encoder) {
+        CANcoderConfiguration config = new CANcoderConfiguration();
+        encoder.getConfigurator().refresh(config);
+        double configuredAbsoluteRot = encoder.getAbsolutePosition().getValueAsDouble();
+        return SwerveCalibrationUtil.sample(
+                configuredAbsoluteRot,
+                config.MagnetSensor.MagnetOffset);
     }
 }

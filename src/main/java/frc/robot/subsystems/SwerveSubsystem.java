@@ -33,7 +33,10 @@ import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 
 import frc.robot.Constants;
+import frc.robot.subsystems.swerve.SwerveCalibrationUtil;
+import frc.robot.subsystems.swerve.SwerveCorner;
 import frc.robot.subsystems.swerve.SwerveModule;
+import frc.robot.subsystems.swerve.SwerveValidationMode;
 import frc.robot.vision.VisionResult;
 import frc.robot.vision.VisionSupport;
 
@@ -80,6 +83,10 @@ public class SwerveSubsystem extends SubsystemBase {
             Constants.Swerve.BR_STEER_INVERTED,
             "BR");
 
+    private final SwerveModule[] modules = new SwerveModule[] {
+        frontLeft, frontRight, backLeft, backRight
+    };
+
     // ---- Gyro (Pigeon 2) ----
     // The Pigeon 2 measures the robot's yaw (rotation angle on the field).
     // We use it to make driving "field-oriented" so joystick up = away from driver.
@@ -106,6 +113,25 @@ public class SwerveSubsystem extends SubsystemBase {
 
     // ---- Field visualization (appears in Shuffleboard / SmartDashboard) ----
     private final Field2d field = new Field2d();
+
+    private boolean validationActive = false;
+    private SwerveCorner validationCorner;
+    private SwerveValidationMode validationMode;
+    private double validationStartAngleDeg = Double.NaN;
+    private double validationStartCANcoderRot = Double.NaN;
+
+    public record ValidationStatus(
+            boolean active,
+            String moduleToken,
+            String moduleDisplayName,
+            String modeToken,
+            String modeDisplayName,
+            double drivePercent,
+            double steerPercent,
+            double startAngleDeg,
+            double angleDeltaDeg,
+            double startCANcoderRot,
+            double cancoderDeltaRot) {}
 
     // --------------------------------------------------------------------------
     // Constructor
@@ -171,7 +197,7 @@ public class SwerveSubsystem extends SubsystemBase {
 
         // ---- CANCoder diagnostics ----
         // Publish per-module CANCoder health so CAN issues are visible on the dashboard.
-        for (SwerveModule mod : new SwerveModule[]{frontLeft, frontRight, backLeft, backRight}) {
+        for (SwerveModule mod : modules) {
             String prefix = "Swerve/" + mod.getName() + "_CC_";
             SmartDashboard.putNumber(prefix + "PosRot",    mod.getCANcoderPositionRot());
             SmartDashboard.putNumber(prefix + "AbsRaw",    mod.getCANcoderAbsoluteRaw());
@@ -185,13 +211,6 @@ public class SwerveSubsystem extends SubsystemBase {
 
     public void drive(double xVelocity, double yVelocity,
                       double rotationalVelocity, boolean fieldRelative) {
-        if (Math.abs(xVelocity) < 1e-3
-                && Math.abs(yVelocity) < 1e-3
-                && Math.abs(rotationalVelocity) < 1e-3) {
-            stop();
-            return;
-        }
-
         ChassisSpeeds speeds;
         if (fieldRelative) {
             speeds = ChassisSpeeds.fromFieldRelativeSpeeds(
@@ -209,10 +228,9 @@ public class SwerveSubsystem extends SubsystemBase {
     private void setModuleStates(ChassisSpeeds speeds) {
         SwerveModuleState[] states = kinematics.toSwerveModuleStates(speeds);
         SwerveDriveKinematics.desaturateWheelSpeeds(states, Constants.Swerve.MAX_TRANSLATION_MPS);
-        frontLeft.setDesiredState(states[0]);
-        frontRight.setDesiredState(states[1]);
-        backLeft.setDesiredState(states[2]);
-        backRight.setDesiredState(states[3]);
+        for (int i = 0; i < modules.length; i++) {
+            modules[i].setDesiredState(states[i]);
+        }
     }
 
     public void stop() {
@@ -223,10 +241,80 @@ public class SwerveSubsystem extends SubsystemBase {
     }
 
     public void xLock() {
-        frontLeft.setDesiredState(new SwerveModuleState(0, Rotation2d.fromDegrees(45)));
-        frontRight.setDesiredState(new SwerveModuleState(0, Rotation2d.fromDegrees(-45)));
-        backLeft.setDesiredState(new SwerveModuleState(0, Rotation2d.fromDegrees(-45)));
-        backRight.setDesiredState(new SwerveModuleState(0, Rotation2d.fromDegrees(45)));
+        frontLeft.setDesiredState(new SwerveModuleState(0, Rotation2d.fromDegrees(45)), true);
+        frontRight.setDesiredState(new SwerveModuleState(0, Rotation2d.fromDegrees(-45)), true);
+        backLeft.setDesiredState(new SwerveModuleState(0, Rotation2d.fromDegrees(-45)), true);
+        backRight.setDesiredState(new SwerveModuleState(0, Rotation2d.fromDegrees(45)), true);
+    }
+
+    public void beginValidation(SwerveCorner corner, SwerveValidationMode mode) {
+        if (corner == null || mode == null) {
+            stopValidation();
+            return;
+        }
+
+        SwerveModule module = getModule(corner);
+        stop();
+        validationActive = true;
+        validationCorner = corner;
+        validationMode = mode;
+        validationStartAngleDeg = module.getAbsoluteAngle().getDegrees();
+        validationStartCANcoderRot = module.getCANcoderPositionRot();
+    }
+
+    public void runValidationStep() {
+        if (!validationActive || validationCorner == null || validationMode == null) {
+            return;
+        }
+
+        for (SwerveModule module : modules) {
+            module.stop();
+        }
+        getModule(validationCorner).setValidationPercentOutput(
+                validationMode.drivePercent(),
+                validationMode.steerPercent());
+    }
+
+    public void stopValidation() {
+        stop();
+        validationActive = false;
+        validationCorner = null;
+        validationMode = null;
+        validationStartAngleDeg = Double.NaN;
+        validationStartCANcoderRot = Double.NaN;
+    }
+
+    public ValidationStatus getValidationStatus() {
+        if (!validationActive || validationCorner == null || validationMode == null) {
+            return new ValidationStatus(
+                    false,
+                    "NONE",
+                    "--",
+                    "IDLE",
+                    "Idle",
+                    0.0,
+                    0.0,
+                    Double.NaN,
+                    Double.NaN,
+                    Double.NaN,
+                    Double.NaN);
+        }
+
+        SwerveModule module = getModule(validationCorner);
+        double currentAngleDeg = module.getAbsoluteAngle().getDegrees();
+        double currentCANcoderRot = module.getCANcoderPositionRot();
+        return new ValidationStatus(
+                true,
+                validationCorner.token(),
+                validationCorner.displayName(),
+                validationMode.token(),
+                validationMode.displayName(),
+                validationMode.drivePercent(),
+                validationMode.steerPercent(),
+                validationStartAngleDeg,
+                SwerveCalibrationUtil.angleDeltaDeg(currentAngleDeg, validationStartAngleDeg),
+                validationStartCANcoderRot,
+                SwerveCalibrationUtil.wrapSignedRotations(currentCANcoderRot - validationStartCANcoderRot));
     }
 
     public void zeroHeading() {
@@ -344,6 +432,15 @@ public class SwerveSubsystem extends SubsystemBase {
             frontRight.getPosition(),
             backLeft.getPosition(),
             backRight.getPosition()
+        };
+    }
+
+    private SwerveModule getModule(SwerveCorner corner) {
+        return switch (corner) {
+            case FL -> frontLeft;
+            case FR -> frontRight;
+            case BL -> backLeft;
+            case BR -> backRight;
         };
     }
 }

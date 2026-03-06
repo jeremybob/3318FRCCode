@@ -23,6 +23,7 @@ import com.ctre.phoenix6.StatusCode;
 import com.ctre.phoenix6.StatusSignal;
 import com.ctre.phoenix6.configs.CANcoderConfiguration;
 import com.ctre.phoenix6.configs.TalonFXConfiguration;
+import com.ctre.phoenix6.controls.DutyCycleOut;
 import com.ctre.phoenix6.controls.VelocityVoltage;
 import com.ctre.phoenix6.controls.PositionVoltage;
 import com.ctre.phoenix6.hardware.CANcoder;
@@ -52,7 +53,11 @@ public class SwerveModule {
     @SuppressWarnings("rawtypes")
     private final StatusSignal cancoderPosition;
     @SuppressWarnings("rawtypes")
+    private final StatusSignal cancoderAbsolutePosition;
+    @SuppressWarnings("rawtypes")
     private final StatusSignal driveVelocity;
+    @SuppressWarnings("rawtypes")
+    private final StatusSignal driveAppliedVoltage;
     @SuppressWarnings("rawtypes")
     private final StatusSignal drivePosition;
     @SuppressWarnings("rawtypes")
@@ -60,6 +65,9 @@ public class SwerveModule {
 
     // Module name for diagnostics
     private final String name;
+    private final double cancoderOffsetRot;
+
+    private Rotation2d lastAngle = new Rotation2d();
 
     // Reusable control request objects — avoids creating garbage every loop
     // VelocityVoltage: tells the drive motor "spin at exactly X rotations/sec"
@@ -68,6 +76,13 @@ public class SwerveModule {
 
     // PositionVoltage: tells the steer motor "go to exactly this angle"
     private final PositionVoltage steerRequest = new PositionVoltage(0)
+            .withEnableFOC(Constants.Swerve.USE_PHOENIX_PRO_FEATURES);
+
+    // DutyCycleOut: used only for validation/bring-up so one module can be
+    // exercised at a time without the velocity/position loops masking sign issues.
+    private final DutyCycleOut driveDutyCycleRequest = new DutyCycleOut(0)
+            .withEnableFOC(Constants.Swerve.USE_PHOENIX_PRO_FEATURES);
+    private final DutyCycleOut steerDutyCycleRequest = new DutyCycleOut(0)
             .withEnableFOC(Constants.Swerve.USE_PHOENIX_PRO_FEATURES);
 
     // --------------------------------------------------------------------------
@@ -92,6 +107,7 @@ public class SwerveModule {
                         String moduleName) {
 
         this.name = moduleName;
+        this.cancoderOffsetRot = cancoderOffsetRot;
 
         // Create the hardware objects
         driveMotor = new TalonFX(driveId, new CANBus(Constants.CAN.CTRE_CAN_BUS));
@@ -147,7 +163,9 @@ public class SwerveModule {
         // ---- Cache status signals for efficient reads -----------------------
         // Grabbing signal references once avoids repeated hashmap lookups each loop.
         cancoderPosition = cancoder.getPosition();
+        cancoderAbsolutePosition = cancoder.getAbsolutePosition();
         driveVelocity    = driveMotor.getVelocity();
+        driveAppliedVoltage = driveMotor.getMotorVoltage();
         drivePosition    = driveMotor.getPosition();
         driveTemp        = driveMotor.getDeviceTemp();
 
@@ -156,14 +174,16 @@ public class SwerveModule {
         // Drive temperature is low-priority — 4 Hz is plenty.
         // Steer motor signals we don't read directly (TalonFX reads CANcoder internally
         // for RemoteCANcoder feedback), so reduce steer's outbound status frames.
-        BaseStatusSignal.setUpdateFrequencyForAll(100, cancoderPosition);
-        BaseStatusSignal.setUpdateFrequencyForAll(100, driveVelocity, drivePosition);
+        BaseStatusSignal.setUpdateFrequencyForAll(100, cancoderPosition, cancoderAbsolutePosition);
+        BaseStatusSignal.setUpdateFrequencyForAll(100, driveVelocity, drivePosition, driveAppliedVoltage);
         BaseStatusSignal.setUpdateFrequencyForAll(4, driveTemp);
         // Reduce steer motor status frames — we don't read these signals directly.
         // The TalonFX still reads the CANcoder internally at its own rate.
         steerMotor.getPosition().setUpdateFrequency(50);
         steerMotor.getVelocity().setUpdateFrequency(50);
         steerMotor.getDeviceTemp().setUpdateFrequency(4);
+
+        lastAngle = getAbsoluteAngle();
     }
 
     // --------------------------------------------------------------------------
@@ -175,6 +195,10 @@ public class SwerveModule {
     //   desiredState - the target angle and speed for this corner
     // --------------------------------------------------------------------------
     public void setDesiredState(SwerveModuleState desiredState) {
+        setDesiredState(desiredState, false);
+    }
+
+    public void setDesiredState(SwerveModuleState desiredState, boolean forceAngleAtLowSpeed) {
 
         // Optimization: If the target angle is >90° away from where we are,
         // it's faster to reverse the drive direction and turn to the opposite angle.
@@ -186,7 +210,15 @@ public class SwerveModule {
 
         // ---- Command the STEER motor to the target angle ----
         // The CANcoder (and therefore the position feedback) is in rotations.
-        double targetRotations = desiredState.angle.getRotations();
+        Rotation2d targetAngle = desiredState.angle;
+        if (!forceAngleAtLowSpeed
+                && Math.abs(desiredState.speedMetersPerSecond) <= Constants.Swerve.ANGLE_HOLD_SPEED_MPS) {
+            targetAngle = lastAngle;
+        } else {
+            lastAngle = desiredState.angle;
+        }
+
+        double targetRotations = targetAngle.getRotations();
         steerMotor.setControl(steerRequest.withPosition(targetRotations));
 
         // ---- Command the DRIVE motor to the target speed ----
@@ -197,6 +229,12 @@ public class SwerveModule {
         double targetMotorRPS = targetWheelRPS * Constants.Swerve.DRIVE_GEAR_RATIO;
 
         driveMotor.setControl(driveRequest.withVelocity(targetMotorRPS));
+    }
+
+    public void setValidationPercentOutput(double drivePercent, double steerPercent) {
+        lastAngle = getAbsoluteAngle();
+        driveMotor.setControl(driveDutyCycleRequest.withOutput(clampDutyCycle(drivePercent)));
+        steerMotor.setControl(steerDutyCycleRequest.withOutput(clampDutyCycle(steerPercent)));
     }
 
     // --------------------------------------------------------------------------
@@ -228,6 +266,10 @@ public class SwerveModule {
         return driveTemp.refresh().getValueAsDouble();
     }
 
+    public double getDriveAppliedVoltage() {
+        return driveAppliedVoltage.refresh().getValueAsDouble();
+    }
+
     /** Module name for telemetry (e.g. "FL", "FR", "BL", "BR"). */
     public String getName() {
         return name;
@@ -235,7 +277,8 @@ public class SwerveModule {
 
     /** Returns the raw CANCoder absolute position (no offset) for diagnostics. */
     public double getCANcoderAbsoluteRaw() {
-        return cancoder.getAbsolutePosition().getValueAsDouble();
+        double configuredAbsoluteRot = cancoderAbsolutePosition.refresh().getValueAsDouble();
+        return SwerveCalibrationUtil.sample(configuredAbsoluteRot, cancoderOffsetRot).noOffsetRot();
     }
 
     /** Returns the CANCoder position value used for control (with offset applied). */
@@ -287,6 +330,10 @@ public class SwerveModule {
         return inverted
                 ? InvertedValue.Clockwise_Positive
                 : InvertedValue.CounterClockwise_Positive;
+    }
+
+    private static double clampDutyCycle(double output) {
+        return Math.max(-1.0, Math.min(1.0, output));
     }
 
     private static SensorDirectionValue sensorDirection(boolean clockwisePositive) {

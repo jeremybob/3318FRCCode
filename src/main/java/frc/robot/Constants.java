@@ -238,6 +238,16 @@ public final class Constants {
         public static final double STEER_kS = 0.1;             // Volts
         public static final double STEER_kV = 1.91;            // V/RPS
 
+        // ---- Low-speed anti-jitter ----
+        // Hold the last steer angle when the requested wheel speed is tiny so
+        // the modules don't hunt for a new heading while effectively stopped.
+        public static final double ANGLE_HOLD_SPEED_MPS = MAX_TRANSLATION_MPS * 0.01;
+
+        // ---- Validation mode ----
+        // Conservative open-loop outputs for one-module-at-a-time sign checks.
+        public static final double VALIDATION_DRIVE_DUTY_CYCLE = 0.08;
+        public static final double VALIDATION_STEER_DUTY_CYCLE = 0.05;
+
         // ---- Joystick deadband ----
         // Joystick axes within this range of zero are treated as zero.
         // This prevents the robot from creeping when the stick isn't centered.

@@ -86,5 +86,16 @@ public record DashboardSnapshot(
         String operatorButtonsActive,
         long controlEventSeq,
         double controlEventTimestampSec,
-        String controlEventMessage) {
+        String controlEventMessage,
+        boolean swerveValidationActive,
+        String swerveValidationModuleToken,
+        String swerveValidationModuleDisplayName,
+        String swerveValidationModeToken,
+        String swerveValidationModeDisplayName,
+        double swerveValidationDrivePercent,
+        double swerveValidationSteerPercent,
+        double swerveValidationStartAngleDeg,
+        double swerveValidationAngleDeltaDeg,
+        double swerveValidationStartCANcoderRot,
+        double swerveValidationCANcoderDeltaRot) {
 }

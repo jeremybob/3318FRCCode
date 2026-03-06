@@ -157,6 +157,21 @@ public class DashboardFrame extends JFrame {
     private final JLabel controlLastEventLabel = new JLabel("Last event: --");
     private final JTextArea controlLogArea = new JTextArea();
     private final ArrayDeque<String> controlEventLines = new ArrayDeque<>();
+    // Swerve tools tab
+    private final JLabel swerveValidationStatusLabel = new JLabel("Validation: IDLE");
+    private final JLabel swerveValidationOutputsLabel = new JLabel("Outputs: drive -- steer --");
+    private final JLabel swerveValidationDeltasLabel = new JLabel("Deltas: angle -- cancoder --");
+    private final JLabel swerveValidationLiveLabel = new JLabel("Selected: angle -- pos -- abs --");
+    private final JLabel swerveCalibrationLabel = new JLabel("Calibration: raw -- offset --");
+    private final JLabel swerveValidationHintLabel =
+            new JLabel("Use steer test for steer/CANcoder signs, drive test for wheel spin.");
+    private JComboBox<String> swerveModuleCombo;
+    private JButton swerveSteerPositiveButton;
+    private JButton swerveSteerNegativeButton;
+    private JButton swerveDrivePositiveButton;
+    private JButton swerveDriveNegativeButton;
+    private JButton swerveStopValidationButton;
+    private JButton swerveCalibrateButton;
 
     // Buttons
     private JButton zeroHeadingButton;
@@ -240,6 +255,7 @@ public class DashboardFrame extends JFrame {
         tabs.addTab("Driver", buildDriverTab());
         tabs.addTab("Operator", buildOperatorTab());
         tabs.addTab("Controls", buildControlsTab());
+        tabs.addTab("Swerve Tools", buildSwerveToolsTab());
         tabs.addTab("Bring-up", buildBringUpTab());
         tabs.addTab("Pit", buildPitTab());
         return tabs;
@@ -368,6 +384,45 @@ public class DashboardFrame extends JFrame {
         controlLogScroll.setBorder(BorderFactory.createLineBorder(BORDER, 1));
         controlLogScroll.getViewport().setBackground(CARD_ALT);
         root.add(wrapCard("Control Trigger Feed", controlLogScroll), BorderLayout.CENTER);
+        return root;
+    }
+
+    // =========================================================================
+    // SWERVE TOOLS TAB
+    // =========================================================================
+    private JPanel buildSwerveToolsTab() {
+        JPanel root = new JPanel(new BorderLayout(10, 10));
+        root.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        root.setBackground(BG);
+
+        styleMetricLabel(swerveValidationStatusLabel);
+        styleMetricLabel(swerveValidationOutputsLabel);
+        styleMetricLabel(swerveValidationDeltasLabel);
+        styleMetricLabel(swerveValidationLiveLabel);
+        styleMetricLabel(swerveCalibrationLabel);
+        styleMetricLabel(swerveValidationHintLabel);
+
+        root.add(buildSwerveToolsControlsCard(), BorderLayout.NORTH);
+
+        JPanel center = new JPanel(new GridLayout(2, 2, 10, 10));
+        center.setBackground(BG);
+        center.add(wrapLabelCard("Validation Status",
+                swerveValidationStatusLabel,
+                swerveValidationOutputsLabel,
+                swerveValidationDeltasLabel));
+        center.add(wrapLabelCard("Selected Module Live",
+                swerveValidationLiveLabel,
+                swerveCalibrationLabel));
+        center.add(wrapLabelCard("How To Use",
+                swerveValidationHintLabel,
+                infoLabel("1. Put robot on blocks and choose one module."),
+                infoLabel("2. Steer +/- checks steer invert and CANcoder direction."),
+                infoLabel("3. Drive +/- checks drive invert.")));
+        center.add(wrapLabelCard("Notes",
+                infoLabel("Angle delta should match physical module motion."),
+                infoLabel("CANcoder delta should have the same sign as steer motion."),
+                infoLabel("Run calibration with wheels straight before updating offsets.")));
+        root.add(center, BorderLayout.CENTER);
         return root;
     }
 
@@ -516,6 +571,48 @@ public class DashboardFrame extends JFrame {
         return wrapCard("Operator Actions", panel);
     }
 
+    private JPanel buildSwerveToolsControlsCard() {
+        JPanel panel = new JPanel();
+        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+        panel.setBackground(CARD);
+
+        swerveModuleCombo = new JComboBox<>(new String[] {"FL", "FR", "BL", "BR"});
+        swerveModuleCombo.setFont(ACTION_FONT);
+        swerveModuleCombo.setBackground(CARD_ALT);
+        swerveModuleCombo.setForeground(TEXT);
+        swerveModuleCombo.setFocusable(false);
+
+        swerveCalibrateButton = createCommandButton(
+                "Read Calibration",
+                DashboardNtClient.DashboardCommand.CALIBRATE_CANCODERS);
+        swerveStopValidationButton = createCommandButton(
+                "Stop Validation",
+                DashboardNtClient.DashboardCommand.STOP_SWERVE_VALIDATION);
+
+        JPanel topRow = new JPanel(new GridLayout(1, 3, 8, 0));
+        topRow.setBackground(CARD);
+        topRow.add(swerveModuleCombo);
+        topRow.add(swerveCalibrateButton);
+        topRow.add(swerveStopValidationButton);
+
+        swerveSteerPositiveButton = createSwerveValidationButton("Steer +", "STEER_POSITIVE");
+        swerveSteerNegativeButton = createSwerveValidationButton("Steer -", "STEER_NEGATIVE");
+        swerveDrivePositiveButton = createSwerveValidationButton("Drive +", "DRIVE_FORWARD");
+        swerveDriveNegativeButton = createSwerveValidationButton("Drive -", "DRIVE_REVERSE");
+
+        JPanel actionGrid = new JPanel(new GridLayout(1, 4, 8, 8));
+        actionGrid.setBackground(CARD);
+        actionGrid.add(swerveSteerPositiveButton);
+        actionGrid.add(swerveSteerNegativeButton);
+        actionGrid.add(swerveDrivePositiveButton);
+        actionGrid.add(swerveDriveNegativeButton);
+
+        panel.add(topRow);
+        panel.add(Box.createVerticalStrut(10));
+        panel.add(actionGrid);
+        return wrapCard("Swerve Validation Controls", panel);
+    }
+
     private JButton createCommandButton(String text, DashboardNtClient.DashboardCommand command) {
         JButton button = new JButton(text);
         button.setFocusPainted(false);
@@ -525,6 +622,23 @@ public class DashboardFrame extends JFrame {
         button.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
         button.addActionListener(e -> client.sendCommand(command));
         return button;
+    }
+
+    private JButton createSwerveValidationButton(String text, String modeToken) {
+        JButton button = new JButton(text);
+        button.setFocusPainted(false);
+        button.setFont(ACTION_FONT);
+        button.setBackground(BUTTON_ACTIVE);
+        button.setForeground(TEXT);
+        button.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
+        button.addActionListener(e -> client.sendSwerveValidation(selectedSwerveModuleToken(), modeToken));
+        return button;
+    }
+
+    private JLabel infoLabel(String text) {
+        JLabel label = new JLabel(text);
+        styleCompactLabel(label);
+        return label;
     }
 
     // =========================================================================
@@ -744,6 +858,8 @@ public class DashboardFrame extends JFrame {
         // Operator tab: motor temperatures
         updateTemperatureLabels(data);
 
+        updateSwerveTools(data);
+
         // Command ack
         ackLabel.setText("Ack: " + sanitize(data.ackLastCommand())
                 + " #" + data.ackSeq()
@@ -941,6 +1057,38 @@ public class DashboardFrame extends JFrame {
                 connected && teleopEnabled && data.climberArmed(),
                 "Requires teleop and climb arm gate",
                 connected ? "Hold Start + Back in teleop" : "No robot connection");
+        boolean swerveValidationEnabled = connected && data.enabled()
+                && ("TELEOP".equals(data.mode()) || "TEST".equals(data.mode()));
+        setButtonState(
+                swerveSteerPositiveButton,
+                swerveValidationEnabled,
+                "Requires enabled teleop/test",
+                connected ? "Enable teleop/test to run module validation" : "No robot connection");
+        setButtonState(
+                swerveSteerNegativeButton,
+                swerveValidationEnabled,
+                "Requires enabled teleop/test",
+                connected ? "Enable teleop/test to run module validation" : "No robot connection");
+        setButtonState(
+                swerveDrivePositiveButton,
+                swerveValidationEnabled,
+                "Requires enabled teleop/test",
+                connected ? "Enable teleop/test to run module validation" : "No robot connection");
+        setButtonState(
+                swerveDriveNegativeButton,
+                swerveValidationEnabled,
+                "Requires enabled teleop/test",
+                connected ? "Enable teleop/test to run module validation" : "No robot connection");
+        setButtonState(
+                swerveStopValidationButton,
+                connected,
+                "Always available when connected",
+                "No robot connection");
+        setButtonState(
+                swerveCalibrateButton,
+                connected,
+                "Reads current no-offset CANcoder values",
+                "No robot connection");
     }
 
     private void setButtonState(
@@ -963,6 +1111,32 @@ public class DashboardFrame extends JFrame {
         label.setText(title + ": " + (pass ? "PASS" : "WAIT"));
         label.setBackground(pass ? OK : PENDING);
         label.setForeground(Color.WHITE);
+    }
+
+    private void updateSwerveTools(DashboardData data) {
+        String selectedModule = selectedSwerveModuleToken();
+        swerveValidationStatusLabel.setText("Validation: "
+                + sanitize(data.swerveValidationModeDisplayName())
+                + " on " + sanitize(data.swerveValidationModuleDisplayName())
+                + " active=" + yesNo(data.swerveValidationActive()));
+        swerveValidationStatusLabel.setForeground(data.swerveValidationActive() ? OK : MUTED);
+
+        swerveValidationOutputsLabel.setText("Outputs: drive="
+                + formatSignedPercent(data.swerveValidationDrivePercent())
+                + " steer=" + formatSignedPercent(data.swerveValidationSteerPercent()));
+
+        swerveValidationDeltasLabel.setText("Deltas: angle="
+                + formatMaybe(data.swerveValidationAngleDeltaDeg()) + " deg"
+                + " cancoder=" + formatRotationMaybe(data.swerveValidationCANcoderDeltaRot()) + " rot");
+
+        swerveValidationLiveLabel.setText(selectedModule + ": angle="
+                + formatMaybe(selectedModuleAngleDeg(data, selectedModule))
+                + " deg pos=" + formatRotationMaybe(selectedModulePosRot(data, selectedModule))
+                + " abs=" + formatRotationMaybe(selectedModuleAbsRawRot(data, selectedModule)));
+
+        swerveCalibrationLabel.setText(selectedModule + ": calRaw="
+                + formatRotationMaybe(selectedModuleCalibrationRawRot(data, selectedModule))
+                + " offset=" + formatRotationMaybe(selectedModuleCalibrationOffsetRot(data, selectedModule)));
     }
 
     private void updateYawBar(double yawDeg) {
@@ -1469,6 +1643,62 @@ public class DashboardFrame extends JFrame {
 
     private static String formatRotationMaybe(double value) {
         return Double.isFinite(value) ? ROTATION_DECIMAL.format(value) : "--";
+    }
+
+    private static String formatSignedPercent(double value) {
+        return Double.isFinite(value) ? String.format("%+.0f%%", value * 100.0) : "--";
+    }
+
+    private String selectedSwerveModuleToken() {
+        if (swerveModuleCombo == null || swerveModuleCombo.getSelectedItem() == null) {
+            return "FL";
+        }
+        return swerveModuleCombo.getSelectedItem().toString();
+    }
+
+    private static double selectedModuleAngleDeg(DashboardData data, String moduleToken) {
+        return switch (moduleToken) {
+            case "FR" -> data.swerveFRAngleDeg();
+            case "BL" -> data.swerveBLAngleDeg();
+            case "BR" -> data.swerveBRAngleDeg();
+            default -> data.swerveFLAngleDeg();
+        };
+    }
+
+    private static double selectedModulePosRot(DashboardData data, String moduleToken) {
+        return switch (moduleToken) {
+            case "FR" -> data.cancoderFRPosRot();
+            case "BL" -> data.cancoderBLPosRot();
+            case "BR" -> data.cancoderBRPosRot();
+            default -> data.cancoderFLPosRot();
+        };
+    }
+
+    private static double selectedModuleAbsRawRot(DashboardData data, String moduleToken) {
+        return switch (moduleToken) {
+            case "FR" -> data.cancoderFRAbsRawRot();
+            case "BL" -> data.cancoderBLAbsRawRot();
+            case "BR" -> data.cancoderBRAbsRawRot();
+            default -> data.cancoderFLAbsRawRot();
+        };
+    }
+
+    private static double selectedModuleCalibrationRawRot(DashboardData data, String moduleToken) {
+        return switch (moduleToken) {
+            case "FR" -> data.cancoderFRRawRot();
+            case "BL" -> data.cancoderBLRawRot();
+            case "BR" -> data.cancoderBRRawRot();
+            default -> data.cancoderFLRawRot();
+        };
+    }
+
+    private static double selectedModuleCalibrationOffsetRot(DashboardData data, String moduleToken) {
+        return switch (moduleToken) {
+            case "FR" -> data.cancoderFROffsetRot();
+            case "BL" -> data.cancoderBLOffsetRot();
+            case "BR" -> data.cancoderBROffsetRot();
+            default -> data.cancoderFLOffsetRot();
+        };
     }
 
     private static String yesNo(boolean value) {
