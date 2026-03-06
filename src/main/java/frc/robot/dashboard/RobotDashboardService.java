@@ -19,7 +19,7 @@ public class RobotDashboardService {
         void scheduleLevel1Climb();
     }
 
-    private static final String CONTRACT_VERSION = "2026.7.0";
+    private static final String CONTRACT_VERSION = "2026.8.0";
 
     private final Actions actions;
 
@@ -81,6 +81,8 @@ public class RobotDashboardService {
 
     // Camera / vision connection
     private final BooleanPublisher cameraConnectedPub;
+    private final IntegerPublisher visionTagIdPub;
+    private final DoublePublisher visionDistancePub;
 
     // CAN bus health
     private final DoublePublisher canBusUtilizationPub;
@@ -209,6 +211,8 @@ public class RobotDashboardService {
 
         // Camera / vision connection
         cameraConnectedPub = table.getBooleanTopic("vision/camera_connected").publish();
+        visionTagIdPub = table.getIntegerTopic("vision/tag_id").publish();
+        visionDistancePub = table.getDoubleTopic("vision/distance_m").publish();
 
         // CAN bus health
         canBusUtilizationPub = table.getDoubleTopic("health/can_bus_utilization").publish();
@@ -336,6 +340,8 @@ public class RobotDashboardService {
 
         // Camera / vision connection
         cameraConnectedPub.set(snapshot.cameraConnected());
+        visionTagIdPub.set(snapshot.visionTagId());
+        visionDistancePub.set(snapshot.visionDistanceM());
 
         // CAN bus health
         canBusUtilizationPub.set(snapshot.canBusUtilization());

@@ -323,6 +323,8 @@ class RobotDashboardServiceTest {
                 "",
                 // Camera
                 true,
+                -1,
+                Double.NaN,
                 // CAN health
                 0.0,
                 0,

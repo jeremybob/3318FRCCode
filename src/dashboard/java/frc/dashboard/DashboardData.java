@@ -48,6 +48,9 @@ public record DashboardData(
         String eventName,
         // Camera / vision connection
         boolean cameraConnected,
+        // Vision tag detection
+        int visionTagId,
+        double visionDistanceM,
         // CAN bus health
         double canBusUtilization,
         long canReceiveErrorCount,
