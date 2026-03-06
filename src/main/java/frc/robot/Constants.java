@@ -361,23 +361,40 @@ public final class Constants {
     }
 
     // =========================================================================
-    // VISION / PHOTONVISION CONSTANTS
+    // VISION CONSTANTS — USB camera (Logitech C920 HD Pro) on roboRIO 2
+    //
+    // Fallback strategy: AprilTag detect-only in a background thread.
+    // No coprocessor required. See docs/RIO_CAMERA_FALLBACK_PLAN.md.
     // =========================================================================
     public static final class Vision {
-        // Set false for electrical bring-up when no coprocessor/camera is present.
-        public static final boolean ENABLE_PHOTON = true;
-        // Name must match what you set in PhotonVision's web interface
-        public static final String CAMERA_NAME = "PiCamera";  // TUNE ME
+        // Set false for electrical bring-up when no camera is present.
+        public static final boolean ENABLE_VISION = true;
 
-        // Throttle repeated startup warnings when the vision coprocessor is offline.
-        public static final double VISION_WARN_INTERVAL_SEC = 5.0;
-        // Back off briefly after camera read errors to avoid command loop spam.
-        public static final double VISION_READ_ERROR_BACKOFF_SEC = 1.0;
+        // ---- USB camera settings (Logitech C920 / C920 HD Pro) ----
+        public static final int CAMERA_DEVICE_ID = 0;     // /dev/video0
+        public static final int CAMERA_WIDTH     = 320;
+        public static final int CAMERA_HEIGHT    = 240;
+        public static final int CAMERA_FPS       = 15;
 
-        // Alignment is "good enough" once yaw error is within this many degrees
-        public static final double YAW_TOLERANCE_DEG = 2.0;
+        // ---- C920 camera intrinsics (320x240, 4:3 crop) ----
+        // Horizontal FOV from Logitech C920 spec sheet (native 16:9 is 70.42°,
+        // but 4:3 crop narrows it slightly — measure and adjust if needed).
+        public static final double HORIZONTAL_FOV_DEG = 70.42;  // TUNE ME
+        public static final double VERTICAL_FOV_DEG   = 43.3;   // TUNE ME
+        // Focal length in pixels — calibrate once per camera:
+        //   Place robot at known distance d from a tag, measure tag pixel height px,
+        //   then f = px * d / TAG_HEIGHT_M
+        public static final double FOCAL_LENGTH_PIXELS = 300.0;  // CALIBRATE ME
+
+        // Standard FRC AprilTag size (6.5 inches outer, 36h11 family)
+        public static final double TAG_HEIGHT_M = 0.1651;
+
+        // Alignment is "good enough" once yaw error is within this many degrees.
+        // Wider than PhotonVision because pixel-based yaw is noisier.
+        public static final double YAW_TOLERANCE_DEG = 3.0;
         // Tolerate brief vision dropouts instead of immediately canceling a shot.
-        public static final double TARGET_LOSS_TOLERANCE_SEC = 0.35; // TUNE ME
+        // Bumped from 0.35 s to account for lower frame rate (~10-15 fps).
+        public static final double TARGET_LOSS_TOLERANCE_SEC = 0.5; // TUNE ME
         // Feasible vertical angle band for a valid shot solution from the camera.
         public static final double MIN_SHOT_PITCH_DEG = -12.0; // TUNE ME
         public static final double MAX_SHOT_PITCH_DEG =  18.0; // TUNE ME
@@ -387,27 +404,11 @@ public final class Constants {
         public static final double TURN_kD     = 0.005;
         public static final double MAX_ROT_CMD = 0.6;  // max rotation power during alignment
 
-        // ---- Camera mount position (for AprilTag pose estimation) ----
-        // Transform from robot center to camera lens.
+        // ---- Camera mount position ----
+        // Used for pitch-based distance estimation.
         // TUNE ME: Measure the actual camera mount position on your robot!
-        // Translation: (forward_m, left_m, up_m) from robot center
-        // Rotation: (roll, pitch, yaw) in radians
-        public static final double CAMERA_FORWARD_M  = 0.25;  // TUNE ME
-        public static final double CAMERA_LEFT_M     = 0.0;   // TUNE ME
         public static final double CAMERA_UP_M       = 0.50;  // TUNE ME
         public static final double CAMERA_PITCH_RAD  = Math.toRadians(-15.0); // tilted down, TUNE ME
-        public static final double CAMERA_YAW_RAD    = 0.0;
-
-        // Vision pose estimation trust (standard deviations).
-        // Higher values = less trust in vision, more trust in wheel odometry.
-        // Start conservative and tighten once you validate vision accuracy on the field.
-        public static final double VISION_STD_DEV_X_M          = 0.5;  // meters
-        public static final double VISION_STD_DEV_Y_M          = 0.5;  // meters
-        public static final double VISION_STD_DEV_HEADING_RAD  = Math.toRadians(10); // radians
-
-        // Maximum pose ambiguity for single-tag results (0.0 = perfect, 1.0 = worst).
-        // Multi-tag results are inherently more accurate and skip this filter.
-        public static final double MAX_POSE_AMBIGUITY = 0.2;
 
         // ---- Alliance-specific HUB tag IDs for targeting ----
         // AlignAndShootCommand should ONLY aim at your alliance's HUB tags.

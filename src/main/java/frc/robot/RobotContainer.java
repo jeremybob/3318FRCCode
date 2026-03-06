@@ -27,10 +27,9 @@ import com.pathplanner.lib.config.PIDConstants;
 import com.pathplanner.lib.config.RobotConfig;
 import com.pathplanner.lib.controllers.PPHolonomicDriveController;
 
-import org.photonvision.PhotonCamera;
-
 import java.util.ArrayList;
 import java.util.IdentityHashMap;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -57,21 +56,22 @@ import frc.robot.dashboard.ReadyToScoreEvaluator;
 import frc.robot.dashboard.ReadyToScoreResult;
 import frc.robot.dashboard.RobotDashboardService;
 import frc.robot.subsystems.*;
+import frc.robot.vision.RioVisionThread;
+import frc.robot.vision.VisionResult;
 
 public class RobotContainer {
 
     // =========================================================================
-    // VISION — one shared camera instance for the whole robot
-    // FIXED: Camera is created here, not inside each command.
-    // The camera must be declared before SwerveSubsystem so it's initialized
-    // first (Java fields initialize in declaration order).
+    // VISION — background thread running AprilTag detection on USB camera
+    // Publishes VisionResult via AtomicReference (thread-safe, lock-free).
+    // See docs/RIO_CAMERA_FALLBACK_PLAN.md for architecture details.
     // =========================================================================
-    private final PhotonCamera camera = new PhotonCamera(Constants.Vision.CAMERA_NAME);
+    private final AtomicReference<VisionResult> visionResult = new AtomicReference<>();
 
     // =========================================================================
     // SUBSYSTEMS — created once here, shared with commands
     // =========================================================================
-    private final SwerveSubsystem  swerve  = new SwerveSubsystem(camera);
+    private final SwerveSubsystem  swerve  = new SwerveSubsystem(visionResult);
     private final IntakeSubsystem  intake  = new IntakeSubsystem();
     private final HopperSubsystem  hopper  = new HopperSubsystem();
     private final FeederSubsystem  feeder  = new FeederSubsystem();
@@ -116,6 +116,11 @@ public class RobotContainer {
         configureAutoChooser();
         configureBindings();
         configureCommandEventLogging();
+
+        // Start the background vision thread (USB camera AprilTag detection).
+        if (Constants.Vision.ENABLE_VISION) {
+            new RioVisionThread(visionResult).start();
+        }
 
         // Schedule intake homing at startup so the arm finds its zero position.
         // This runs once when the robot first enables (CommandScheduler won't
@@ -613,10 +618,10 @@ public class RobotContainer {
     }
 
     private Command buildAlignAndShootCommand() {
-        if (!Constants.Vision.ENABLE_PHOTON) {
+        if (!Constants.Vision.ENABLE_VISION) {
             return Commands.print("[RobotContainer] AlignAndShoot unavailable: vision is disabled in Constants.");
         }
-        return new AlignAndShootCommand(swerve, shooter, feeder, hopper, intake, camera)
+        return new AlignAndShootCommand(swerve, shooter, feeder, hopper, intake, visionResult)
                 .withName("AlignAndShoot");
     }
 

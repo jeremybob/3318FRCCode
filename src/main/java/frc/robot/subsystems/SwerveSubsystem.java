@@ -8,45 +8,32 @@
 //     3. Provide pose/speed information so PathPlanner can run autonomous paths
 //     4. Support field-oriented driving (joystick "up" always = away from driver)
 //
-// NEW vs v1:
-//   - Added Pigeon 2 gyro for heading
-//   - Added SwerveDrivePoseEstimator (odometry)
-//   - Added field-oriented drive
-//   - Added methods PathPlanner needs (getPose, resetPose, getRobotRelativeSpeeds,
-//     driveRobotRelative)
-//   - Added SmartDashboard telemetry
-//   - Moved joystick deadband to RobotContainer where it belongs (raw axis values)
-//   - Added PhotonVision AprilTag pose estimation to correct odometry drift
+// VISION FALLBACK:
+//   With the USB camera fallback strategy, pose estimation relies on wheel
+//   encoders + Pigeon 2 gyro only (no vision pose correction).  The background
+//   RioVisionThread provides yaw/distance to AlignAndShootCommand directly.
 // ============================================================================
 package frc.robot.subsystems;
+
+import java.util.concurrent.atomic.AtomicReference;
 
 import com.ctre.phoenix6.CANBus;
 import com.ctre.phoenix6.hardware.Pigeon2;
 
-import org.photonvision.PhotonCamera;
-import org.photonvision.PhotonPoseEstimator;
-
-import edu.wpi.first.apriltag.AprilTagFieldLayout;
-import edu.wpi.first.apriltag.AprilTagFields;
-import edu.wpi.first.math.VecBuilder;
 import edu.wpi.first.math.estimator.SwerveDrivePoseEstimator;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Rotation2d;
-import edu.wpi.first.math.geometry.Rotation3d;
-import edu.wpi.first.math.geometry.Transform3d;
-import edu.wpi.first.math.geometry.Translation3d;
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
 import edu.wpi.first.math.kinematics.SwerveDriveKinematics;
 import edu.wpi.first.math.kinematics.SwerveModulePosition;
 import edu.wpi.first.math.kinematics.SwerveModuleState;
-import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj.smartdashboard.Field2d;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 
 import frc.robot.Constants;
-import frc.robot.commands.AlignAndShootCommand;
 import frc.robot.subsystems.swerve.SwerveModule;
+import frc.robot.vision.VisionResult;
 
 public class SwerveSubsystem extends SubsystemBase {
 
@@ -93,16 +80,11 @@ public class SwerveSubsystem extends SubsystemBase {
     // Tracks where the robot is on the field using:
     //   - The gyro angle (heading)
     //   - How far each wheel has traveled (module positions)
-    //   - Vision AprilTag measurements (fused automatically)
+    // No vision pose correction in USB camera fallback mode.
     private final SwerveDrivePoseEstimator poseEstimator;
 
-    // ---- Vision pose estimation ----
-    // Uses PhotonVision AprilTag detection to correct odometry drift.
-    // Runs in both auto and teleop (except when AlignAndShootCommand owns the camera).
-    private final PhotonCamera camera;
-    private final PhotonPoseEstimator photonEstimator;
-    private double nextVisionWarningSec = 0.0;
-    private double visionReadBackoffUntilSec = 0.0;
+    // ---- Vision thread reference (for camera connectivity check) ----
+    private final AtomicReference<VisionResult> visionResult;
 
     // ---- Field visualization (appears in Shuffleboard / SmartDashboard) ----
     private final Field2d field = new Field2d();
@@ -111,10 +93,10 @@ public class SwerveSubsystem extends SubsystemBase {
     // Constructor
     //
     // Parameters:
-    //   camera - the shared PhotonCamera instance (created in RobotContainer)
+    //   visionResult - shared AtomicReference from RioVisionThread
     // --------------------------------------------------------------------------
-    public SwerveSubsystem(PhotonCamera camera) {
-        this.camera = camera;
+    public SwerveSubsystem(AtomicReference<VisionResult> visionResult) {
+        this.visionResult = visionResult;
 
         // Zero the gyro so "forward" is whatever direction the robot is facing
         // at power-on. If you want the robot to know field orientation from the
@@ -131,31 +113,6 @@ public class SwerveSubsystem extends SubsystemBase {
                 new Pose2d()            // initial pose = (0, 0, 0°)
         );
 
-        // ---- Vision pose estimator setup ----
-        // 2026 REBUILT field: 32 AprilTags (IDs 1-32) across HUBs, Towers,
-        // Outposts, and Trenches.  Tag positions come from the WPILib-bundled
-        // field layout JSON derived from the 2026 Field Dimension Drawings.
-        // "Welded" = standard welded tag mounts (default for most FRC fields).
-        // Use k2026RebuiltAndymark if your practice field has AndyMark mounts.
-        AprilTagFieldLayout fieldLayout = AprilTagFieldLayout.loadField(
-                AprilTagFields.k2026RebuiltWelded);
-
-        // Camera mount position: where the camera is relative to robot center.
-        // TUNE ME: Measure these on your actual robot!
-        Transform3d robotToCamera = new Transform3d(
-                new Translation3d(
-                        Constants.Vision.CAMERA_FORWARD_M,
-                        Constants.Vision.CAMERA_LEFT_M,
-                        Constants.Vision.CAMERA_UP_M),
-                new Rotation3d(
-                        0,  // roll
-                        Constants.Vision.CAMERA_PITCH_RAD,
-                        Constants.Vision.CAMERA_YAW_RAD));
-
-        // Uses individual estimation methods (2026 API) with explicit fallback:
-        // coprocessor multi-tag pose first, then single-tag lowest ambiguity.
-        photonEstimator = new PhotonPoseEstimator(fieldLayout, robotToCamera);
-
         // Register the field widget so it shows up in SmartDashboard
         SmartDashboard.putData("Field", field);
     }
@@ -171,19 +128,10 @@ public class SwerveSubsystem extends SubsystemBase {
         // Update the odometry estimate with the latest gyro and wheel data
         poseEstimator.update(getGyroYaw(), getModulePositions());
 
-        // ---- Vision pose correction ----
-        // Process AprilTag detections to correct odometry drift.
-        // Skip when AlignAndShootCommand is active — it reads camera data for targeting
-        // and we must not consume the unread buffer out from under it.
-        if (Constants.Vision.ENABLE_PHOTON && !AlignAndShootCommand.isTelemetryCommandActive()) {
-            updateVisionPoseEstimator();
-        }
-
         // Update the field visualization (robot position on the dashboard)
         field.setRobotPose(getPose());
 
         // Publish useful debugging data to SmartDashboard
-        // These show up in the "Swerve" group when you open the dashboard.
         SmartDashboard.putNumber("Swerve/HeadingDeg",        getHeading().getDegrees());
         SmartDashboard.putNumber("Swerve/PigeonYawDeg",      getPigeonYawDeg());
         SmartDashboard.putNumber("Swerve/PigeonPitchDeg",    getPigeonPitchDeg());
@@ -200,74 +148,31 @@ public class SwerveSubsystem extends SubsystemBase {
     // DRIVING METHODS
     // ==========================================================================
 
-    // --------------------------------------------------------------------------
-    // drive()
-    //
-    // Main teleop drive method. Takes driver joystick values and applies them.
-    //
-    // Parameters:
-    //   xVelocity         - forward/backward speed in m/s (+x = forward)
-    //   yVelocity         - left/right speed in m/s (+y = left)
-    //   rotationalVelocity - spin rate in rad/s (+omega = CCW / turning left)
-    //   fieldRelative     - if true, "forward" is always away from the driver
-    //                       regardless of which direction the robot faces.
-    //                       if false, "forward" is relative to the robot's nose.
-    // --------------------------------------------------------------------------
     public void drive(double xVelocity, double yVelocity,
                       double rotationalVelocity, boolean fieldRelative) {
-
-        // Build the desired chassis speeds object
         ChassisSpeeds speeds;
         if (fieldRelative) {
-            // Field-relative: rotate the joystick vector by the robot's current heading
-            // so that joystick "up" always moves the robot away from the driver.
             speeds = ChassisSpeeds.fromFieldRelativeSpeeds(
                     xVelocity, yVelocity, rotationalVelocity, getHeading());
         } else {
-            // Robot-relative: "forward" is the robot's nose direction.
             speeds = new ChassisSpeeds(xVelocity, yVelocity, rotationalVelocity);
         }
-
-        // Convert chassis speeds to individual module states
         setModuleStates(speeds);
     }
 
-    // --------------------------------------------------------------------------
-    // driveRobotRelative()
-    //
-    // Used by PathPlanner during autonomous. PathPlanner sends robot-relative
-    // chassis speeds (it handles field math itself).
-    // --------------------------------------------------------------------------
     public void driveRobotRelative(ChassisSpeeds speeds) {
         setModuleStates(speeds);
     }
 
-    // --------------------------------------------------------------------------
-    // setModuleStates() - private helper
-    //
-    // Takes a ChassisSpeeds and distributes them to all four modules.
-    // --------------------------------------------------------------------------
     private void setModuleStates(ChassisSpeeds speeds) {
-        // Convert chassis speeds into target states for each wheel
         SwerveModuleState[] states = kinematics.toSwerveModuleStates(speeds);
-
-        // Normalize: if any wheel is asked to go faster than the max, slow ALL
-        // wheels proportionally so the robot still moves in the right direction.
         SwerveDriveKinematics.desaturateWheelSpeeds(states, Constants.Swerve.MAX_TRANSLATION_MPS);
-
-        // Send target states to each module
-        // ORDER MUST MATCH the kinematics constructor: FL, FR, BL, BR
         frontLeft.setDesiredState(states[0]);
         frontRight.setDesiredState(states[1]);
         backLeft.setDesiredState(states[2]);
         backRight.setDesiredState(states[3]);
     }
 
-    // --------------------------------------------------------------------------
-    // stop()
-    //
-    // Cuts power to all modules immediately.
-    // --------------------------------------------------------------------------
     public void stop() {
         frontLeft.stop();
         frontRight.stop();
@@ -275,13 +180,6 @@ public class SwerveSubsystem extends SubsystemBase {
         backRight.stop();
     }
 
-    // --------------------------------------------------------------------------
-    // xLock()
-    //
-    // Points all four wheels inward at 45-degree angles in an X pattern.
-    // The drive motors are set to zero speed. This makes the robot very
-    // difficult to push — useful for defense or holding position.
-    // --------------------------------------------------------------------------
     public void xLock() {
         frontLeft.setDesiredState(new SwerveModuleState(0, Rotation2d.fromDegrees(45)));
         frontRight.setDesiredState(new SwerveModuleState(0, Rotation2d.fromDegrees(-45)));
@@ -289,16 +187,8 @@ public class SwerveSubsystem extends SubsystemBase {
         backRight.setDesiredState(new SwerveModuleState(0, Rotation2d.fromDegrees(45)));
     }
 
-    // --------------------------------------------------------------------------
-    // zeroHeading()
-    //
-    // Resets the gyro so the current robot heading becomes "0 degrees / forward."
-    // Useful when the driver needs to re-align field orientation mid-match.
-    // Bind this to a button (see RobotContainer).
-    // --------------------------------------------------------------------------
     public void zeroHeading() {
         pigeon.reset();
-        // Also reset the pose estimator's rotation so odometry stays consistent
         resetPose(new Pose2d(getPose().getTranslation(), new Rotation2d()));
     }
 
@@ -306,51 +196,38 @@ public class SwerveSubsystem extends SubsystemBase {
     // GETTERS (used by PathPlanner, commands, and telemetry)
     // ==========================================================================
 
-    // Returns the robot's position and heading on the field
     public Pose2d getPose() {
         return poseEstimator.getEstimatedPosition();
     }
 
-    // Resets odometry to a known pose (called at auto start)
     public void resetPose(Pose2d pose) {
         poseEstimator.resetPosition(getGyroYaw(), getModulePositions(), pose);
     }
 
-    // Returns the robot's current speeds in robot-relative frame
-    // (PathPlanner needs this to calculate drive corrections)
     public ChassisSpeeds getRobotRelativeSpeeds() {
         return kinematics.toChassisSpeeds(getModuleStates());
     }
 
-    // Returns the robot's current heading as a Rotation2d
-    // (This comes from the odometry estimator, which fuses gyro + encoders
-    //  and is more accurate than raw gyro alone)
     public Rotation2d getHeading() {
         return getPose().getRotation();
     }
 
-    // Returns raw Pigeon2 yaw in degrees (unfused sensor reading)
     public double getPigeonYawDeg() {
         return pigeon.getYaw().getValueAsDouble();
     }
 
-    // Returns raw Pigeon2 pitch in degrees
     public double getPigeonPitchDeg() {
         return pigeon.getPitch().getValueAsDouble();
     }
 
-    // Returns raw Pigeon2 roll in degrees
     public double getPigeonRollDeg() {
         return pigeon.getRoll().getValueAsDouble();
     }
 
-    // Returns the raw Pigeon 2 yaw angle
-    // Used only internally for updating the pose estimator
     private Rotation2d getGyroYaw() {
         return pigeon.getRotation2d();
     }
 
-    // Returns an array of the current state (speed + angle) of each module
     private SwerveModuleState[] getModuleStates() {
         return new SwerveModuleState[] {
             frontLeft.getState(),
@@ -360,7 +237,6 @@ public class SwerveSubsystem extends SubsystemBase {
         };
     }
 
-    // Returns the absolute angle (degrees) of each swerve module: [FL, FR, BL, BR]
     public double[] getModuleAnglesDeg() {
         return new double[] {
             frontLeft.getAbsoluteAngle().getDegrees(),
@@ -370,7 +246,6 @@ public class SwerveSubsystem extends SubsystemBase {
         };
     }
 
-    // Returns the drive motor temperature (Celsius) for each module: [FL, FR, BL, BR]
     public double[] getDriveTemperaturesC() {
         return new double[] {
             frontLeft.getDriveTemperatureC(),
@@ -380,13 +255,17 @@ public class SwerveSubsystem extends SubsystemBase {
         };
     }
 
-    // Returns whether the PhotonVision camera is connected and communicating
+    /**
+     * Returns whether the vision thread is producing results.
+     * A result less than 2 seconds old means the camera is connected and working.
+     */
     public boolean isCameraConnected() {
-        return Constants.Vision.ENABLE_PHOTON && camera.isConnected();
+        if (!Constants.Vision.ENABLE_VISION) return false;
+        VisionResult result = visionResult.get();
+        if (result == null) return false;
+        return (edu.wpi.first.wpilibj.Timer.getFPGATimestamp() - result.timestampSec()) < 2.0;
     }
 
-    // Returns an array of module positions (distance traveled + angle)
-    // The pose estimator uses this every loop to track robot location.
     private SwerveModulePosition[] getModulePositions() {
         return new SwerveModulePosition[] {
             frontLeft.getPosition(),
@@ -394,59 +273,5 @@ public class SwerveSubsystem extends SubsystemBase {
             backLeft.getPosition(),
             backRight.getPosition()
         };
-    }
-
-    private void updateVisionPoseEstimator() {
-        double now = Timer.getFPGATimestamp();
-        if (now < visionReadBackoffUntilSec) {
-            return;
-        }
-
-        if (!camera.isConnected()) {
-            throttledVisionWarning("PhotonVision not connected; skipping vision pose updates.");
-            return;
-        }
-
-        try {
-            var unreadResults = camera.getAllUnreadResults();
-            for (var result : unreadResults) {
-                if (!result.hasTargets()) continue;
-
-                var estimate = photonEstimator.estimateCoprocMultiTagPose(result);
-                if (estimate.isEmpty()) {
-                    estimate = photonEstimator.estimateLowestAmbiguityPose(result);
-                }
-                estimate.ifPresent(est -> {
-                    // Filter out noisy single-tag results with high ambiguity.
-                    // Multi-tag estimates use PnP and are already reliable.
-                    int tagCount = result.getTargets().size();
-                    if (tagCount == 1
-                            && result.getBestTarget().getPoseAmbiguity()
-                                    > Constants.Vision.MAX_POSE_AMBIGUITY) {
-                        return; // skip this measurement
-                    }
-
-                    poseEstimator.addVisionMeasurement(
-                            est.estimatedPose.toPose2d(),
-                            est.timestampSeconds,
-                            VecBuilder.fill(
-                                    Constants.Vision.VISION_STD_DEV_X_M,
-                                    Constants.Vision.VISION_STD_DEV_Y_M,
-                                    Constants.Vision.VISION_STD_DEV_HEADING_RAD));
-                });
-            }
-        } catch (RuntimeException e) {
-            visionReadBackoffUntilSec = now + Constants.Vision.VISION_READ_ERROR_BACKOFF_SEC;
-            throttledVisionWarning("PhotonVision read failed; backing off. " + e.getMessage());
-        }
-    }
-
-    private void throttledVisionWarning(String message) {
-        double now = Timer.getFPGATimestamp();
-        if (now < nextVisionWarningSec) {
-            return;
-        }
-        nextVisionWarningSec = now + Constants.Vision.VISION_WARN_INTERVAL_SEC;
-        System.err.println("[SwerveSubsystem] " + message);
     }
 }
