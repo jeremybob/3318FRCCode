@@ -78,6 +78,16 @@ public class ClimberSubsystem extends SubsystemBase {
         // Tell the follower to mirror the leader.
         // The follower will automatically match whatever the leader outputs.
         followerWinch.setControl(followRequest);
+
+        // Reduce CAN status frame rates — climber is low-priority and only active
+        // briefly during endgame. 4 Hz for position/current, minimize everything else.
+        leaderWinch.getPosition().setUpdateFrequency(10);
+        leaderWinch.getVelocity().setUpdateFrequency(4);
+        leaderWinch.getStatorCurrent().setUpdateFrequency(4);
+        leaderWinch.getDeviceTemp().setUpdateFrequency(1);
+        followerWinch.getPosition().setUpdateFrequency(4);
+        followerWinch.getVelocity().setUpdateFrequency(4);
+        followerWinch.getDeviceTemp().setUpdateFrequency(1);
     }
 
     // --------------------------------------------------------------------------

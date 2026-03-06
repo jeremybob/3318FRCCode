@@ -42,25 +42,29 @@ public class SwerveSubsystem extends SubsystemBase {
             Constants.CAN.FRONT_LEFT_DRIVE,
             Constants.CAN.FRONT_LEFT_STEER,
             Constants.CAN.FRONT_LEFT_CANCODER,
-            Constants.Swerve.FL_CANCODER_OFFSET_ROT);
+            Constants.Swerve.FL_CANCODER_OFFSET_ROT,
+            "FL");
 
     private final SwerveModule frontRight = new SwerveModule(
             Constants.CAN.FRONT_RIGHT_DRIVE,
             Constants.CAN.FRONT_RIGHT_STEER,
             Constants.CAN.FRONT_RIGHT_CANCODER,
-            Constants.Swerve.FR_CANCODER_OFFSET_ROT);
+            Constants.Swerve.FR_CANCODER_OFFSET_ROT,
+            "FR");
 
     private final SwerveModule backLeft = new SwerveModule(
             Constants.CAN.BACK_LEFT_DRIVE,
             Constants.CAN.BACK_LEFT_STEER,
             Constants.CAN.BACK_LEFT_CANCODER,
-            Constants.Swerve.BL_CANCODER_OFFSET_ROT);
+            Constants.Swerve.BL_CANCODER_OFFSET_ROT,
+            "BL");
 
     private final SwerveModule backRight = new SwerveModule(
             Constants.CAN.BACK_RIGHT_DRIVE,
             Constants.CAN.BACK_RIGHT_STEER,
             Constants.CAN.BACK_RIGHT_CANCODER,
-            Constants.Swerve.BR_CANCODER_OFFSET_ROT);
+            Constants.Swerve.BR_CANCODER_OFFSET_ROT,
+            "BR");
 
     // ---- Gyro (Pigeon 2) ----
     // The Pigeon 2 measures the robot's yaw (rotation angle on the field).
@@ -103,6 +107,12 @@ public class SwerveSubsystem extends SubsystemBase {
         // start of a match, call resetPose() with the actual starting pose instead.
         pigeon.reset();
 
+        // Optimize Pigeon 2 CAN frame rates — yaw is critical for field-relative
+        // driving, but pitch/roll are only used for telemetry.
+        pigeon.getYaw().setUpdateFrequency(100);
+        pigeon.getPitch().setUpdateFrequency(4);
+        pigeon.getRoll().setUpdateFrequency(4);
+
         // Initialize odometry.
         // We start at the origin (0, 0) facing 0 degrees.
         // In actual matches, this gets reset to the known auto starting position.
@@ -142,6 +152,15 @@ public class SwerveSubsystem extends SubsystemBase {
         SmartDashboard.putNumber("Swerve/FR_AngleDeg",       frontRight.getAbsoluteAngle().getDegrees());
         SmartDashboard.putNumber("Swerve/BL_AngleDeg",       backLeft.getAbsoluteAngle().getDegrees());
         SmartDashboard.putNumber("Swerve/BR_AngleDeg",       backRight.getAbsoluteAngle().getDegrees());
+
+        // ---- CANCoder diagnostics ----
+        // Publish per-module CANCoder health so CAN issues are visible on the dashboard.
+        for (SwerveModule mod : new SwerveModule[]{frontLeft, frontRight, backLeft, backRight}) {
+            String prefix = "Swerve/" + mod.getName() + "_CC_";
+            SmartDashboard.putNumber(prefix + "PosRot",    mod.getCANcoderPositionRot());
+            SmartDashboard.putNumber(prefix + "AbsRaw",    mod.getCANcoderAbsoluteRaw());
+            SmartDashboard.putBoolean(prefix + "OK",       mod.isCANcoderOk());
+        }
     }
 
     // ==========================================================================

@@ -68,7 +68,15 @@ public class ShooterSubsystem extends SubsystemBase {
         leftShooter.getConfigurator().apply(cfg);
         rightShooter.getConfigurator().apply(cfg);
 
-        // Right wheel command sign is flipped in setShooterVelocity().
+        // Reduce CAN status frame rates — shooter doesn't need high-frequency updates.
+        // Velocity at 10 Hz is enough for isAtSpeed() checks.
+        // Position and temperature at 4 Hz — we rarely read these.
+        leftShooter.getVelocity().setUpdateFrequency(10);
+        leftShooter.getPosition().setUpdateFrequency(4);
+        leftShooter.getDeviceTemp().setUpdateFrequency(4);
+        rightShooter.getVelocity().setUpdateFrequency(10);
+        rightShooter.getPosition().setUpdateFrequency(4);
+        rightShooter.getDeviceTemp().setUpdateFrequency(4);
     }
 
     // --------------------------------------------------------------------------

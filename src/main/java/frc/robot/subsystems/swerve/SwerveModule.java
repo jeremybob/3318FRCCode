@@ -17,8 +17,10 @@
 // ============================================================================
 package frc.robot.subsystems.swerve;
 
+import com.ctre.phoenix6.BaseStatusSignal;
 import com.ctre.phoenix6.CANBus;
 import com.ctre.phoenix6.StatusCode;
+import com.ctre.phoenix6.StatusSignal;
 import com.ctre.phoenix6.configs.CANcoderConfiguration;
 import com.ctre.phoenix6.configs.TalonFXConfiguration;
 import com.ctre.phoenix6.controls.VelocityVoltage;
@@ -39,10 +41,27 @@ public class SwerveModule {
     // Set true only if Phoenix Pro is licensed on all required devices.
     private static final boolean USE_PHOENIX_PRO_FEATURES = false;
 
+    // Max retries when applying device configuration over CAN
+    private static final int CONFIG_APPLY_RETRIES = 5;
+
     // The three hardware devices on this corner
     private final TalonFX driveMotor;
     private final TalonFX steerMotor;
     private final CANcoder cancoder;
+
+    // Cached status signals for efficient batched reads (avoids per-call CAN traffic).
+    // Raw StatusSignal type avoids needing measure-type generics (Angle, AngularVelocity, etc.)
+    @SuppressWarnings("rawtypes")
+    private final StatusSignal cancoderPosition;
+    @SuppressWarnings("rawtypes")
+    private final StatusSignal driveVelocity;
+    @SuppressWarnings("rawtypes")
+    private final StatusSignal drivePosition;
+    @SuppressWarnings("rawtypes")
+    private final StatusSignal driveTemp;
+
+    // Module name for diagnostics
+    private final String name;
 
     // Reusable control request objects — avoids creating garbage every loop
     // VelocityVoltage: tells the drive motor "spin at exactly X rotations/sec"
@@ -62,9 +81,12 @@ public class SwerveModule {
     //   cancoderId     - CAN ID of the CANcoder on this corner
     //   cancoderOffsetRot - The offset (in rotations) to make "0" = forward
     //                       Find this in Phoenix Tuner X (see Constants.java notes)
+    //   moduleName     - Human-readable name for diagnostics (e.g. "FL")
     // --------------------------------------------------------------------------
     public SwerveModule(int driveId, int steerId, int cancoderId,
-                        double cancoderOffsetRot) {
+                        double cancoderOffsetRot, String moduleName) {
+
+        this.name = moduleName;
 
         // Create the hardware objects
         driveMotor = new TalonFX(driveId, new CANBus(Constants.CAN.CTRE_CAN_BUS));
@@ -73,80 +95,64 @@ public class SwerveModule {
 
         // ---- Configure the CANcoder ----------------------------------------
         CANcoderConfiguration ccfg = new CANcoderConfiguration();
-        // Report angle around a centered discontinuity (equivalent to ±0.5 rotations).
         ccfg.MagnetSensor.AbsoluteSensorDiscontinuityPoint = 0.5;
-        // The offset you measured in Tuner X shifts the reading so forward = 0
         ccfg.MagnetSensor.MagnetOffset = cancoderOffsetRot;
-        // CCW positive means turning left increases the angle value (WPILib convention)
         ccfg.MagnetSensor.SensorDirection = SensorDirectionValue.CounterClockwise_Positive;
-        applyOrThrow(cancoder.getConfigurator().apply(ccfg),
+        applyWithRetry(() -> cancoder.getConfigurator().apply(ccfg),
                 "CANcoder config (id=" + cancoderId + ")");
 
         // ---- Configure the DRIVE motor -------------------------------------
         TalonFXConfiguration driveCfg = new TalonFXConfiguration();
-
-        // Brake mode: wheel resists being pushed when power is removed
         driveCfg.MotorOutput.NeutralMode = NeutralModeValue.Brake;
-
-        // Current limits to protect motors from damage during collisions or jams
         driveCfg.CurrentLimits.StatorCurrentLimit       = 60;
         driveCfg.CurrentLimits.StatorCurrentLimitEnable = true;
         driveCfg.CurrentLimits.SupplyCurrentLimit       = 40;
         driveCfg.CurrentLimits.SupplyCurrentLimitEnable = true;
-
-        // Velocity PID — controls wheel speed
-        // kS: min voltage to overcome static friction
-        // kV: voltage per RPS (kV = 12V / free_speed for the configured drive motor)
-        // kP: extra correction when actual speed doesn't match target
         driveCfg.Slot0.kS = Constants.Swerve.DRIVE_kS;
         driveCfg.Slot0.kV = Constants.Swerve.DRIVE_kV;
         driveCfg.Slot0.kP = Constants.Swerve.DRIVE_kP;
-
-        applyOrThrow(driveMotor.getConfigurator().apply(driveCfg),
+        applyWithRetry(() -> driveMotor.getConfigurator().apply(driveCfg),
                 "Drive TalonFX config (id=" + driveId + ")");
 
         // ---- Configure the STEER motor ------------------------------------
         TalonFXConfiguration steerCfg = new TalonFXConfiguration();
-
-        // Brake mode: holds the wheel angle when not actively steering
         steerCfg.MotorOutput.NeutralMode = NeutralModeValue.Brake;
-
-        // Current limit for the steer motor (doesn't need as much torque as drive)
         steerCfg.CurrentLimits.StatorCurrentLimit       = 40;
         steerCfg.CurrentLimits.StatorCurrentLimitEnable = true;
-
-        // Use CANcoder as steer feedback. FusedCANcoder is a Phoenix Pro feature;
-        // fall back to RemoteCANcoder on unlicensed robots.
-        //
-        // SensorToMechanismRatio: How many CANcoder rotations per mechanism rotation.
-        //   Our CANcoder IS the output shaft, so it's 1:1 → 1.0
-        //
-        // RotorToSensorRatio: How many motor shaft rotations per CANcoder rotation.
-        //   MK4 steer gearbox = 12.8:1, so motor spins 12.8x per wheel turn → 12.8
         steerCfg.Feedback.FeedbackRemoteSensorID  = cancoderId;
         steerCfg.Feedback.FeedbackSensorSource = USE_PHOENIX_PRO_FEATURES
                 ? FeedbackSensorSourceValue.FusedCANcoder
                 : FeedbackSensorSourceValue.RemoteCANcoder;
         steerCfg.Feedback.SensorToMechanismRatio  = 1.0;
-        steerCfg.Feedback.RotorToSensorRatio      = Constants.Swerve.STEER_GEAR_RATIO; // 12.8
-
-        // ContinuousWrap: The position controller wraps around at ±0.5 rotations.
-        // This means it always takes the shortest path to any angle — never spins
-        // a full revolution when a small rotation is shorter.
+        steerCfg.Feedback.RotorToSensorRatio      = Constants.Swerve.STEER_GEAR_RATIO;
         steerCfg.ClosedLoopGeneral.ContinuousWrap = true;
-
-        // Position PID for steering angle control
-        // Source: CTRE official Phoenix 6 TunerConstants.java (steerGains)
         steerCfg.Slot0.kP = Constants.Swerve.STEER_kP;
         steerCfg.Slot0.kD = Constants.Swerve.STEER_kD;
         steerCfg.Slot0.kS = Constants.Swerve.STEER_kS;
         steerCfg.Slot0.kV = Constants.Swerve.STEER_kV;
-
-        applyOrThrow(steerMotor.getConfigurator().apply(steerCfg),
+        applyWithRetry(() -> steerMotor.getConfigurator().apply(steerCfg),
                 "Steer TalonFX config (id=" + steerId + ")");
 
-        // Leave Phoenix status frame frequencies at defaults.
-        // RemoteCANcoder feedback uses Position, which defaults high-rate on CAN 2.0.
+        // ---- Cache status signals for efficient reads -----------------------
+        // Grabbing signal references once avoids repeated hashmap lookups each loop.
+        cancoderPosition = cancoder.getPosition();
+        driveVelocity    = driveMotor.getVelocity();
+        drivePosition    = driveMotor.getPosition();
+        driveTemp        = driveMotor.getDeviceTemp();
+
+        // ---- Optimize CAN frame rates for swerve-critical signals -----------
+        // CANcoder position and drive velocity/position are needed every loop (50 Hz).
+        // Drive temperature is low-priority — 4 Hz is plenty.
+        // Steer motor signals we don't read directly (TalonFX reads CANcoder internally
+        // for RemoteCANcoder feedback), so reduce steer's outbound status frames.
+        BaseStatusSignal.setUpdateFrequencyForAll(100, cancoderPosition);
+        BaseStatusSignal.setUpdateFrequencyForAll(100, driveVelocity, drivePosition);
+        BaseStatusSignal.setUpdateFrequencyForAll(4, driveTemp);
+        // Reduce steer motor status frames — we don't read these signals directly.
+        // The TalonFX still reads the CANcoder internally at its own rate.
+        steerMotor.getPosition().setUpdateFrequency(50);
+        steerMotor.getVelocity().setUpdateFrequency(50);
+        steerMotor.getDeviceTemp().setUpdateFrequency(4);
     }
 
     // --------------------------------------------------------------------------
@@ -190,66 +196,79 @@ public class SwerveModule {
     // AbsolutePosition). Magnet offset is still applied in device config.
     // --------------------------------------------------------------------------
     public Rotation2d getAbsoluteAngle() {
-        // false = use last cached frame, do not force immediate CAN refresh.
-        return Rotation2d.fromRotations(cancoder.getPosition(false).getValueAsDouble());
+        return Rotation2d.fromRotations(cancoderPosition.refresh().getValueAsDouble());
     }
 
-    // --------------------------------------------------------------------------
-    // getState()
-    //
-    // Returns the current speed AND angle of this module.
-    // Used by SmartDashboard logging and odometry.
-    // --------------------------------------------------------------------------
     public SwerveModuleState getState() {
-        // Convert drive motor RPS back to wheel surface speed (m/s)
-        double motorRPS    = driveMotor.getVelocity(false).getValueAsDouble();
+        double motorRPS    = driveVelocity.refresh().getValueAsDouble();
         double wheelRPS    = motorRPS / Constants.Swerve.DRIVE_GEAR_RATIO;
         double speedMps    = wheelRPS * Constants.Swerve.WHEEL_CIRCUMFERENCE_M;
         return new SwerveModuleState(speedMps, getAbsoluteAngle());
     }
 
-    // --------------------------------------------------------------------------
-    // getPosition()
-    //
-    // Returns how far the wheel has traveled (in meters) AND its current angle.
-    // This is what odometry uses to estimate the robot's position on the field.
-    // --------------------------------------------------------------------------
     public SwerveModulePosition getPosition() {
-        // Convert drive motor accumulated rotations to distance traveled
-        double motorRotations  = driveMotor.getPosition(false).getValueAsDouble();
+        double motorRotations  = drivePosition.refresh().getValueAsDouble();
         double wheelRotations  = motorRotations / Constants.Swerve.DRIVE_GEAR_RATIO;
         double distanceMeters  = wheelRotations * Constants.Swerve.WHEEL_CIRCUMFERENCE_M;
         return new SwerveModulePosition(distanceMeters, getAbsoluteAngle());
     }
 
-    // --------------------------------------------------------------------------
-    // getDriveTemperatureC()
-    //
-    // Returns the drive motor's processor temperature in degrees Celsius.
-    // Useful for monitoring thermal health during a match — TalonFX throttles
-    // at high temps and will eventually fault.
-    // --------------------------------------------------------------------------
     public double getDriveTemperatureC() {
-        return driveMotor.getDeviceTemp(false).getValueAsDouble();
+        return driveTemp.refresh().getValueAsDouble();
     }
 
-    // --------------------------------------------------------------------------
-    // stop()
-    //
-    // Immediately cuts power to both motors (neutral/coast).
-    // Called when the robot is disabled or teleop ends.
-    // --------------------------------------------------------------------------
+    /** Module name for telemetry (e.g. "FL", "FR", "BL", "BR"). */
+    public String getName() {
+        return name;
+    }
+
+    /** Returns the raw CANCoder absolute position (no offset) for diagnostics. */
+    public double getCANcoderAbsoluteRaw() {
+        return cancoder.getAbsolutePosition().getValueAsDouble();
+    }
+
+    /** Returns the CANCoder position value used for control (with offset applied). */
+    public double getCANcoderPositionRot() {
+        return cancoderPosition.refresh().getValueAsDouble();
+    }
+
+    /** Returns true if the latest CANCoder read was OK (not stale/error). */
+    public boolean isCANcoderOk() {
+        return cancoderPosition.refresh().getStatus().isOK();
+    }
+
     public void stop() {
         driveMotor.stopMotor();
         steerMotor.stopMotor();
     }
 
-    private static void applyOrThrow(StatusCode code, String action) {
-        if (code.isError()) {
-            throw new IllegalStateException("[SwerveModule] Failed " + action + ": " + code.getName());
+    // --------------------------------------------------------------------------
+    // applyWithRetry — retries CAN config application up to CONFIG_APPLY_RETRIES
+    // times before logging an error. This prevents transient CAN bus glitches
+    // from crashing robot init.
+    // --------------------------------------------------------------------------
+    @FunctionalInterface
+    private interface ConfigApplier {
+        StatusCode apply();
+    }
+
+    private static void applyWithRetry(ConfigApplier applier, String action) {
+        StatusCode lastCode = StatusCode.StatusCodeNotInitialized;
+        for (int i = 0; i < CONFIG_APPLY_RETRIES; i++) {
+            lastCode = applier.apply();
+            if (lastCode.isOK()) {
+                if (i > 0) {
+                    System.out.println("[SwerveModule] " + action + " succeeded on attempt " + (i + 1));
+                }
+                return;
+            }
+            System.out.println("[SwerveModule] " + action + " attempt " + (i + 1)
+                    + " failed: " + lastCode.getName());
         }
-        if (code.isWarning()) {
-            System.out.println("[SwerveModule] Warning during " + action + ": " + code.getName());
-        }
+        // All retries exhausted — log error but do NOT crash robot init.
+        // The module may work degraded or the issue may resolve at runtime.
+        System.err.println("[SwerveModule] ERROR: " + action + " failed after "
+                + CONFIG_APPLY_RETRIES + " attempts. Last status: " + lastCode.getName()
+                + ". Module may be degraded.");
     }
 }

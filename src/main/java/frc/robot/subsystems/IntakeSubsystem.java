@@ -106,6 +106,13 @@ public class IntakeSubsystem extends SubsystemBase {
         rollerCfg.CurrentLimits.SupplyCurrentLimitEnable = true;
 
         rollerMotor.getConfigurator().apply(rollerCfg);
+
+        // Reduce CAN status frame rates — intake roller is low-priority.
+        // Stator current at 10 Hz for stall detection, everything else minimal.
+        rollerMotor.getStatorCurrent().setUpdateFrequency(10);
+        rollerMotor.getVelocity().setUpdateFrequency(4);
+        rollerMotor.getPosition().setUpdateFrequency(4);
+        rollerMotor.getDeviceTemp().setUpdateFrequency(1);
     }
 
     // --------------------------------------------------------------------------
