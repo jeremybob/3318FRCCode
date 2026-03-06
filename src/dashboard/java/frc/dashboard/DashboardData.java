@@ -42,6 +42,8 @@ public record DashboardData(
         boolean isBrownout,
         // Auto selection & execution
         String selectedAutoName,
+        String selectedAutoSource,
+        String[] autoOptions,
         boolean autoCommandRunning,
         // Match info
         long matchNumber,

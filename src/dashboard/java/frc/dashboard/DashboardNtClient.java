@@ -6,6 +6,8 @@ import edu.wpi.first.networktables.IntegerPublisher;
 import edu.wpi.first.networktables.IntegerSubscriber;
 import edu.wpi.first.networktables.NetworkTable;
 import edu.wpi.first.networktables.NetworkTableInstance;
+import edu.wpi.first.networktables.StringPublisher;
+import edu.wpi.first.networktables.StringArraySubscriber;
 import edu.wpi.first.networktables.StringSubscriber;
 
 public class DashboardNtClient implements AutoCloseable {
@@ -82,6 +84,8 @@ public class DashboardNtClient implements AutoCloseable {
 
     // Auto selection & execution
     private final StringSubscriber selectedAutoNameSub = table.getStringTopic("auto/selected_name").subscribe("");
+    private final StringSubscriber selectedAutoSourceSub = table.getStringTopic("auto/selected_source").subscribe("");
+    private final StringArraySubscriber autoOptionsSub = table.getStringArrayTopic("auto/options").subscribe(new String[0]);
     private final BooleanSubscriber autoCommandRunningSub =
             table.getBooleanTopic("auto/command_running").subscribe(false);
 
@@ -173,12 +177,15 @@ public class DashboardNtClient implements AutoCloseable {
     private final IntegerPublisher alignShootPub = table.getIntegerTopic("cmd/align_shoot_seq").publish();
     private final IntegerPublisher fallbackShootPub = table.getIntegerTopic("cmd/fallback_shoot_seq").publish();
     private final IntegerPublisher level1ClimbPub = table.getIntegerTopic("cmd/level1_climb_seq").publish();
+    private final StringPublisher selectAutoNamePub = table.getStringTopic("cmd/select_auto_name").publish();
+    private final IntegerPublisher selectAutoPub = table.getIntegerTopic("cmd/select_auto_seq").publish();
     private final IntegerSubscriber zeroHeadingSeqSub = table.getIntegerTopic("cmd/zero_heading_seq").subscribe(0);
     private final IntegerSubscriber stopDriveSeqSub = table.getIntegerTopic("cmd/stop_drive_seq").subscribe(0);
     private final IntegerSubscriber intakeHomeSeqSub = table.getIntegerTopic("cmd/intake_home_seq").subscribe(0);
     private final IntegerSubscriber alignShootSeqSub = table.getIntegerTopic("cmd/align_shoot_seq").subscribe(0);
     private final IntegerSubscriber fallbackShootSeqSub = table.getIntegerTopic("cmd/fallback_shoot_seq").subscribe(0);
     private final IntegerSubscriber level1ClimbSeqSub = table.getIntegerTopic("cmd/level1_climb_seq").subscribe(0);
+    private final IntegerSubscriber selectAutoSeqSub = table.getIntegerTopic("cmd/select_auto_seq").subscribe(0);
 
     private long zeroHeadingSeq = 0;
     private long stopDriveSeq = 0;
@@ -186,6 +193,7 @@ public class DashboardNtClient implements AutoCloseable {
     private long alignShootSeq = 0;
     private long fallbackShootSeq = 0;
     private long level1ClimbSeq = 0;
+    private long selectAutoSeq = 0;
 
     public DashboardNtClient(String clientName, int teamNumber, String hostOverride) {
         nt.startClient4(clientName);
@@ -242,6 +250,8 @@ public class DashboardNtClient implements AutoCloseable {
                 isBrownoutSub.get(),
                 // Auto
                 selectedAutoNameSub.get(),
+                selectedAutoSourceSub.get(),
+                autoOptionsSub.get(),
                 autoCommandRunningSub.get(),
                 // Match info
                 matchNumberSub.get(),
@@ -337,6 +347,16 @@ public class DashboardNtClient implements AutoCloseable {
             }
             default -> throw new IllegalStateException("Unhandled command " + command);
         }
+    }
+
+    public synchronized void sendAutoSelection(String autoName) {
+        if (autoName == null || autoName.isBlank()) {
+            return;
+        }
+
+        selectAutoSeq = nextCommandSequence(selectAutoSeq, selectAutoSeqSub.get());
+        selectAutoNamePub.set(autoName);
+        selectAutoPub.set(selectAutoSeq);
     }
 
     static long nextCommandSequence(long localSeq, long topicSeq) {

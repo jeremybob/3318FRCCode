@@ -11,6 +11,8 @@ import edu.wpi.first.networktables.IntegerPublisher;
 import edu.wpi.first.networktables.IntegerSubscriber;
 import edu.wpi.first.networktables.NetworkTable;
 import edu.wpi.first.networktables.NetworkTableInstance;
+import edu.wpi.first.networktables.StringArraySubscriber;
+import edu.wpi.first.networktables.StringPublisher;
 import edu.wpi.first.networktables.StringSubscriber;
 
 class RobotDashboardServiceTest {
@@ -26,11 +28,16 @@ class RobotDashboardServiceTest {
     private IntegerPublisher stopDriveCmdPub;
     private IntegerPublisher alignShootCmdPub;
     private IntegerPublisher fallbackShootCmdPub;
+    private IntegerPublisher selectAutoCmdPub;
+    private StringPublisher selectAutoNameCmdPub;
 
     private StringSubscriber ackCommandSub;
     private StringSubscriber ackStatusSub;
     private IntegerSubscriber ackSeqSub;
     private StringSubscriber ackMessageSub;
+    private StringSubscriber selectedAutoNameSub;
+    private StringSubscriber selectedAutoSourceSub;
+    private StringArraySubscriber autoOptionsSub;
     private DoubleSubscriber robotTimestampSub;
     private StringSubscriber driverButtonsSub;
     private StringSubscriber operatorButtonsSub;
@@ -51,11 +58,16 @@ class RobotDashboardServiceTest {
         stopDriveCmdPub = table.getIntegerTopic("cmd/stop_drive_seq").publish();
         alignShootCmdPub = table.getIntegerTopic("cmd/align_shoot_seq").publish();
         fallbackShootCmdPub = table.getIntegerTopic("cmd/fallback_shoot_seq").publish();
+        selectAutoCmdPub = table.getIntegerTopic("cmd/select_auto_seq").publish();
+        selectAutoNameCmdPub = table.getStringTopic("cmd/select_auto_name").publish();
 
         ackCommandSub = table.getStringTopic("ack/last_command").subscribe("");
         ackStatusSub = table.getStringTopic("ack/last_status").subscribe("");
         ackSeqSub = table.getIntegerTopic("ack/last_seq").subscribe(0);
         ackMessageSub = table.getStringTopic("ack/message").subscribe("");
+        selectedAutoNameSub = table.getStringTopic("auto/selected_name").subscribe("");
+        selectedAutoSourceSub = table.getStringTopic("auto/selected_source").subscribe("");
+        autoOptionsSub = table.getStringArrayTopic("auto/options").subscribe(new String[0]);
         robotTimestampSub = table.getDoubleTopic("robot/timestamp_sec").subscribe(0.0);
         driverButtonsSub = table.getStringTopic("controls/driver_buttons_active").subscribe("--");
         operatorButtonsSub = table.getStringTopic("controls/operator_buttons_active").subscribe("--");
@@ -259,6 +271,67 @@ class RobotDashboardServiceTest {
         assertEquals("Operator:RT -> AlignAndShoot requested", controlEventMessageSub.get());
     }
 
+    @Test
+    void publishesAutoSelectionMetadata() {
+        service.periodic(snapshot("DISABLED", false, false, 60.0));
+        nt.flush();
+
+        assertEquals("Do Nothing", selectedAutoNameSub.get());
+        assertEquals("SMARTDASHBOARD", selectedAutoSourceSub.get());
+        assertEquals(3, autoOptionsSub.get().length);
+        assertEquals("Do Nothing", autoOptionsSub.get()[0]);
+        assertEquals("Taxi Only", autoOptionsSub.get()[1]);
+        assertEquals("Calibrate CANcoders", autoOptionsSub.get()[2]);
+    }
+
+    @Test
+    void autoSelectionAcceptedWhenDisabledAndKnown() {
+        selectAutoNameCmdPub.set("Taxi Only");
+        selectAutoCmdPub.set(1);
+        nt.flush();
+
+        service.periodic(snapshot("DISABLED", false, false, 61.0));
+        nt.flush();
+
+        assertEquals("select_auto", ackCommandSub.get());
+        assertEquals("OK", ackStatusSub.get());
+        assertEquals(1L, ackSeqSub.get());
+        assertEquals("Selected Taxi Only", ackMessageSub.get());
+        assertEquals("Taxi Only", actions.lastSelectedAutoName);
+    }
+
+    @Test
+    void autoSelectionRejectedWhenEnabled() {
+        selectAutoNameCmdPub.set("Taxi Only");
+        selectAutoCmdPub.set(2);
+        nt.flush();
+
+        service.periodic(snapshot("TELEOP", true, false, 62.0));
+        nt.flush();
+
+        assertEquals("select_auto", ackCommandSub.get());
+        assertEquals("REJECTED", ackStatusSub.get());
+        assertEquals(2L, ackSeqSub.get());
+        assertEquals("Only allowed while robot is disabled", ackMessageSub.get());
+        assertEquals(0, actions.selectAutoCalls);
+    }
+
+    @Test
+    void autoSelectionRejectedWhenUnknown() {
+        selectAutoNameCmdPub.set("Nope");
+        selectAutoCmdPub.set(3);
+        nt.flush();
+
+        service.periodic(snapshot("DISABLED", false, false, 63.0));
+        nt.flush();
+
+        assertEquals("select_auto", ackCommandSub.get());
+        assertEquals("REJECTED", ackStatusSub.get());
+        assertEquals(3L, ackSeqSub.get());
+        assertEquals("Unknown auto: Nope", ackMessageSub.get());
+        assertEquals(0, actions.selectAutoCalls);
+    }
+
     private static DashboardSnapshot snapshot(
             String mode,
             boolean enabled,
@@ -317,6 +390,8 @@ class RobotDashboardServiceTest {
                 false,
                 // Auto
                 "Do Nothing",
+                "SMARTDASHBOARD",
+                new String[] {"Do Nothing", "Taxi Only", "Calibrate CANcoders"},
                 false,
                 // Match info
                 0,
@@ -353,6 +428,8 @@ class RobotDashboardServiceTest {
         int alignShootCalls;
         int fallbackShootCalls;
         int level1ClimbCalls;
+        int selectAutoCalls;
+        String lastSelectedAutoName;
 
         @Override
         public void zeroHeading() {
@@ -382,6 +459,12 @@ class RobotDashboardServiceTest {
         @Override
         public void scheduleLevel1Climb() {
             level1ClimbCalls++;
+        }
+
+        @Override
+        public void selectAutoByName(String autoName) {
+            selectAutoCalls++;
+            lastSelectedAutoName = autoName;
         }
     }
 }

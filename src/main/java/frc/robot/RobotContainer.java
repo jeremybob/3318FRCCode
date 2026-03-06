@@ -29,11 +29,12 @@ import com.pathplanner.lib.controllers.PPHolonomicDriveController;
 
 import java.util.ArrayList;
 import java.util.IdentityHashMap;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.stream.Collectors;
+import java.util.concurrent.atomic.AtomicReference;
 
 import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.system.plant.DCMotor;
@@ -94,8 +95,12 @@ public class RobotContainer {
     // =========================================================================
     private final SendableChooser<Command> autoChooser = new SendableChooser<>();
     private final Map<Command, String> autoCommandNames = new IdentityHashMap<>();
+    private final Map<String, Command> autoCommandsByName = new LinkedHashMap<>();
     private boolean pathPlannerConfigured = false;
     private boolean pathPlannerUsingFallbackConfig = false;
+    private Command selectedAutoCommand;
+    private String selectedAutoName = "Do Nothing";
+    private String selectedAutoSource = "DEFAULT";
     private Command currentAutoCommand;
     private final RobotDashboardService dashboardService;
     private static final double TRIGGER_ACTIVE_THRESHOLD = 0.20;
@@ -158,6 +163,11 @@ public class RobotContainer {
             @Override
             public void scheduleLevel1Climb() {
                 RobotContainer.this.scheduleLevel1Climb();
+            }
+
+            @Override
+            public void selectAutoByName(String autoName) {
+                RobotContainer.this.selectAutoByName(autoName, "CUSTOM DASHBOARD");
             }
         });
     }
@@ -298,11 +308,12 @@ public class RobotContainer {
     private void configureAutoChooser() {
         // Default option (no auto — safe if something breaks)
         Command doNothing = Commands.none();
-        autoChooser.setDefaultOption("Do Nothing", doNothing);
-        autoCommandNames.put(doNothing, "Do Nothing");
+        registerAutoOption("Do Nothing", doNothing, true);
 
         if (!pathPlannerConfigured) {
             System.err.println("[RobotContainer] PathPlanner autos disabled: AutoBuilder is not configured.");
+            registerAutoOption("Calibrate CANcoders", new CalibrateCANcodersCommand(), false);
+            autoChooser.onChange(command -> selectAutoCommand(command, "SMARTDASHBOARD"));
             SmartDashboard.putData("Auto Selector", autoChooser);
             return;
         }
@@ -321,9 +332,9 @@ public class RobotContainer {
 
         // Calibration utility: reads CANcoder offsets and prints to console.
         // Align all wheels forward, select this auto, and enable briefly.
-        Command calibrate = new CalibrateCANcodersCommand();
-        autoChooser.addOption("Calibrate CANcoders", calibrate);
-        autoCommandNames.put(calibrate, "Calibrate CANcoders");
+        registerAutoOption("Calibrate CANcoders", new CalibrateCANcodersCommand(), false);
+
+        autoChooser.onChange(command -> selectAutoCommand(command, "SMARTDASHBOARD"));
 
         // Publish the chooser so it shows up in SmartDashboard / Shuffleboard
         SmartDashboard.putData("Auto Selector", autoChooser);
@@ -331,11 +342,51 @@ public class RobotContainer {
 
     private void addPathPlannerAutoOption(String chooserName, String autoFileName) {
         try {
-            Command cmd = new PathPlannerAuto(autoFileName);
-            autoChooser.addOption(chooserName, cmd);
-            autoCommandNames.put(cmd, chooserName);
+            registerAutoOption(chooserName, new PathPlannerAuto(autoFileName), false);
         } catch (Exception e) {
             System.err.println("[RobotContainer] Skipping auto '" + autoFileName + "': " + e.getMessage());
+        }
+    }
+
+    private void registerAutoOption(String chooserName, Command command, boolean isDefault) {
+        if (isDefault) {
+            autoChooser.setDefaultOption(chooserName, command);
+        } else {
+            autoChooser.addOption(chooserName, command);
+        }
+        autoCommandNames.put(command, chooserName);
+        autoCommandsByName.put(chooserName, command);
+        if (isDefault || selectedAutoCommand == null) {
+            selectAutoCommand(command, "DEFAULT");
+        }
+    }
+
+    private void selectAutoByName(String autoName, String source) {
+        Command command = autoCommandsByName.get(autoName);
+        if (command == null) {
+            logControlEvent("Dashboard", "selectAutoByName() rejected: unknown auto '" + autoName + "'");
+            return;
+        }
+        selectAutoCommand(command, source);
+    }
+
+    private void selectAutoCommand(Command command, String source) {
+        if (command == null) {
+            return;
+        }
+
+        String autoName = autoCommandNames.getOrDefault(command, "Unknown");
+        boolean changed = command != selectedAutoCommand
+                || !autoName.equals(selectedAutoName)
+                || !source.equals(selectedAutoSource);
+        boolean shouldLog = selectedAutoCommand != null && changed;
+
+        selectedAutoCommand = command;
+        selectedAutoName = autoName;
+        selectedAutoSource = source;
+
+        if (shouldLog) {
+            logControlEvent("Auto", "Selected '" + autoName + "' via " + source);
         }
     }
 
@@ -505,12 +556,19 @@ public class RobotContainer {
     // Called by Robot.java during autonomousInit(). Returns the selected auto.
     // =========================================================================
     public Command getAutonomousCommand() {
-        return autoChooser.getSelected();
+        return selectedAutoCommand;
     }
 
     public String getSelectedAutoName() {
-        Command selected = autoChooser.getSelected();
-        return autoCommandNames.getOrDefault(selected, "Unknown");
+        return selectedAutoName;
+    }
+
+    public String getSelectedAutoSource() {
+        return selectedAutoSource;
+    }
+
+    public String[] getAvailableAutoNames() {
+        return autoCommandsByName.keySet().toArray(String[]::new);
     }
 
     public void setCurrentAutoCommand(Command cmd) {
@@ -613,6 +671,8 @@ public class RobotContainer {
                 RobotController.isBrownedOut(),
                 // Auto
                 getSelectedAutoName(),
+                getSelectedAutoSource(),
+                getAvailableAutoNames(),
                 autoRunning,
                 // Match info
                 DriverStation.getMatchNumber(),
