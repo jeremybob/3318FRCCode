@@ -27,6 +27,7 @@ import edu.wpi.first.math.kinematics.ChassisSpeeds;
 import edu.wpi.first.math.kinematics.SwerveDriveKinematics;
 import edu.wpi.first.math.kinematics.SwerveModulePosition;
 import edu.wpi.first.math.kinematics.SwerveModuleState;
+import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj.smartdashboard.Field2d;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
@@ -34,6 +35,7 @@ import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import frc.robot.Constants;
 import frc.robot.subsystems.swerve.SwerveModule;
 import frc.robot.vision.VisionResult;
+import frc.robot.vision.VisionSupport;
 
 public class SwerveSubsystem extends SubsystemBase {
 
@@ -87,8 +89,8 @@ public class SwerveSubsystem extends SubsystemBase {
     // No vision pose correction in USB camera fallback mode.
     private final SwerveDrivePoseEstimator poseEstimator;
 
-    // ---- Vision thread reference (for camera connectivity check) ----
-    private final AtomicReference<VisionResult> visionResult;
+    // ---- Vision thread heartbeat (for camera connectivity check) ----
+    private final AtomicReference<Double> lastVisionFrameTimestampSec;
 
     // ---- Field visualization (appears in Shuffleboard / SmartDashboard) ----
     private final Field2d field = new Field2d();
@@ -99,8 +101,10 @@ public class SwerveSubsystem extends SubsystemBase {
     // Parameters:
     //   visionResult - shared AtomicReference from RioVisionThread
     // --------------------------------------------------------------------------
-    public SwerveSubsystem(AtomicReference<VisionResult> visionResult) {
-        this.visionResult = visionResult;
+    public SwerveSubsystem(
+            AtomicReference<VisionResult> visionResult,
+            AtomicReference<Double> lastVisionFrameTimestampSec) {
+        this.lastVisionFrameTimestampSec = lastVisionFrameTimestampSec;
 
         // Zero the gyro so "forward" is whatever direction the robot is facing
         // at power-on. If you want the robot to know field orientation from the
@@ -302,14 +306,17 @@ public class SwerveSubsystem extends SubsystemBase {
     }
 
     /**
-     * Returns whether the vision thread is producing results.
-     * A result less than 2 seconds old means the camera is connected and working.
+     * Returns whether the vision thread is still receiving camera frames.
+     * This tracks frame heartbeat, not whether a tag is currently visible.
      */
     public boolean isCameraConnected() {
-        if (!Constants.Vision.ENABLE_VISION) return false;
-        VisionResult result = visionResult.get();
-        if (result == null) return false;
-        return (edu.wpi.first.wpilibj.Timer.getFPGATimestamp() - result.timestampSec()) < 2.0;
+        if (!Constants.Vision.ENABLE_VISION) {
+            return false;
+        }
+        return VisionSupport.isCameraConnected(
+                Timer.getFPGATimestamp(),
+                lastVisionFrameTimestampSec.get(),
+                Constants.Vision.CAMERA_HEARTBEAT_TIMEOUT_SEC);
     }
 
     private SwerveModulePosition[] getModulePositions() {

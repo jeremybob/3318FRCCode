@@ -40,6 +40,7 @@ public class AlignAndShootCommand extends Command {
     private static volatile boolean telemetryHasShootableTarget = false;
     private static volatile double telemetryYawDeg = Double.NaN;
     private static volatile double telemetryPitchDeg = Double.NaN;
+    private static volatile double telemetryTargetRps = Double.NaN;
     private static volatile String telemetryLastAbortReason = "";
 
     // All the subsystems this command needs to control
@@ -107,6 +108,7 @@ public class AlignAndShootCommand extends Command {
         telemetryHasShootableTarget = false;
         telemetryYawDeg = Double.NaN;
         telemetryPitchDeg = Double.NaN;
+        telemetryTargetRps = Double.NaN;
         telemetryLastAbortReason = "";
 
         if (!HubActivityTracker.isOurHubActive()) {
@@ -117,6 +119,7 @@ public class AlignAndShootCommand extends Command {
         }
 
         calculatedRPS = Constants.Shooter.TARGET_RPS;
+        telemetryTargetRps = calculatedRPS;
         shooter.setShooterVelocity(calculatedRPS);
         SmartDashboard.putString("AlignShoot/State", "SPIN_UP");
     }
@@ -181,6 +184,7 @@ public class AlignAndShootCommand extends Command {
                     distanceM = estimateDistanceFromPitch(result.pitchDeg());
                 }
                 calculatedRPS = ShooterSubsystem.calculateTargetRPS(distanceM);
+                telemetryTargetRps = calculatedRPS;
                 shooter.setShooterVelocity(calculatedRPS);
                 SmartDashboard.putNumber("AlignShoot/CalculatedRPS", calculatedRPS);
                 SmartDashboard.putNumber("AlignShoot/EstDistanceM", distanceM);
@@ -251,6 +255,7 @@ public class AlignAndShootCommand extends Command {
         telemetryState = "IDLE";
         telemetryCommandActive = false;
         telemetryHasShootableTarget = false;
+        telemetryTargetRps = Double.NaN;
         SmartDashboard.putString("AlignShoot/State", "IDLE");
         if (interrupted) {
             System.out.println("[AlignAndShoot] Command was interrupted.");
@@ -309,9 +314,7 @@ public class AlignAndShootCommand extends Command {
         SmartDashboard.putNumber("AlignShoot/TargetPitchDeg", pitchDeg);
         telemetryPitchDeg = pitchDeg;
 
-        if (!Double.isFinite(pitchDeg)) return false;
-        return pitchDeg >= Constants.Vision.MIN_SHOT_PITCH_DEG
-                && pitchDeg <= Constants.Vision.MAX_SHOT_PITCH_DEG;
+        return isShotPitchFeasible(pitchDeg);
     }
 
     /**
@@ -337,5 +340,12 @@ public class AlignAndShootCommand extends Command {
     public static boolean telemetryHasShootableTarget() { return telemetryHasShootableTarget; }
     public static double getTelemetryYawDeg() { return telemetryYawDeg; }
     public static double getTelemetryPitchDeg() { return telemetryPitchDeg; }
+    public static double getTelemetryTargetRps() { return telemetryTargetRps; }
     public static String getTelemetryLastAbortReason() { return telemetryLastAbortReason; }
+
+    static boolean isShotPitchFeasible(double pitchDeg) {
+        return Double.isFinite(pitchDeg)
+                && pitchDeg >= Constants.Vision.MIN_SHOT_PITCH_DEG
+                && pitchDeg <= Constants.Vision.MAX_SHOT_PITCH_DEG;
+    }
 }

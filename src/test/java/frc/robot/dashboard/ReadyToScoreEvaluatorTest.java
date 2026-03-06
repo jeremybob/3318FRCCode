@@ -31,6 +31,14 @@ class ReadyToScoreEvaluatorTest {
     }
 
     @Test
+    void notReadyWhenShooterStillAdjustingInAlignPhase() {
+        ReadyToScoreResult result = ReadyToScoreEvaluator.evaluate(
+                inputs().withAlignPhase("ALIGN").withShooterAtSpeed(false).build());
+        assertFalse(result.ready());
+        assertEquals("Shooter spinning up", result.reason());
+    }
+
+    @Test
     void notReadyWhenNoTarget() {
         ReadyToScoreResult result = ReadyToScoreEvaluator.evaluate(
                 inputs().withHasTarget(false).withHasShootableTarget(false).build());

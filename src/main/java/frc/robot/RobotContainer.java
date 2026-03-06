@@ -67,11 +67,12 @@ public class RobotContainer {
     // See docs/RIO_CAMERA_FALLBACK_PLAN.md for architecture details.
     // =========================================================================
     private final AtomicReference<VisionResult> visionResult = new AtomicReference<>();
+    private final AtomicReference<Double> lastVisionFrameTimestampSec = new AtomicReference<>(Double.NaN);
 
     // =========================================================================
     // SUBSYSTEMS — created once here, shared with commands
     // =========================================================================
-    private final SwerveSubsystem  swerve  = new SwerveSubsystem(visionResult);
+    private final SwerveSubsystem  swerve  = new SwerveSubsystem(visionResult, lastVisionFrameTimestampSec);
     private final IntakeSubsystem  intake  = new IntakeSubsystem();
     private final HopperSubsystem  hopper  = new HopperSubsystem();
     private final FeederSubsystem  feeder  = new FeederSubsystem();
@@ -119,7 +120,7 @@ public class RobotContainer {
 
         // Start the background vision thread (USB camera AprilTag detection).
         if (Constants.Vision.ENABLE_VISION) {
-            new RioVisionThread(visionResult).start();
+            new RioVisionThread(visionResult, lastVisionFrameTimestampSec).start();
         }
 
         // Schedule intake homing at startup so the arm finds its zero position.
@@ -535,10 +536,18 @@ public class RobotContainer {
 
     private DashboardSnapshot buildDashboardSnapshot() {
         var pose = swerve.getPose();
+        double shooterTargetRps = Constants.Shooter.TARGET_RPS;
+        if (AlignAndShootCommand.isTelemetryCommandActive()) {
+            double alignTargetRps = AlignAndShootCommand.getTelemetryTargetRps();
+            if (Double.isFinite(alignTargetRps) && alignTargetRps > 0.0) {
+                shooterTargetRps = alignTargetRps;
+            }
+        }
+        boolean shooterAtTargetSpeed = shooter.isAtSpeed(shooterTargetRps);
         ReadyToScoreResult ready = ReadyToScoreEvaluator.evaluate(
                 new ReadyToScoreEvaluator.Inputs(
                         intake.isHomed(),
-                        shooter.isAtSpeed(Constants.Shooter.TARGET_RPS),
+                        shooterAtTargetSpeed,
                         AlignAndShootCommand.isTelemetryCommandActive(),
                         AlignAndShootCommand.getTelemetryState(),
                         AlignAndShootCommand.telemetryHasTarget(),
@@ -578,7 +587,7 @@ public class RobotContainer {
                 swerve.getPigeonRollDeg(),
                 shooter.getLeftRPS(),
                 shooter.getRightRPS(),
-                shooter.isAtSpeed(Constants.Shooter.TARGET_RPS),
+                shooterAtTargetSpeed,
                 intake.isHomed(),
                 intake.getLimitSwitchPressed(),
                 intake.getTiltPositionDeg(),

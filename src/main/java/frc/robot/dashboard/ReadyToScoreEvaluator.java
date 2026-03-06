@@ -14,7 +14,7 @@ public final class ReadyToScoreEvaluator {
         }
 
         String phase = inputs.alignPhase();
-        if ("SPIN_UP".equals(phase) && !inputs.shooterAtSpeed()) {
+        if (("SPIN_UP".equals(phase) || "ALIGN".equals(phase)) && !inputs.shooterAtSpeed()) {
             return new ReadyToScoreResult(false, "Shooter spinning up");
         }
 

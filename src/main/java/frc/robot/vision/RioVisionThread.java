@@ -37,11 +37,15 @@ import frc.robot.Constants;
 public class RioVisionThread extends Thread {
 
     private final AtomicReference<VisionResult> latestResult;
+    private final AtomicReference<Double> lastFrameTimestampSec;
 
-    public RioVisionThread(AtomicReference<VisionResult> latestResult) {
+    public RioVisionThread(
+            AtomicReference<VisionResult> latestResult,
+            AtomicReference<Double> lastFrameTimestampSec) {
         super("RioVisionThread");
         setDaemon(true);
         this.latestResult = latestResult;
+        this.lastFrameTimestampSec = lastFrameTimestampSec;
     }
 
     @Override
@@ -58,8 +62,9 @@ public class RioVisionThread extends Thread {
         AprilTagDetector detector = new AprilTagDetector();
         detector.addFamily("tag36h11");
 
-        // Reuse a single Mat to avoid GC pressure in the hot loop
+        // Reuse Mats to avoid GC pressure in the hot loop
         Mat mat = new Mat();
+        Mat grayMat = new Mat();
 
         while (!Thread.interrupted()) {
             // grabFrame blocks until the next frame arrives (or timeout)
@@ -71,8 +76,10 @@ public class RioVisionThread extends Thread {
             }
 
             double timestampSec = Timer.getFPGATimestamp();
+            lastFrameTimestampSec.set(timestampSec);
 
-            AprilTagDetection[] detections = detector.detect(mat);
+            Mat detectorFrame = VisionSupport.prepareDetectorFrame(mat, grayMat);
+            AprilTagDetection[] detections = detector.detect(detectorFrame);
             if (detections.length == 0) {
                 continue;
             }
@@ -117,6 +124,7 @@ public class RioVisionThread extends Thread {
         }
 
         detector.close();
+        grayMat.release();
         mat.release();
     }
 

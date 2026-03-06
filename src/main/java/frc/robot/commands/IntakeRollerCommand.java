@@ -34,16 +34,12 @@ public class IntakeRollerCommand extends Command {
 
     private final IntakeSubsystem intake;
     private final double forwardPower;
+    private final IntakeRollerProtection protection = new IntakeRollerProtection();
 
     // Timer tracks how long the current has been above the stall threshold
     private final Timer stallTimer = new Timer();
     // Timer tracks how long we've been reversing
     private final Timer reverseTimer = new Timer();
-
-    private int retryCount;
-
-    private enum State { RUNNING, REVERSING }
-    private State state;
 
     // --------------------------------------------------------------------------
     // Constructor
@@ -60,62 +56,44 @@ public class IntakeRollerCommand extends Command {
 
     @Override
     public void initialize() {
-        state = State.RUNNING;
-        retryCount = 0;
-        stallTimer.reset();
-        stallTimer.start();
+        protection.reset();
+        restartTimer(stallTimer);
+        reverseTimer.stop();
         reverseTimer.reset();
         intake.setRollerPower(forwardPower);
     }
 
     @Override
     public void execute() {
-        switch (state) {
+        double current = intake.getRollerCurrentAmps();
+        IntakeRollerProtection.Update update = protection.update(
+                current,
+                Constants.Intake.STALL_CURRENT_THRESHOLD_A,
+                stallTimer.hasElapsed(Constants.Intake.STALL_TIME_SEC),
+                reverseTimer.hasElapsed(Constants.Intake.STALL_REVERSE_TIME_SEC),
+                Constants.Intake.STALL_MAX_RETRIES);
 
-            case RUNNING: {
-                intake.setRollerPower(forwardPower);
-
-                double current = intake.getRollerCurrentAmps();
-                if (current > Constants.Intake.STALL_CURRENT_THRESHOLD_A) {
-                    // Current is high — check if it's been sustained
-                    if (stallTimer.hasElapsed(Constants.Intake.STALL_TIME_SEC)) {
-                        if (retryCount >= Constants.Intake.STALL_MAX_RETRIES) {
-                            // Max retries reached; keep running but stop reversing.
-                            // The operator can release and re-press to reset.
-                            System.out.println("[IntakeRoller] Max retries (" +
-                                    Constants.Intake.STALL_MAX_RETRIES + ") reached.");
-                        } else {
-                            retryCount++;
-                            System.out.println("[IntakeRoller] Stall detected — reversing " +
-                                    "(attempt " + retryCount + "/" + Constants.Intake.STALL_MAX_RETRIES + ")");
-                            state = State.REVERSING;
-                            reverseTimer.reset();
-                            reverseTimer.start();
-                        }
-                    }
-                } else {
-                    // Current is normal — reset the stall timer
-                    stallTimer.reset();
-                    stallTimer.start();
-                }
-                break;
-            }
-
-            case REVERSING: {
-                intake.setRollerPower(Constants.Intake.STALL_REVERSE_POWER);
-
-                if (reverseTimer.hasElapsed(Constants.Intake.STALL_REVERSE_TIME_SEC)) {
-                    // Done reversing — try forward again
-                    state = State.RUNNING;
-                    stallTimer.reset();
-                    stallTimer.start();
-                }
-                break;
-            }
+        if (update.restartStallTimer()) {
+            restartTimer(stallTimer);
+        }
+        if (update.restartReverseTimer()) {
+            restartTimer(reverseTimer);
+        }
+        if (update.enteredReversing()) {
+            System.out.println("[IntakeRoller] Stall detected — reversing "
+                    + "(attempt " + protection.retryCount() + "/" + Constants.Intake.STALL_MAX_RETRIES + ")");
+        }
+        if (update.enteredLockout()) {
+            System.out.println("[IntakeRoller] Max retries (" + Constants.Intake.STALL_MAX_RETRIES
+                    + ") reached. Locking out roller until command is restarted.");
         }
 
-        SmartDashboard.putString("Intake/RollerState", state.name());
-        SmartDashboard.putNumber("Intake/StallRetries", retryCount);
+        intake.setRollerPower(protection.commandedPower(
+                forwardPower,
+                Constants.Intake.STALL_REVERSE_POWER));
+
+        SmartDashboard.putString("Intake/RollerState", protection.state().name());
+        SmartDashboard.putNumber("Intake/StallRetries", protection.retryCount());
     }
 
     @Override
@@ -125,6 +103,11 @@ public class IntakeRollerCommand extends Command {
 
     @Override
     public boolean isFinished() {
-        return false; // runs until interrupted (button released)
+        return protection.isLockedOut();
+    }
+
+    private static void restartTimer(Timer timer) {
+        timer.reset();
+        timer.start();
     }
 }

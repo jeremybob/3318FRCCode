@@ -395,9 +395,13 @@ public final class Constants {
         // Tolerate brief vision dropouts instead of immediately canceling a shot.
         // Bumped from 0.35 s to account for lower frame rate (~10-15 fps).
         public static final double TARGET_LOSS_TOLERANCE_SEC = 0.5; // TUNE ME
+        // Camera health should track frame heartbeat, not whether a tag is visible.
+        public static final double CAMERA_HEARTBEAT_TIMEOUT_SEC = 2.0;
         // Feasible vertical angle band for a valid shot solution from the camera.
         public static final double MIN_SHOT_PITCH_DEG = -12.0; // TUNE ME
-        public static final double MAX_SHOT_PITCH_DEG =  18.0; // TUNE ME
+        // With a 15 deg downward camera tilt and the HUB above the camera, normal
+        // scoring distances produce target pitches in the +20 to +35 deg range.
+        public static final double MAX_SHOT_PITCH_DEG =  40.0; // TUNE ME
 
         // PD controller for rotating toward a vision target
         public static final double TURN_kP     = 0.05;
