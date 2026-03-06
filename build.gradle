@@ -30,6 +30,43 @@ configurations {
 }
 
 def ROBOT_MAIN_CLASS = "frc.robot.Main"
+def DASHBOARD_MAIN_CLASS = "frc.dashboard.DashboardMain"
+def DASHBOARD_APP_NAME = "3318 Dashboard"
+def DASHBOARD_APP_VENDOR = "FRC Team 3318"
+def DASHBOARD_APP_DESCRIPTION = "Custom competition dashboard for FRC Team 3318"
+def dashboardPackageVersion = providers.gradleProperty("dashboardPackageVersion").orElse("2026.1.0")
+def dashboardPackageRootDir = layout.buildDirectory.dir("dashboard-package/windows")
+def dashboardPackageInputDir = dashboardPackageRootDir.map { it.dir("input") }
+def dashboardPackageRuntimeDir = dashboardPackageRootDir.map { it.dir("runtime") }
+def dashboardPackageImageDir = dashboardPackageRootDir.map { it.dir("image") }
+def dashboardPackageInstallerDir = dashboardPackageRootDir.map { it.dir("installer") }
+def dashboardPackageImageTempDir = dashboardPackageRootDir.map { it.dir("tmp/image") }
+def dashboardPackageInstallerTempDir = dashboardPackageRootDir.map { it.dir("tmp/installer") }
+
+def isWindowsHost = {
+    System.getProperty("os.name").toLowerCase().contains("windows")
+}
+
+def requireWindowsPackagingHost = {
+    if (!isWindowsHost()) {
+        throw new GradleException(
+                "Windows dashboard packaging must be run on a Windows host because jpackage creates platform-specific launchers.")
+    }
+}
+
+def currentJdkTool = { String toolName ->
+    def extension = isWindowsHost() ? ".exe" : ""
+    def tool = file("${System.getProperty('java.home')}/bin/${toolName}${extension}")
+    if (!tool.exists()) {
+        throw new GradleException(
+                "Required JDK tool '${toolName}' was not found under ${System.getProperty('java.home')}. Run Gradle with a full JDK 17.")
+    }
+    return tool.absolutePath
+}
+
+def dashboardRuntimeJars = {
+    sourceSets.dashboard.runtimeClasspath.files.findAll { it.isFile() && it.name.endsWith('.jar') }
+}
 
 // Define my targets (RoboRIO) and artifacts (deployable files)
 // This is added by GradleRIO's backing project DeployUtils.
@@ -132,10 +169,183 @@ tasks.register('runDashboard', JavaExec) {
     description = 'Run the cross-platform custom FRC dashboard.'
     dependsOn 'extractReleaseNative', 'dashboardClasses'
     classpath = sourceSets.dashboard.runtimeClasspath
-    mainClass = 'frc.dashboard.DashboardMain'
+    mainClass = DASHBOARD_MAIN_CLASS
 
     def nativeDir = file("${buildDir}/jni/release").absolutePath
     systemProperty 'java.library.path', nativeDir
     environment 'LD_LIBRARY_PATH', nativeDir
     environment 'DYLD_LIBRARY_PATH', nativeDir
+}
+
+tasks.register('dashboardJar', Jar) {
+    group = 'distribution'
+    description = 'Builds the standalone custom dashboard jar used for packaged desktop distributions.'
+    archiveBaseName = '3318-dashboard'
+    archiveVersion = ''
+    destinationDirectory = layout.buildDirectory.dir("dashboard-package/jars")
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+
+    manifest {
+        attributes 'Main-Class': DASHBOARD_MAIN_CLASS
+    }
+
+    from(sourceSets.main.output)
+    from(sourceSets.dashboard.output)
+}
+
+tasks.register('prepareDashboardPackageInput', Sync) {
+    group = 'distribution'
+    description = 'Stages jars and desktop native libraries for Windows dashboard packaging.'
+    dependsOn 'dashboardJar', 'extractReleaseNative'
+    into dashboardPackageInputDir
+
+    from(tasks.named('dashboardJar'))
+    from({ dashboardRuntimeJars() })
+    into('natives') {
+        from(layout.buildDirectory.dir("jni/release"))
+    }
+}
+
+tasks.register('prepareDashboardRuntimeImage') {
+    group = 'distribution'
+    description = 'Builds a bundled Java runtime image for the packaged Windows dashboard.'
+    dependsOn 'prepareDashboardPackageInput'
+    inputs.dir(dashboardPackageInputDir)
+    outputs.dir(dashboardPackageRuntimeDir)
+
+    doLast {
+        requireWindowsPackagingHost()
+
+        File inputDir = dashboardPackageInputDir.get().asFile
+        File runtimeDir = dashboardPackageRuntimeDir.get().asFile
+        delete(runtimeDir)
+
+        String mainJarName = tasks.named('dashboardJar', Jar).get().archiveFile.get().asFile.name
+        File stagedMainJar = new File(inputDir, mainJarName)
+        if (!stagedMainJar.exists()) {
+            throw new GradleException("Staged dashboard jar not found: ${stagedMainJar}")
+        }
+
+        List<File> dependencyJars = (inputDir.listFiles() ?: [] as File[])
+                .findAll { it.isFile() && it.name.endsWith('.jar') && it.name != mainJarName }
+
+        List<String> jdepsCommand = [
+                currentJdkTool('jdeps'),
+                '--multi-release', '17',
+                '--ignore-missing-deps',
+                '--print-module-deps'
+        ]
+        if (!dependencyJars.isEmpty()) {
+            jdepsCommand += ['--class-path', dependencyJars.collect { it.absolutePath }.join(File.pathSeparator)]
+        }
+        jdepsCommand += [stagedMainJar.absolutePath]
+
+        ByteArrayOutputStream moduleOutput = new ByteArrayOutputStream()
+        exec {
+            commandLine jdepsCommand
+            standardOutput = moduleOutput
+        }
+
+        List<String> modules = moduleOutput.toString().trim().split(',')
+                .collect { it.trim() }
+                .findAll { !it.isEmpty() }
+        modules += 'jdk.crypto.ec'
+        modules = modules.unique()
+        if (modules.isEmpty()) {
+            throw new GradleException("jdeps did not return any runtime modules for the packaged dashboard.")
+        }
+
+        exec {
+            commandLine currentJdkTool('jlink'),
+                    '--add-modules', modules.join(','),
+                    '--output', runtimeDir.absolutePath,
+                    '--strip-debug',
+                    '--no-header-files',
+                    '--no-man-pages',
+                    '--bind-services'
+        }
+    }
+}
+
+tasks.register('packageDashboardWindows') {
+    group = 'distribution'
+    description = 'Builds a standalone Windows app image containing 3318 Dashboard.exe and a bundled Java runtime.'
+    dependsOn 'prepareDashboardPackageInput', 'prepareDashboardRuntimeImage'
+    inputs.dir(dashboardPackageInputDir)
+    inputs.dir(dashboardPackageRuntimeDir)
+    outputs.dir(dashboardPackageImageDir)
+
+    doLast {
+        requireWindowsPackagingHost()
+
+        File imageDir = dashboardPackageImageDir.get().asFile
+        File tempDir = dashboardPackageImageTempDir.get().asFile
+        delete(imageDir, tempDir)
+        imageDir.mkdirs()
+        tempDir.mkdirs()
+
+        String mainJarName = tasks.named('dashboardJar', Jar).get().archiveFile.get().asFile.name
+
+        exec {
+            commandLine currentJdkTool('jpackage'),
+                    '--type', 'app-image',
+                    '--dest', imageDir.absolutePath,
+                    '--temp', tempDir.absolutePath,
+                    '--input', dashboardPackageInputDir.get().asFile.absolutePath,
+                    '--name', DASHBOARD_APP_NAME,
+                    '--main-jar', mainJarName,
+                    '--main-class', DASHBOARD_MAIN_CLASS,
+                    '--runtime-image', dashboardPackageRuntimeDir.get().asFile.absolutePath,
+                    '--app-version', dashboardPackageVersion.get(),
+                    '--vendor', DASHBOARD_APP_VENDOR,
+                    '--description', DASHBOARD_APP_DESCRIPTION,
+                    '--java-options', '-Djava.library.path=$APPDIR\\app\\natives',
+                    '--arguments', '--team',
+                    '--arguments', '3318'
+        }
+    }
+}
+
+tasks.register('packageDashboardWindowsInstaller') {
+    group = 'distribution'
+    description = 'Builds an installable Windows EXE for the custom dashboard (requires WiX on the packaging host).'
+    dependsOn 'prepareDashboardPackageInput', 'prepareDashboardRuntimeImage'
+    inputs.dir(dashboardPackageInputDir)
+    inputs.dir(dashboardPackageRuntimeDir)
+    outputs.dir(dashboardPackageInstallerDir)
+
+    doLast {
+        requireWindowsPackagingHost()
+
+        File installerDir = dashboardPackageInstallerDir.get().asFile
+        File tempDir = dashboardPackageInstallerTempDir.get().asFile
+        delete(installerDir, tempDir)
+        installerDir.mkdirs()
+        tempDir.mkdirs()
+
+        String mainJarName = tasks.named('dashboardJar', Jar).get().archiveFile.get().asFile.name
+
+        exec {
+            commandLine currentJdkTool('jpackage'),
+                    '--type', 'exe',
+                    '--dest', installerDir.absolutePath,
+                    '--temp', tempDir.absolutePath,
+                    '--input', dashboardPackageInputDir.get().asFile.absolutePath,
+                    '--name', DASHBOARD_APP_NAME,
+                    '--main-jar', mainJarName,
+                    '--main-class', DASHBOARD_MAIN_CLASS,
+                    '--runtime-image', dashboardPackageRuntimeDir.get().asFile.absolutePath,
+                    '--app-version', dashboardPackageVersion.get(),
+                    '--vendor', DASHBOARD_APP_VENDOR,
+                    '--description', DASHBOARD_APP_DESCRIPTION,
+                    '--install-dir', DASHBOARD_APP_NAME,
+                    '--java-options', '-Djava.library.path=$APPDIR\\app\\natives',
+                    '--arguments', '--team',
+                    '--arguments', '3318',
+                    '--win-shortcut',
+                    '--win-menu',
+                    '--win-dir-chooser',
+                    '--win-per-user-install'
+        }
+    }
 }
