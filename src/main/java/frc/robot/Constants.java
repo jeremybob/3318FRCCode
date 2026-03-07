@@ -295,7 +295,7 @@ public final class Constants {
         //   where Δh = target_height - shooter_exit_height
         //
         // TUNE ME: Measure the actual launch angle with a protractor or slow-mo video.
-        public static final double SHOT_ANGLE_DEG        = 45.0;  // TUNE ME
+        public static final double SHOT_ANGLE_DEG        = 55.0;  // TUNE ME
         // Height of the shooter exit above the floor (20 inches).
         public static final double SHOOTER_EXIT_HEIGHT_M = Units.inchesToMeters(20.0);
         // Height of the HUB scoring opening (may differ from tag height of 1.124m).
@@ -448,8 +448,7 @@ public final class Constants {
         public static final double CAMERA_HEARTBEAT_TIMEOUT_SEC = 2.0;
         // Feasible vertical angle band for a valid shot solution from the camera.
         public static final double MIN_SHOT_PITCH_DEG = -12.0; // TUNE ME
-        // With a 15 deg downward camera tilt and the HUB above the camera, normal
-        // scoring distances produce target pitches in the +20 to +35 deg range.
+        // Verify this band on-robot after camera pitch is finalized.
         public static final double MAX_SHOT_PITCH_DEG =  40.0; // TUNE ME
 
         // PD controller for rotating toward a vision target
@@ -459,9 +458,12 @@ public final class Constants {
 
         // ---- Camera mount position ----
         // Used for pitch-based distance estimation.
-        // TUNE ME: Measure the actual camera mount position on your robot!
-        public static final double CAMERA_UP_M       = 0.50;  // TUNE ME
-        public static final double CAMERA_PITCH_RAD  = Math.toRadians(-15.0); // tilted down, TUNE ME
+        // Robot frame convention is +X forward, +Y left, +Z up.
+        // Measured mount: 16.5 in high and 9 in offset from center toward back-left.
+        // Only height is used today; split the 9 in offset into X/Y components if a
+        // full robot-to-camera transform is added later.
+        public static final double CAMERA_UP_M       = Units.inchesToMeters(16.5);
+        public static final double CAMERA_PITCH_RAD  = Math.toRadians(20.0); // tilted up, approximate
 
         // ---- Alliance-specific HUB tag IDs for targeting ----
         // AlignAndShootCommand should ONLY aim at your alliance's HUB tags.
