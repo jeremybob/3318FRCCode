@@ -118,6 +118,9 @@ public class SwerveSubsystem extends SubsystemBase {
     // Only publish every 5th loop (100ms) to reduce CAN reads and dashboard traffic.
     private int diagnosticLoopCounter = 0;
 
+    // Re-sync counter: check steer encoder vs CANcoder every 50 loops (~1 sec).
+    private int resyncLoopCounter = 0;
+
     private boolean validationActive = false;
     private SwerveCorner validationCorner;
     private SwerveValidationMode validationMode;
@@ -197,15 +200,15 @@ public class SwerveSubsystem extends SubsystemBase {
 
         // ---- Throttled diagnostics (every 100ms) ----
         // Module angles and CANCoder health are low-priority telemetry.
-        // Publishing every 5th loop reduces 12 extra CAN reads per cycle.
+        // Publishing every 5th loop reduces extra CAN reads per cycle.
         diagnosticLoopCounter++;
         if (diagnosticLoopCounter >= 5) {
             diagnosticLoopCounter = 0;
 
-            SmartDashboard.putNumber("Swerve/FL_AngleDeg",   frontLeft.getAbsoluteAngle().getDegrees());
-            SmartDashboard.putNumber("Swerve/FR_AngleDeg",   frontRight.getAbsoluteAngle().getDegrees());
-            SmartDashboard.putNumber("Swerve/BL_AngleDeg",   backLeft.getAbsoluteAngle().getDegrees());
-            SmartDashboard.putNumber("Swerve/BR_AngleDeg",   backRight.getAbsoluteAngle().getDegrees());
+            SmartDashboard.putNumber("Swerve/FL_AngleDeg",   frontLeft.getSteerAngle().getDegrees());
+            SmartDashboard.putNumber("Swerve/FR_AngleDeg",   frontRight.getSteerAngle().getDegrees());
+            SmartDashboard.putNumber("Swerve/BL_AngleDeg",   backLeft.getSteerAngle().getDegrees());
+            SmartDashboard.putNumber("Swerve/BR_AngleDeg",   backRight.getSteerAngle().getDegrees());
 
             // CANCoder health — visible on dashboard so CAN issues are obvious
             for (SwerveModule mod : modules) {
@@ -213,6 +216,18 @@ public class SwerveSubsystem extends SubsystemBase {
                 SmartDashboard.putNumber(prefix + "PosRot",    mod.getCANcoderPositionRot());
                 SmartDashboard.putNumber(prefix + "AbsRaw",    mod.getCANcoderAbsoluteRaw());
                 SmartDashboard.putBoolean(prefix + "OK",       mod.isCANcoderOk());
+            }
+        }
+
+        // ---- Periodic steer encoder re-sync (~1 Hz) ----
+        // Compares internal encoder against CANcoder to detect belt skips.
+        resyncLoopCounter++;
+        if (resyncLoopCounter >= 50) {
+            resyncLoopCounter = 0;
+            for (SwerveModule mod : modules) {
+                if (mod.checkSteerSync()) {
+                    SmartDashboard.putBoolean("Swerve/" + mod.getName() + "_BeltSkip", true);
+                }
             }
         }
     }
@@ -275,7 +290,7 @@ public class SwerveSubsystem extends SubsystemBase {
         validationActive = true;
         validationCorner = corner;
         validationMode = mode;
-        validationStartAngleDeg = module.getAbsoluteAngle().getDegrees();
+        validationStartAngleDeg = module.getSteerAngle().getDegrees();
         validationStartCANcoderRot = module.getCANcoderPositionRot();
     }
 
@@ -318,7 +333,7 @@ public class SwerveSubsystem extends SubsystemBase {
         }
 
         SwerveModule module = getModule(validationCorner);
-        double currentAngleDeg = module.getAbsoluteAngle().getDegrees();
+        double currentAngleDeg = module.getSteerAngle().getDegrees();
         double currentCANcoderRot = module.getCANcoderPositionRot();
         return new ValidationStatus(
                 true,
@@ -386,10 +401,10 @@ public class SwerveSubsystem extends SubsystemBase {
 
     public double[] getModuleAnglesDeg() {
         return new double[] {
-            frontLeft.getAbsoluteAngle().getDegrees(),
-            frontRight.getAbsoluteAngle().getDegrees(),
-            backLeft.getAbsoluteAngle().getDegrees(),
-            backRight.getAbsoluteAngle().getDegrees()
+            frontLeft.getSteerAngle().getDegrees(),
+            frontRight.getSteerAngle().getDegrees(),
+            backLeft.getSteerAngle().getDegrees(),
+            backRight.getSteerAngle().getDegrees()
         };
     }
 
