@@ -387,6 +387,10 @@ public final class Constants {
     public static final class Hopper {
         // Mechanical reduction from motor to hopper roller/floor.
         public static final double GEAR_RATIO = 8.0;
+
+        // Wired opposite the feeder motor, so invert the SparkMax and keep
+        // positive commanded power meaning "toward feeder" in code.
+        public static final boolean MOTOR_INVERTED = true;
     }
 
     // =========================================================================

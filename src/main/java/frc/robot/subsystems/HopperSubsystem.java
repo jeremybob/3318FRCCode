@@ -30,6 +30,7 @@ public class HopperSubsystem extends SubsystemBase {
         SparkMaxConfig config = new SparkMaxConfig();
         config.smartCurrentLimit(Constants.NeoMotors.DEFAULT_CURRENT_LIMIT_A);
         config.idleMode(IdleMode.kBrake);
+        config.inverted(Constants.Hopper.MOTOR_INVERTED);
         floorMotor.configure(config, ResetMode.kNoResetSafeParameters, PersistMode.kNoPersistParameters);
     }
 
