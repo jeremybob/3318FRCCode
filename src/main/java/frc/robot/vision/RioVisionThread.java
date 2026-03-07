@@ -29,12 +29,13 @@ import org.opencv.imgproc.Imgproc;
 
 import edu.wpi.first.apriltag.AprilTagDetection;
 import edu.wpi.first.apriltag.AprilTagDetector;
-import edu.wpi.first.cameraserver.CameraServer;
 import edu.wpi.first.cscore.CameraServerJNI;
 import edu.wpi.first.cscore.CvSource;
 import edu.wpi.first.cscore.CvSink;
+import edu.wpi.first.cscore.MjpegServer;
 import edu.wpi.first.cscore.UsbCamera;
 import edu.wpi.first.cscore.UsbCameraInfo;
+import edu.wpi.first.util.PixelFormat;
 import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.Timer;
 
@@ -65,6 +66,7 @@ public class RioVisionThread extends Thread {
         UsbCamera usbCamera = null;
         CvSink cvSink = null;
         CvSource overlayOutput = null;
+        MjpegServer overlayServer = null;
         AprilTagDetector detector = null;
         Mat mat = new Mat();
         Mat grayMat = new Mat();
@@ -91,15 +93,22 @@ public class RioVisionThread extends Thread {
             }
             cameraDebugInfo.set(cameraDebugInfo.get().withStatus("CAPTURE_ATTACHED"));
 
-            cvSink = CameraServer.getVideo(usbCamera);
+            cvSink = new CvSink("RioVisionCvSink");
+            cvSink.setSource(usbCamera);
             // Set a grab timeout so the thread doesn't block forever if the
             // camera disconnects mid-match. 500ms ≈ ~8 missed frames at 15 fps.
             cvSink.setEnabled(true);
 
-            overlayOutput = CameraServer.putVideo(
+            overlayOutput = new CvSource(
                     "RioVisionOverlay",
+                    PixelFormat.kBGR,
                     Constants.Vision.CAMERA_WIDTH,
-                    Constants.Vision.CAMERA_HEIGHT);
+                    Constants.Vision.CAMERA_HEIGHT,
+                    Constants.Vision.CAMERA_FPS);
+            overlayServer = new MjpegServer(
+                    "RioVisionOverlayServer",
+                    Constants.Vision.CAMERA_OVERLAY_STREAM_PORT);
+            overlayServer.setSource(overlayOutput);
 
             // Configure AprilTag detector for 36h11 tag family
             detector = new AprilTagDetector();
@@ -194,6 +203,9 @@ public class RioVisionThread extends Thread {
         }
 
         detector.close();
+        if (overlayServer != null) {
+            overlayServer.close();
+        }
         if (overlayOutput != null) {
             overlayOutput.close();
         }
