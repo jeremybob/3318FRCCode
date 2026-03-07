@@ -34,9 +34,10 @@ public class ShooterSubsystem extends SubsystemBase {
             new TalonFX(Constants.CAN.SHOOTER_RIGHT, new CANBus(Constants.CAN.CTRE_CAN_BUS));
 
     // VelocityVoltage: tells the motor "spin at exactly X rotations per second"
-    // enableFOC = true improves efficiency and torque with Kraken's TorqueCurrentFOC
+    // FOC improves efficiency and torque but requires a Phoenix Pro license.
+    // Use the same flag as swerve to stay consistent across the robot.
     private final VelocityVoltage velocityRequest = new VelocityVoltage(0)
-            .withEnableFOC(true);
+            .withEnableFOC(Constants.Swerve.USE_PHOENIX_PRO_FEATURES);
 
     // --------------------------------------------------------------------------
     // Constructor: configure both shooter motors identically

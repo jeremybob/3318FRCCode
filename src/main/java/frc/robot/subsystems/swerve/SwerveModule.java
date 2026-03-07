@@ -296,6 +296,12 @@ public class SwerveModule {
         return cancoderPosition.refresh().getStatus().isOK();
     }
 
+    /** Returns a calibration sample from the existing CANcoder (no duplicate handles). */
+    public SwerveCalibrationUtil.CalibrationSample getCalibrationSample() {
+        double configuredAbsoluteRot = cancoderAbsolutePosition.refresh().getValueAsDouble();
+        return SwerveCalibrationUtil.sample(configuredAbsoluteRot, cancoderOffsetRot);
+    }
+
     public void stop() {
         driveMotor.stopMotor();
         steerMotor.stopMotor();

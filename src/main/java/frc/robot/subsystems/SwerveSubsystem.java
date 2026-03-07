@@ -408,6 +408,16 @@ public class SwerveSubsystem extends SubsystemBase {
         };
     }
 
+    /** Returns calibration samples for all 4 modules (FL, FR, BL, BR order). */
+    public SwerveCalibrationUtil.CalibrationSample[] getCalibrationSamples() {
+        return new SwerveCalibrationUtil.CalibrationSample[] {
+            frontLeft.getCalibrationSample(),
+            frontRight.getCalibrationSample(),
+            backLeft.getCalibrationSample(),
+            backRight.getCalibrationSample()
+        };
+    }
+
     public boolean[] getCANcoderOkStates() {
         return new boolean[] {
             frontLeft.isCANcoderOk(),

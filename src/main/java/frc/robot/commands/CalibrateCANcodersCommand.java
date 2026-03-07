@@ -18,45 +18,33 @@
 // ============================================================================
 package frc.robot.commands;
 
-import com.ctre.phoenix6.CANBus;
-import com.ctre.phoenix6.configs.CANcoderConfiguration;
-import com.ctre.phoenix6.hardware.CANcoder;
-
+import edu.wpi.first.networktables.DoublePublisher;
 import edu.wpi.first.networktables.NetworkTable;
 import edu.wpi.first.networktables.NetworkTableInstance;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;
 
-import frc.robot.Constants;
+import frc.robot.subsystems.SwerveSubsystem;
 import frc.robot.subsystems.swerve.SwerveCalibrationUtil;
 
 public class CalibrateCANcodersCommand extends Command {
 
-    public CalibrateCANcodersCommand() {
-        // No subsystem requirements — just reads encoders
+    private final SwerveSubsystem swerve;
+
+    public CalibrateCANcodersCommand(SwerveSubsystem swerve) {
+        this.swerve = swerve;
+        // No subsystem requirements — only reads existing encoder data, does not drive
     }
 
     @Override
     public void initialize() {
-        SwerveCalibrationUtil.CalibrationSample flSample;
-        SwerveCalibrationUtil.CalibrationSample frSample;
-        SwerveCalibrationUtil.CalibrationSample blSample;
-        SwerveCalibrationUtil.CalibrationSample brSample;
-
-        // Read all four CANcoders and close handles immediately after sampling.
-        try (CANcoder flEncoder = new CANcoder(Constants.CAN.FRONT_LEFT_CANCODER,
-                new CANBus(Constants.CAN.CTRE_CAN_BUS));
-                CANcoder frEncoder = new CANcoder(Constants.CAN.FRONT_RIGHT_CANCODER,
-                        new CANBus(Constants.CAN.CTRE_CAN_BUS));
-                CANcoder blEncoder = new CANcoder(Constants.CAN.BACK_LEFT_CANCODER,
-                        new CANBus(Constants.CAN.CTRE_CAN_BUS));
-                CANcoder brEncoder = new CANcoder(Constants.CAN.BACK_RIGHT_CANCODER,
-                        new CANBus(Constants.CAN.CTRE_CAN_BUS))) {
-            flSample = sampleCalibration(flEncoder);
-            frSample = sampleCalibration(frEncoder);
-            blSample = sampleCalibration(blEncoder);
-            brSample = sampleCalibration(brEncoder);
-        }
+        // Read calibration samples from the existing SwerveModule CANcoder handles
+        // (no duplicate device objects created on the CAN bus).
+        SwerveCalibrationUtil.CalibrationSample[] samples = swerve.getCalibrationSamples();
+        SwerveCalibrationUtil.CalibrationSample flSample = samples[0];
+        SwerveCalibrationUtil.CalibrationSample frSample = samples[1];
+        SwerveCalibrationUtil.CalibrationSample blSample = samples[2];
+        SwerveCalibrationUtil.CalibrationSample brSample = samples[3];
 
         // Print calibration values to console using plain ASCII for terminal compatibility.
         System.out.println("+------------------------------------------------------+");
@@ -88,16 +76,16 @@ public class CalibrateCANcodersCommand extends Command {
         SmartDashboard.putNumber("CANcoder/BL_Offset", blSample.recommendedOffsetRot());
         SmartDashboard.putNumber("CANcoder/BR_Offset", brSample.recommendedOffsetRot());
 
-        // Mirror to custom dashboard contract table so pit dashboard can read them too.
+        // Mirror to custom dashboard contract table using typed publishers.
         NetworkTable dashboardTable = NetworkTableInstance.getDefault().getTable("Dashboard");
-        dashboardTable.getEntry("cancoder/fl_raw_rot").setDouble(flSample.noOffsetRot());
-        dashboardTable.getEntry("cancoder/fr_raw_rot").setDouble(frSample.noOffsetRot());
-        dashboardTable.getEntry("cancoder/bl_raw_rot").setDouble(blSample.noOffsetRot());
-        dashboardTable.getEntry("cancoder/br_raw_rot").setDouble(brSample.noOffsetRot());
-        dashboardTable.getEntry("cancoder/fl_offset_rot").setDouble(flSample.recommendedOffsetRot());
-        dashboardTable.getEntry("cancoder/fr_offset_rot").setDouble(frSample.recommendedOffsetRot());
-        dashboardTable.getEntry("cancoder/bl_offset_rot").setDouble(blSample.recommendedOffsetRot());
-        dashboardTable.getEntry("cancoder/br_offset_rot").setDouble(brSample.recommendedOffsetRot());
+        publishCalibrationValue(dashboardTable, "cancoder/fl_raw_rot", flSample.noOffsetRot());
+        publishCalibrationValue(dashboardTable, "cancoder/fr_raw_rot", frSample.noOffsetRot());
+        publishCalibrationValue(dashboardTable, "cancoder/bl_raw_rot", blSample.noOffsetRot());
+        publishCalibrationValue(dashboardTable, "cancoder/br_raw_rot", brSample.noOffsetRot());
+        publishCalibrationValue(dashboardTable, "cancoder/fl_offset_rot", flSample.recommendedOffsetRot());
+        publishCalibrationValue(dashboardTable, "cancoder/fr_offset_rot", frSample.recommendedOffsetRot());
+        publishCalibrationValue(dashboardTable, "cancoder/bl_offset_rot", blSample.recommendedOffsetRot());
+        publishCalibrationValue(dashboardTable, "cancoder/br_offset_rot", brSample.recommendedOffsetRot());
     }
 
     @Override
@@ -110,12 +98,9 @@ public class CalibrateCANcodersCommand extends Command {
         return true;
     }
 
-    private static SwerveCalibrationUtil.CalibrationSample sampleCalibration(CANcoder encoder) {
-        CANcoderConfiguration config = new CANcoderConfiguration();
-        encoder.getConfigurator().refresh(config);
-        double configuredAbsoluteRot = encoder.getAbsolutePosition().getValueAsDouble();
-        return SwerveCalibrationUtil.sample(
-                configuredAbsoluteRot,
-                config.MagnetSensor.MagnetOffset);
+    private static void publishCalibrationValue(NetworkTable table, String key, double value) {
+        try (DoublePublisher pub = table.getDoubleTopic(key).publish()) {
+            pub.set(value);
+        }
     }
 }
