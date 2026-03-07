@@ -7,10 +7,14 @@
 //     - A STEER motor (Falcon 500 / TalonFX) that rotates the wheel direction
 //     - A CANcoder that reads the absolute wheel angle (so we never lose position)
 //
-// KEY FIX FROM v1: The steer motor's position loop now uses the CANcoder as its
-//   feedback source via "FusedCANcoder." This means the controller sees angles
-//   in WHEEL rotations (0–1 = 360°), not raw motor shaft rotations.
-//   Without this, the steer would be off by the 12.8:1 gear ratio.
+// STEER FEEDBACK STRATEGY:
+//   With Phoenix Pro: FusedCANcoder provides continuous CANcoder-corrected feedback.
+//   Without Pro (current): "Seed-once + periodic re-sync" — at boot, the CANcoder
+//   absolute position seeds the TalonFX's internal encoder, then the position loop
+//   runs off the internal encoder (RotorSensor) at full speed with zero CANcoder
+//   CAN overhead. A periodic re-sync (~1 Hz) compares the internal encoder against
+//   the CANcoder to detect and correct for belt skips.
+//   This saves ~384 CAN frames/sec vs RemoteCANcoder at 100 Hz across 4 modules.
 //
 // KEY FIX FROM v1: Drive motor now uses VelocityVoltage (m/s → motor RPS)
 //   instead of DutyCycleOut, giving consistent speed regardless of battery level.
@@ -43,6 +47,12 @@ public class SwerveModule {
     // Max retries when applying device configuration over CAN
     private static final int CONFIG_APPLY_RETRIES = 5;
 
+    // Re-sync threshold: if internal encoder and CANcoder diverge by more than
+    // this many rotations (~5.4°), re-seed the internal encoder.
+    // Small enough to catch a belt skip (typically 1+ teeth ≈ 5-15°), large
+    // enough to ignore normal sensor noise.
+    private static final double RESYNC_THRESHOLD_ROT = 0.015;
+
     // The three hardware devices on this corner
     private final TalonFX driveMotor;
     private final TalonFX steerMotor;
@@ -62,6 +72,8 @@ public class SwerveModule {
     private final StatusSignal drivePosition;
     @SuppressWarnings("rawtypes")
     private final StatusSignal driveTemp;
+    @SuppressWarnings("rawtypes")
+    private final StatusSignal steerPosition;
 
     // Module name for diagnostics
     private final String name;
@@ -142,12 +154,20 @@ public class SwerveModule {
         steerCfg.MotorOutput.Inverted = invertedValue(steerInverted);
         steerCfg.CurrentLimits.StatorCurrentLimit       = 40;
         steerCfg.CurrentLimits.StatorCurrentLimitEnable = true;
-        steerCfg.Feedback.FeedbackRemoteSensorID  = cancoderId;
-        steerCfg.Feedback.FeedbackSensorSource = Constants.Swerve.USE_PHOENIX_PRO_FEATURES
-                ? FeedbackSensorSourceValue.FusedCANcoder
-                : FeedbackSensorSourceValue.RemoteCANcoder;
-        steerCfg.Feedback.SensorToMechanismRatio  = 1.0;
-        steerCfg.Feedback.RotorToSensorRatio      = Constants.Swerve.STEER_GEAR_RATIO;
+        if (Constants.Swerve.USE_PHOENIX_PRO_FEATURES) {
+            // FusedCANcoder: TalonFX fuses internal encoder with CANcoder
+            // for continuous correction. Requires Phoenix Pro license.
+            steerCfg.Feedback.FeedbackRemoteSensorID  = cancoderId;
+            steerCfg.Feedback.FeedbackSensorSource = FeedbackSensorSourceValue.FusedCANcoder;
+            steerCfg.Feedback.SensorToMechanismRatio  = 1.0;
+            steerCfg.Feedback.RotorToSensorRatio      = Constants.Swerve.STEER_GEAR_RATIO;
+        } else {
+            // Seed-once: use internal encoder (RotorSensor) for feedback.
+            // Position is seeded from CANcoder at boot (below) and periodically
+            // re-synced to detect belt skips. Saves ~96 CAN frames/sec per module.
+            steerCfg.Feedback.FeedbackSensorSource = FeedbackSensorSourceValue.RotorSensor;
+            steerCfg.Feedback.SensorToMechanismRatio  = Constants.Swerve.STEER_GEAR_RATIO;
+        }
         steerCfg.ClosedLoopGeneral.ContinuousWrap = true;
         steerCfg.Slot0.kP = Constants.Swerve.USE_PHOENIX_PRO_FEATURES
                 ? Constants.Swerve.STEER_kP_PRO
@@ -168,23 +188,37 @@ public class SwerveModule {
         driveAppliedVoltage = driveMotor.getMotorVoltage();
         drivePosition    = driveMotor.getPosition();
         driveTemp        = driveMotor.getDeviceTemp();
+        steerPosition    = steerMotor.getPosition();
+
+        // ---- Seed internal encoder from CANcoder (non-Pro only) -------------
+        // Read the CANcoder's absolute position and write it into the steer
+        // motor's internal encoder so the position PID starts at the correct
+        // wheel angle. With FusedCANcoder (Pro) this happens automatically.
+        if (!Constants.Swerve.USE_PHOENIX_PRO_FEATURES) {
+            double cancoderRot = cancoderPosition.waitForUpdate(0.5).getValueAsDouble();
+            steerMotor.setPosition(cancoderRot);
+            System.out.println("[SwerveModule " + name + "] Seeded steer encoder from CANcoder: "
+                    + String.format("%.4f", cancoderRot) + " rot");
+        }
 
         // ---- Optimize CAN frame rates for swerve-critical signals -----------
-        // CANcoder position and drive velocity/position are needed every loop (50 Hz).
-        // Drive temperature is low-priority — 4 Hz is plenty.
-        // Steer motor signals we don't read directly (TalonFX reads CANcoder internally
-        // for RemoteCANcoder feedback), so reduce steer's outbound status frames.
-        BaseStatusSignal.setUpdateFrequencyForAll(100, cancoderPosition, cancoderAbsolutePosition);
         BaseStatusSignal.setUpdateFrequencyForAll(100, driveVelocity, drivePosition, driveAppliedVoltage);
         BaseStatusSignal.setUpdateFrequencyForAll(1, driveTemp);
-        // Reduce steer motor status frames — we don't read these signals directly.
-        // The TalonFX still reads the CANcoder internally at its own rate for
-        // RemoteCANcoder feedback. These outbound frames are diagnostics only.
-        steerMotor.getPosition().setUpdateFrequency(10);
+
+        if (Constants.Swerve.USE_PHOENIX_PRO_FEATURES) {
+            // FusedCANcoder: CANcoder stays at 100 Hz for continuous fusion
+            BaseStatusSignal.setUpdateFrequencyForAll(100, cancoderPosition, cancoderAbsolutePosition);
+            steerPosition.setUpdateFrequency(100);
+        } else {
+            // Seed-once: CANcoder only needed for diagnostics + periodic re-sync (~1 Hz)
+            BaseStatusSignal.setUpdateFrequencyForAll(4, cancoderPosition, cancoderAbsolutePosition);
+            // Steer motor position IS the feedback now — needs full update rate
+            steerPosition.setUpdateFrequency(100);
+        }
         steerMotor.getVelocity().setUpdateFrequency(10);
         steerMotor.getDeviceTemp().setUpdateFrequency(1);
 
-        lastAngle = getAbsoluteAngle();
+        lastAngle = getSteerAngle();
     }
 
     // --------------------------------------------------------------------------
@@ -207,7 +241,7 @@ public class SwerveModule {
         // FYI: With ContinuousWrap enabled, Phoenix 6 also handles wrap-around,
         // but we still need optimize() to flip the drive direction when needed.
         // NOTE: optimize() mutates desiredState in place (void return).
-        desiredState.optimize(getAbsoluteAngle());
+        desiredState.optimize(getSteerAngle());
 
         // ---- Command the STEER motor to the target angle ----
         // The CANcoder (and therefore the position feedback) is in rotations.
@@ -233,18 +267,27 @@ public class SwerveModule {
     }
 
     public void setValidationPercentOutput(double drivePercent, double steerPercent) {
-        lastAngle = getAbsoluteAngle();
+        lastAngle = getSteerAngle();
         driveMotor.setControl(driveDutyCycleRequest.withOutput(clampDutyCycle(drivePercent)));
         steerMotor.setControl(steerDutyCycleRequest.withOutput(clampDutyCycle(steerPercent)));
     }
 
     // --------------------------------------------------------------------------
-    // getAbsoluteAngle()
+    // getSteerAngle()
     //
-    // Returns the current wheel angle as a Rotation2d object.
-    // Uses CANcoder Position for runtime control (higher default update rate than
-    // AbsolutePosition). Magnet offset is still applied in device config.
+    // Returns the current wheel angle from the steer motor's internal encoder.
+    // With seed-once mode, this is the primary feedback source (seeded from
+    // CANcoder at boot, periodically re-synced).
+    // With FusedCANcoder (Pro), this returns the fused position.
     // --------------------------------------------------------------------------
+    public Rotation2d getSteerAngle() {
+        return Rotation2d.fromRotations(steerPosition.refresh().getValueAsDouble());
+    }
+
+    /**
+     * Returns the wheel angle from the CANcoder directly (bypass internal encoder).
+     * Use this only for diagnostics and re-sync checks, NOT for control loops.
+     */
     public Rotation2d getAbsoluteAngle() {
         return Rotation2d.fromRotations(cancoderPosition.refresh().getValueAsDouble());
     }
@@ -253,19 +296,19 @@ public class SwerveModule {
         double motorRPS    = driveVelocity.refresh().getValueAsDouble();
         double wheelRPS    = motorRPS / Constants.Swerve.DRIVE_GEAR_RATIO;
         double speedMps    = wheelRPS * Constants.Swerve.WHEEL_CIRCUMFERENCE_M;
-        return new SwerveModuleState(speedMps, getAbsoluteAngle());
+        return new SwerveModuleState(speedMps, getSteerAngle());
     }
 
     public SwerveModulePosition getPosition() {
         double motorRotations  = drivePosition.refresh().getValueAsDouble();
         // Compensate for coupling: steering the module causes the drive motor
         // to spin slightly. Subtract that parasitic motion for accurate odometry.
-        double steerRotations  = cancoderPosition.refresh().getValueAsDouble();
+        double steerRotations  = steerPosition.refresh().getValueAsDouble();
         double coupledMotorRot = steerRotations * Constants.Swerve.COUPLE_RATIO;
         double correctedMotorRot = motorRotations - coupledMotorRot;
         double wheelRotations  = correctedMotorRot / Constants.Swerve.DRIVE_GEAR_RATIO;
         double distanceMeters  = wheelRotations * Constants.Swerve.WHEEL_CIRCUMFERENCE_M;
-        return new SwerveModulePosition(distanceMeters, getAbsoluteAngle());
+        return new SwerveModulePosition(distanceMeters, getSteerAngle());
     }
 
     public double getDriveTemperatureC() {
@@ -301,6 +344,39 @@ public class SwerveModule {
     public SwerveCalibrationUtil.CalibrationSample getCalibrationSample() {
         double configuredAbsoluteRot = cancoderAbsolutePosition.refresh().getValueAsDouble();
         return SwerveCalibrationUtil.sample(configuredAbsoluteRot, cancoderOffsetRot);
+    }
+
+    // --------------------------------------------------------------------------
+    // checkSteerSync()
+    //
+    // Compares the steer motor's internal encoder against the CANcoder.
+    // If they diverge beyond RESYNC_THRESHOLD_ROT, re-seeds the internal
+    // encoder from the CANcoder. This detects belt skips mid-match.
+    //
+    // Call this at ~1 Hz from SwerveSubsystem.periodic() — NOT every loop.
+    // Returns true if a re-sync was performed.
+    // --------------------------------------------------------------------------
+    public boolean checkSteerSync() {
+        if (Constants.Swerve.USE_PHOENIX_PRO_FEATURES) {
+            return false; // FusedCANcoder handles this automatically
+        }
+
+        double internalRot = steerPosition.refresh().getValueAsDouble();
+        double cancoderRot = cancoderPosition.refresh().getValueAsDouble();
+
+        // Wrap the difference to [-0.5, +0.5] to handle wrap-around
+        double error = cancoderRot - internalRot;
+        error -= Math.round(error); // wrap to nearest half-rotation
+
+        if (Math.abs(error) > RESYNC_THRESHOLD_ROT) {
+            steerMotor.setPosition(cancoderRot);
+            System.err.println("[SwerveModule " + name + "] BELT SKIP DETECTED! "
+                    + "Internal=" + String.format("%.4f", internalRot)
+                    + " CANcoder=" + String.format("%.4f", cancoderRot)
+                    + " error=" + String.format("%.4f", error) + " rot. Re-synced.");
+            return true;
+        }
+        return false;
     }
 
     public void stop() {
