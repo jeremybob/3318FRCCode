@@ -331,7 +331,7 @@ public class RobotContainer {
 
         if (!pathPlannerConfigured) {
             System.err.println("[RobotContainer] PathPlanner autos disabled: AutoBuilder is not configured.");
-            registerAutoOption("Calibrate CANcoders", new CalibrateCANcodersCommand(), false);
+            registerAutoOption("Calibrate CANcoders", new CalibrateCANcodersCommand(swerve), false);
             autoChooser.onChange(command -> selectAutoCommand(command, "SMARTDASHBOARD"));
             SmartDashboard.putData("Auto Selector", autoChooser);
             return;
@@ -351,7 +351,7 @@ public class RobotContainer {
 
         // Calibration utility: reads CANcoder offsets and prints to console.
         // Align all wheels forward, select this auto, and enable briefly.
-        registerAutoOption("Calibrate CANcoders", new CalibrateCANcodersCommand(), false);
+        registerAutoOption("Calibrate CANcoders", new CalibrateCANcodersCommand(swerve), false);
 
         autoChooser.onChange(command -> selectAutoCommand(command, "SMARTDASHBOARD"));
 
@@ -826,7 +826,7 @@ public class RobotContainer {
 
     private void scheduleCANcoderCalibration() {
         logControlEvent("Dashboard", "scheduleCANcoderCalibration()");
-        CommandScheduler.getInstance().schedule(new CalibrateCANcodersCommand().withName("CalibrateCANcoders"));
+        CommandScheduler.getInstance().schedule(new CalibrateCANcodersCommand(swerve).withName("CalibrateCANcoders"));
     }
 
     private void requestSwerveValidation(String moduleName, String modeName) {

@@ -45,7 +45,7 @@ public record DashboardSnapshot(
         String[] autoOptions,
         boolean autoCommandRunning,
         // Match info
-        int matchNumber,
+        long matchNumber,
         String eventName,
         // Camera / vision connection
         boolean cameraConnected,
@@ -54,8 +54,8 @@ public record DashboardSnapshot(
         double visionDistanceM,
         // CAN bus health
         double canBusUtilization,
-        int canReceiveErrorCount,
-        int canTransmitErrorCount,
+        long canReceiveErrorCount,
+        long canTransmitErrorCount,
         // Swerve module angles (FL, FR, BL, BR)
         double swerveFLAngleDeg,
         double swerveFRAngleDeg,
