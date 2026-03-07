@@ -114,6 +114,10 @@ public class SwerveSubsystem extends SubsystemBase {
     // ---- Field visualization (appears in Shuffleboard / SmartDashboard) ----
     private final Field2d field = new Field2d();
 
+    // Throttle counter for low-priority diagnostics (CANcoder health, angles).
+    // Only publish every 5th loop (100ms) to reduce CAN reads and dashboard traffic.
+    private int diagnosticLoopCounter = 0;
+
     private boolean validationActive = false;
     private SwerveCorner validationCorner;
     private SwerveValidationMode validationMode;
@@ -190,18 +194,26 @@ public class SwerveSubsystem extends SubsystemBase {
         SmartDashboard.putNumber("Swerve/PigeonRollDeg",     getPigeonRollDeg());
         SmartDashboard.putNumber("Swerve/PoseX_m",           getPose().getX());
         SmartDashboard.putNumber("Swerve/PoseY_m",           getPose().getY());
-        SmartDashboard.putNumber("Swerve/FL_AngleDeg",       frontLeft.getAbsoluteAngle().getDegrees());
-        SmartDashboard.putNumber("Swerve/FR_AngleDeg",       frontRight.getAbsoluteAngle().getDegrees());
-        SmartDashboard.putNumber("Swerve/BL_AngleDeg",       backLeft.getAbsoluteAngle().getDegrees());
-        SmartDashboard.putNumber("Swerve/BR_AngleDeg",       backRight.getAbsoluteAngle().getDegrees());
 
-        // ---- CANCoder diagnostics ----
-        // Publish per-module CANCoder health so CAN issues are visible on the dashboard.
-        for (SwerveModule mod : modules) {
-            String prefix = "Swerve/" + mod.getName() + "_CC_";
-            SmartDashboard.putNumber(prefix + "PosRot",    mod.getCANcoderPositionRot());
-            SmartDashboard.putNumber(prefix + "AbsRaw",    mod.getCANcoderAbsoluteRaw());
-            SmartDashboard.putBoolean(prefix + "OK",       mod.isCANcoderOk());
+        // ---- Throttled diagnostics (every 100ms) ----
+        // Module angles and CANCoder health are low-priority telemetry.
+        // Publishing every 5th loop reduces 12 extra CAN reads per cycle.
+        diagnosticLoopCounter++;
+        if (diagnosticLoopCounter >= 5) {
+            diagnosticLoopCounter = 0;
+
+            SmartDashboard.putNumber("Swerve/FL_AngleDeg",   frontLeft.getAbsoluteAngle().getDegrees());
+            SmartDashboard.putNumber("Swerve/FR_AngleDeg",   frontRight.getAbsoluteAngle().getDegrees());
+            SmartDashboard.putNumber("Swerve/BL_AngleDeg",   backLeft.getAbsoluteAngle().getDegrees());
+            SmartDashboard.putNumber("Swerve/BR_AngleDeg",   backRight.getAbsoluteAngle().getDegrees());
+
+            // CANCoder health — visible on dashboard so CAN issues are obvious
+            for (SwerveModule mod : modules) {
+                String prefix = "Swerve/" + mod.getName() + "_CC_";
+                SmartDashboard.putNumber(prefix + "PosRot",    mod.getCANcoderPositionRot());
+                SmartDashboard.putNumber(prefix + "AbsRaw",    mod.getCANcoderAbsoluteRaw());
+                SmartDashboard.putBoolean(prefix + "OK",       mod.isCANcoderOk());
+            }
         }
     }
 

@@ -50,77 +50,95 @@ public class RioVisionThread extends Thread {
 
     @Override
     public void run() {
-        // Start USB camera via CameraServer (also streams to dashboard)
-        UsbCamera usbCamera = CameraServer.startAutomaticCapture(
-                Constants.Vision.CAMERA_DEVICE_ID);
-        usbCamera.setResolution(Constants.Vision.CAMERA_WIDTH, Constants.Vision.CAMERA_HEIGHT);
-        usbCamera.setFPS(Constants.Vision.CAMERA_FPS);
-
-        CvSink cvSink = CameraServer.getVideo();
-
-        // Configure AprilTag detector for 36h11 tag family
-        AprilTagDetector detector = new AprilTagDetector();
-        detector.addFamily("tag36h11");
-
-        // Reuse Mats to avoid GC pressure in the hot loop
+        UsbCamera usbCamera = null;
+        CvSink cvSink = null;
+        AprilTagDetector detector = null;
         Mat mat = new Mat();
         Mat grayMat = new Mat();
 
+        try {
+            // Start USB camera via CameraServer (also streams to dashboard)
+            usbCamera = CameraServer.startAutomaticCapture(
+                    Constants.Vision.CAMERA_DEVICE_ID);
+            usbCamera.setResolution(Constants.Vision.CAMERA_WIDTH, Constants.Vision.CAMERA_HEIGHT);
+            usbCamera.setFPS(Constants.Vision.CAMERA_FPS);
+
+            cvSink = CameraServer.getVideo();
+            // Set a grab timeout so the thread doesn't block forever if the
+            // camera disconnects mid-match. 500ms ≈ ~8 missed frames at 15 fps.
+            cvSink.setEnabled(true);
+
+            // Configure AprilTag detector for 36h11 tag family
+            detector = new AprilTagDetector();
+            detector.addFamily("tag36h11");
+        } catch (Exception ex) {
+            System.err.println("[RioVisionThread] FATAL: Camera/detector init failed: " + ex.getMessage());
+            ex.printStackTrace();
+            grayMat.release();
+            mat.release();
+            return;
+        }
+
         while (!Thread.interrupted()) {
-            // grabFrame blocks until the next frame arrives (or timeout)
-            long frameTime = cvSink.grabFrame(mat);
-            if (frameTime == 0) {
-                // Frame grab failed — camera probably disconnected.
-                // Retry on next iteration; main loop sees stale result.
-                continue;
-            }
-
-            double timestampSec = Timer.getFPGATimestamp();
-            lastFrameTimestampSec.set(timestampSec);
-
-            Mat detectorFrame = VisionSupport.prepareDetectorFrame(mat, grayMat);
-            AprilTagDetection[] detections = detector.detect(detectorFrame);
-            if (detections.length == 0) {
-                continue;
-            }
-
-            // Filter for alliance HUB tags and pick the largest (closest)
-            int[] hubTagIds = getAllianceHubTagIds();
-            AprilTagDetection best = null;
-            double bestPixelHeight = 0;
-
-            for (AprilTagDetection det : detections) {
-                if (!isHubTag(det.getId(), hubTagIds)) {
+            try {
+                // grabFrame blocks until the next frame arrives (or timeout)
+                long frameTime = cvSink.grabFrame(mat);
+                if (frameTime == 0) {
+                    // Frame grab failed — camera probably disconnected.
+                    // Retry on next iteration; main loop sees stale result.
                     continue;
                 }
-                double pixelHeight = tagPixelHeight(det);
-                if (pixelHeight > bestPixelHeight) {
-                    best = det;
-                    bestPixelHeight = pixelHeight;
+
+                double timestampSec = Timer.getFPGATimestamp();
+                lastFrameTimestampSec.set(timestampSec);
+
+                Mat detectorFrame = VisionSupport.prepareDetectorFrame(mat, grayMat);
+                AprilTagDetection[] detections = detector.detect(detectorFrame);
+                if (detections.length == 0) {
+                    continue;
                 }
+
+                // Filter for alliance HUB tags and pick the largest (closest)
+                int[] hubTagIds = getAllianceHubTagIds();
+                AprilTagDetection best = null;
+                double bestPixelHeight = 0;
+
+                for (AprilTagDetection det : detections) {
+                    if (!isHubTag(det.getId(), hubTagIds)) {
+                        continue;
+                    }
+                    double pixelHeight = tagPixelHeight(det);
+                    if (pixelHeight > bestPixelHeight) {
+                        best = det;
+                        bestPixelHeight = pixelHeight;
+                    }
+                }
+
+                if (best == null) {
+                    continue;
+                }
+
+                // Compute tag center from corner coordinates
+                double centerX = (best.getCornerX(0) + best.getCornerX(1)
+                        + best.getCornerX(2) + best.getCornerX(3)) / 4.0;
+                double centerY = (best.getCornerY(0) + best.getCornerY(1)
+                        + best.getCornerY(2) + best.getCornerY(3)) / 4.0;
+
+                double imageCenterX = Constants.Vision.CAMERA_WIDTH / 2.0;
+                double imageCenterY = Constants.Vision.CAMERA_HEIGHT / 2.0;
+
+                // Pixel-to-angle math (from the fallback plan doc)
+                double yawDeg = (centerX - imageCenterX) / imageCenterX
+                        * (Constants.Vision.HORIZONTAL_FOV_DEG / 2.0);
+                double pitchDeg = (imageCenterY - centerY) / imageCenterY
+                        * (Constants.Vision.VERTICAL_FOV_DEG / 2.0);
+
+                latestResult.set(new VisionResult(
+                        best.getId(), yawDeg, pitchDeg, bestPixelHeight, timestampSec));
+            } catch (Exception ex) {
+                // Log but don't crash — keep retrying next frame
+                System.err.println("[RioVisionThread] Frame processing error: " + ex.getMessage());
             }
-
-            if (best == null) {
-                continue;
-            }
-
-            // Compute tag center from corner coordinates
-            double centerX = (best.getCornerX(0) + best.getCornerX(1)
-                    + best.getCornerX(2) + best.getCornerX(3)) / 4.0;
-            double centerY = (best.getCornerY(0) + best.getCornerY(1)
-                    + best.getCornerY(2) + best.getCornerY(3)) / 4.0;
-
-            double imageCenterX = Constants.Vision.CAMERA_WIDTH / 2.0;
-            double imageCenterY = Constants.Vision.CAMERA_HEIGHT / 2.0;
-
-            // Pixel-to-angle math (from the fallback plan doc)
-            double yawDeg = (centerX - imageCenterX) / imageCenterX
-                    * (Constants.Vision.HORIZONTAL_FOV_DEG / 2.0);
-            double pitchDeg = (imageCenterY - centerY) / imageCenterY
-                    * (Constants.Vision.VERTICAL_FOV_DEG / 2.0);
-
-            latestResult.set(new VisionResult(
-                    best.getId(), yawDeg, pitchDeg, bestPixelHeight, timestampSec));
         }
 
         detector.close();

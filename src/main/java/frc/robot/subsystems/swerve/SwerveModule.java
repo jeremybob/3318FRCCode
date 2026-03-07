@@ -176,12 +176,13 @@ public class SwerveModule {
         // for RemoteCANcoder feedback), so reduce steer's outbound status frames.
         BaseStatusSignal.setUpdateFrequencyForAll(100, cancoderPosition, cancoderAbsolutePosition);
         BaseStatusSignal.setUpdateFrequencyForAll(100, driveVelocity, drivePosition, driveAppliedVoltage);
-        BaseStatusSignal.setUpdateFrequencyForAll(4, driveTemp);
+        BaseStatusSignal.setUpdateFrequencyForAll(1, driveTemp);
         // Reduce steer motor status frames — we don't read these signals directly.
-        // The TalonFX still reads the CANcoder internally at its own rate.
-        steerMotor.getPosition().setUpdateFrequency(50);
-        steerMotor.getVelocity().setUpdateFrequency(50);
-        steerMotor.getDeviceTemp().setUpdateFrequency(4);
+        // The TalonFX still reads the CANcoder internally at its own rate for
+        // RemoteCANcoder feedback. These outbound frames are diagnostics only.
+        steerMotor.getPosition().setUpdateFrequency(10);
+        steerMotor.getVelocity().setUpdateFrequency(10);
+        steerMotor.getDeviceTemp().setUpdateFrequency(1);
 
         lastAngle = getAbsoluteAngle();
     }

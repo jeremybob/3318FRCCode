@@ -39,6 +39,10 @@ public class ShooterSubsystem extends SubsystemBase {
     private final VelocityVoltage velocityRequest = new VelocityVoltage(0)
             .withEnableFOC(Constants.Swerve.USE_PHOENIX_PRO_FEATURES);
 
+    // Cached velocity values — updated once per periodic() to avoid redundant CAN reads
+    private double cachedLeftRPS = 0;
+    private double cachedRightRPS = 0;
+
     // --------------------------------------------------------------------------
     // Constructor: configure both shooter motors identically
     // --------------------------------------------------------------------------
@@ -74,10 +78,10 @@ public class ShooterSubsystem extends SubsystemBase {
         // Position and temperature at 4 Hz — we rarely read these.
         leftShooter.getVelocity().setUpdateFrequency(10);
         leftShooter.getPosition().setUpdateFrequency(4);
-        leftShooter.getDeviceTemp().setUpdateFrequency(4);
+        leftShooter.getDeviceTemp().setUpdateFrequency(1);
         rightShooter.getVelocity().setUpdateFrequency(10);
         rightShooter.getPosition().setUpdateFrequency(4);
-        rightShooter.getDeviceTemp().setUpdateFrequency(4);
+        rightShooter.getDeviceTemp().setUpdateFrequency(1);
     }
 
     // --------------------------------------------------------------------------
@@ -86,10 +90,13 @@ public class ShooterSubsystem extends SubsystemBase {
     // --------------------------------------------------------------------------
     @Override
     public void periodic() {
-        SmartDashboard.putNumber("Shooter/LeftRPS",
-                leftShooter.getVelocity().getValueAsDouble());
-        SmartDashboard.putNumber("Shooter/RightRPS",
-                rightShooter.getVelocity().getValueAsDouble());
+        // Cache velocity once per loop — avoids redundant CAN reads in
+        // isAtSpeed(), getLeftRPS(), getRightRPS() later this cycle.
+        cachedLeftRPS = leftShooter.getVelocity().getValueAsDouble();
+        cachedRightRPS = rightShooter.getVelocity().getValueAsDouble();
+
+        SmartDashboard.putNumber("Shooter/LeftRPS", cachedLeftRPS);
+        SmartDashboard.putNumber("Shooter/RightRPS", cachedRightRPS);
         SmartDashboard.putBoolean("Shooter/AtSpeed",
                 isAtSpeed(Constants.Shooter.TARGET_RPS));
     }
@@ -119,11 +126,11 @@ public class ShooterSubsystem extends SubsystemBase {
     }
 
     public double getLeftRPS() {
-        return leftShooter.getVelocity().getValueAsDouble();
+        return cachedLeftRPS;
     }
 
     public double getRightRPS() {
-        return rightShooter.getVelocity().getValueAsDouble();
+        return cachedRightRPS;
     }
 
     public double getLeftTemperatureC() {
