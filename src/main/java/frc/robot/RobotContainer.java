@@ -371,8 +371,8 @@ public class RobotContainer {
         //   - Robots can preload up to 8 FUEL
         //   - Winning auto determines HUB shift order in teleop
         //   - Level 1 climb is available in auto (15 pts, max 2 robots)
-        addPathPlannerAutoOption("Eight Fuel Climb Auto", "EightFuelClimbAuto");
-        addPathPlannerAutoOption("Taxi Only", "TaxiOnly");
+        addPathPlannerAutoOption("Blue Depot", "BlueDepot");
+        addPathPlannerAutoOption("Blue Outpost", "BlueOutpost");
 
         // Calibration utility: reads CANcoder offsets and prints to console.
         // Align all wheels forward, select this auto, and enable briefly.
