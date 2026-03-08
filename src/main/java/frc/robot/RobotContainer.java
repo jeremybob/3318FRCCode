@@ -391,10 +391,10 @@ public class RobotContainer {
 
     private void addPathPlannerAutoOption(String chooserName, String autoFileName) {
         try {
-            registerAutoOption(chooserName, new PathPlannerAuto(autoFileName), false);
+            PathPlannerAuto auto = new PathPlannerAuto(autoFileName);
+            registerAutoOption(chooserName, auto, false);
             // Cache the starting pose (blue-side coordinates) for dashboard placement check
-            PathPlannerAuto.getStartingPoseFromAutoFile(autoFileName)
-                    .ifPresent(pose -> autoStartingPoses.put(chooserName, pose));
+            autoStartingPoses.put(chooserName, auto.getStartingPose());
         } catch (Exception e) {
             System.err.println("[RobotContainer] Skipping auto '" + autoFileName + "': " + e.getMessage());
         }

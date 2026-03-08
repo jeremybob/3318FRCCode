@@ -97,9 +97,6 @@ public class RioVisionThread extends Thread {
 
             cvSink = new CvSink("RioVisionCvSink");
             cvSink.setSource(usbCamera);
-            // Grab timeout prevents the thread from blocking forever if the
-            // camera disconnects mid-match. 500ms ≈ ~8 missed frames at 15 fps.
-            cvSink.setGrabTimeout(0.5);
             cvSink.setEnabled(true);
 
             overlayOutput = new CvSource(
@@ -127,8 +124,9 @@ public class RioVisionThread extends Thread {
 
         while (!Thread.interrupted()) {
             try {
-                // grabFrame blocks until the next frame arrives (or timeout)
-                long frameTime = cvSink.grabFrame(mat);
+                // grabFrame blocks until the next frame arrives (or timeout).
+                // 500ms timeout prevents blocking forever if camera disconnects.
+                long frameTime = cvSink.grabFrame(mat, 0.5);
                 if (frameTime == 0) {
                     // Frame grab failed — camera probably disconnected.
                     // Retry on next iteration; main loop sees stale result.
