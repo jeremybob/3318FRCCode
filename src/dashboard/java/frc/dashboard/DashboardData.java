@@ -48,6 +48,10 @@ public record DashboardData(
         String selectedAutoSource,
         String[] autoOptions,
         boolean autoCommandRunning,
+        // Expected auto starting pose (blue-side coordinates; NaN = none)
+        double autoStartX_m,
+        double autoStartY_m,
+        double autoStartHeadingDeg,
         // Match info
         long matchNumber,
         String eventName,

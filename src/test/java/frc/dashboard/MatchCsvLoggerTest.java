@@ -30,6 +30,7 @@ class MatchCsvLoggerTest {
                 true, 10.0,
                 battery, false, false,
                 "TwoNoteCenter", "CUSTOM DASHBOARD", new String[]{"TwoNoteCenter"}, false,
+                Double.NaN, Double.NaN, Double.NaN,
                 1, "TestEvent",
                 true, "OK", 0, "cam", "/dev/video0", "", "", 100, 10.0,
                 1, 2.5,

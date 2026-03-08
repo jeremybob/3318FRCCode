@@ -2266,6 +2266,9 @@ public class DashboardFrame extends JFrame {
         private int visionTagId = -1;
         private double visionDistanceM = Double.NaN;
         private double alignYawDeg = Double.NaN;
+        private double autoStartX_m = Double.NaN;
+        private double autoStartY_m = Double.NaN;
+        private double autoStartHeadingDeg = Double.NaN;
 
         private static final double FIELD_LENGTH_M = 17.6;
         private static final double FIELD_WIDTH_M = 8.0;
@@ -2286,6 +2289,9 @@ public class DashboardFrame extends JFrame {
         private static final Color HUB_RED_BORDER = new Color(220, 80, 80, 180);
         private static final Color HUB_BLUE_BORDER = new Color(80, 80, 220, 180);
         private static final Color VISION_LINE = new Color(0, 255, 100, 120);
+        private static final Color EXPECTED_POSE = new Color(0, 200, 255, 160);
+        private static final Color PLACEMENT_OK = new Color(0, 220, 80);
+        private static final Color PLACEMENT_WARN = new Color(255, 80, 40);
         private static final Font INFO_FONT = new Font("Segoe UI", Font.BOLD, 13);
         private static final Font TAG_FONT = new Font("Segoe UI", Font.BOLD, 11);
 
@@ -2305,6 +2311,20 @@ public class DashboardFrame extends JFrame {
             this.visionTagId = data.visionTagId();
             this.visionDistanceM = data.visionDistanceM();
             this.alignYawDeg = data.alignYawDeg();
+
+            // Expected auto starting pose (flip for red alliance)
+            double startX = data.autoStartX_m();
+            double startY = data.autoStartY_m();
+            double startH = data.autoStartHeadingDeg();
+            if (Double.isFinite(startX) && "RED".equals(data.alliance())) {
+                startX = FIELD_LENGTH_M - startX;
+                startY = FIELD_WIDTH_M - startY;
+                startH = startH + 180.0;
+            }
+            this.autoStartX_m = startX;
+            this.autoStartY_m = startY;
+            this.autoStartHeadingDeg = startH;
+
             repaint();
         }
 
@@ -2329,6 +2349,37 @@ public class DashboardFrame extends JFrame {
             g2.setColor(new Color(70, 100, 130));
             g2.drawLine(pad + width / 2, pad, pad + width / 2, pad + height);
             g2.drawLine(pad, pad + height / 2, pad + width, pad + height / 2);
+
+            // Draw expected auto starting position (ghost marker, only when disabled)
+            boolean hasExpectedPose = Double.isFinite(autoStartX_m) && Double.isFinite(autoStartY_m);
+            int expectedPxX = 0, expectedPxY = 0;
+            double placementDistM = Double.NaN;
+            if (hasExpectedPose && "DISABLED".equals(mode)) {
+                expectedPxX = pad + (int) Math.round(clamp(autoStartX_m / FIELD_LENGTH_M, 0.0, 1.0) * width);
+                expectedPxY = pad + height - (int) Math.round(clamp(autoStartY_m / FIELD_WIDTH_M, 0.0, 1.0) * height);
+
+                // Crosshair marker
+                g2.setColor(EXPECTED_POSE);
+                g2.setStroke(new BasicStroke(2f));
+                g2.drawOval(expectedPxX - 14, expectedPxY - 14, 28, 28);
+                g2.drawLine(expectedPxX - 18, expectedPxY, expectedPxX + 18, expectedPxY);
+                g2.drawLine(expectedPxX, expectedPxY - 18, expectedPxX, expectedPxY + 18);
+
+                // Heading arrow for expected pose
+                if (Double.isFinite(autoStartHeadingDeg)) {
+                    double expRad = Math.toRadians(autoStartHeadingDeg);
+                    int expArrowX = expectedPxX + (int) Math.round(Math.cos(expRad) * 24.0);
+                    int expArrowY = expectedPxY - (int) Math.round(Math.sin(expRad) * 24.0);
+                    g2.setStroke(new BasicStroke(2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND,
+                            0, new float[]{4, 4}, 0));
+                    g2.drawLine(expectedPxX, expectedPxY, expArrowX, expArrowY);
+                }
+
+                // Compute distance between current pose and expected pose
+                double dx = poseX_m - autoStartX_m;
+                double dy = poseY_m - autoStartY_m;
+                placementDistM = Math.sqrt(dx * dx + dy * dy);
+            }
 
             // Draw HUBs
             drawHub(g2, pad, width, height, RED_HUB_X, RED_HUB_Y,
@@ -2411,8 +2462,19 @@ public class DashboardFrame extends JFrame {
                 g2.drawString(info.toString(), pad, bottomY);
             }
 
-            // ---- Bottom-right: Odometry-only warning ----
-            if (!cameraConnected || !hasTarget) {
+            // ---- Bottom-right: Placement check or odometry-only warning ----
+            if (hasExpectedPose && "DISABLED".equals(mode) && Double.isFinite(placementDistM)) {
+                String placementMsg;
+                if (placementDistM < 0.5) {
+                    g2.setColor(PLACEMENT_OK);
+                    placementMsg = "PLACEMENT OK (" + ONE_DECIMAL.format(placementDistM) + "m)";
+                } else {
+                    g2.setColor(PLACEMENT_WARN);
+                    placementMsg = "CHECK PLACEMENT (" + ONE_DECIMAL.format(placementDistM) + "m off)";
+                }
+                int msgW = g2.getFontMetrics().stringWidth(placementMsg);
+                g2.drawString(placementMsg, statusX - msgW, bottomY);
+            } else if (!cameraConnected || !hasTarget) {
                 g2.setColor(WARN);
                 String warn = "ODOMETRY ONLY";
                 int warnW = g2.getFontMetrics().stringWidth(warn);

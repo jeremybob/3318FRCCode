@@ -47,6 +47,10 @@ public record DashboardSnapshot(
         String selectedAutoSource,
         String[] autoOptions,
         boolean autoCommandRunning,
+        // Expected auto starting pose (blue-side coordinates; NaN = no starting pose)
+        double autoStartX_m,
+        double autoStartY_m,
+        double autoStartHeadingDeg,
         // Match info
         long matchNumber,
         String eventName,

@@ -97,6 +97,12 @@ public class DashboardNtClient implements AutoCloseable {
     private final BooleanSubscriber autoCommandRunningSub =
             table.getBooleanTopic("auto/command_running").subscribe(false);
 
+    // Expected auto starting pose
+    private final DoubleSubscriber autoStartXSub = table.getDoubleTopic("auto/start_x_m").subscribe(Double.NaN);
+    private final DoubleSubscriber autoStartYSub = table.getDoubleTopic("auto/start_y_m").subscribe(Double.NaN);
+    private final DoubleSubscriber autoStartHeadingSub =
+            table.getDoubleTopic("auto/start_heading_deg").subscribe(Double.NaN);
+
     // Match info
     private final IntegerSubscriber matchNumberSub = table.getIntegerTopic("match/number").subscribe(0);
     private final StringSubscriber eventNameSub = table.getStringTopic("match/event_name").subscribe("");
@@ -320,6 +326,10 @@ public class DashboardNtClient implements AutoCloseable {
                 selectedAutoSourceSub.get(),
                 autoOptionsSub.get(),
                 autoCommandRunningSub.get(),
+                // Expected auto starting pose
+                autoStartXSub.get(),
+                autoStartYSub.get(),
+                autoStartHeadingSub.get(),
                 // Match info
                 matchNumberSub.get(),
                 eventNameSub.get(),

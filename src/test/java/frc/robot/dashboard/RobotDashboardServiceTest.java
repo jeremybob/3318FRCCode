@@ -473,6 +473,10 @@ class RobotDashboardServiceTest {
                 "SMARTDASHBOARD",
                 new String[] {"Do Nothing", "Taxi Only", "Calibrate CANcoders"},
                 false,
+                // Expected auto starting pose
+                Double.NaN,
+                Double.NaN,
+                Double.NaN,
                 // Match info
                 0,
                 "",

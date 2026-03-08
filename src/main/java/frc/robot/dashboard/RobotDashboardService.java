@@ -90,6 +90,11 @@ public class RobotDashboardService {
     private final StringArrayPublisher autoOptionsPub;
     private final BooleanPublisher autoCommandRunningPub;
 
+    // Expected auto starting pose
+    private final DoublePublisher autoStartXPub;
+    private final DoublePublisher autoStartYPub;
+    private final DoublePublisher autoStartHeadingPub;
+
     // Match info
     private final IntegerPublisher matchNumberPub;
     private final StringPublisher eventNamePub;
@@ -257,6 +262,11 @@ public class RobotDashboardService {
         autoOptionsPub = table.getStringArrayTopic("auto/options").publish();
         autoCommandRunningPub = table.getBooleanTopic("auto/command_running").publish();
 
+        // Expected auto starting pose
+        autoStartXPub = table.getDoubleTopic("auto/start_x_m").publish();
+        autoStartYPub = table.getDoubleTopic("auto/start_y_m").publish();
+        autoStartHeadingPub = table.getDoubleTopic("auto/start_heading_deg").publish();
+
         // Match info
         matchNumberPub = table.getIntegerTopic("match/number").publish();
         eventNamePub = table.getStringTopic("match/event_name").publish();
@@ -422,6 +432,11 @@ public class RobotDashboardService {
         selectedAutoSourcePub.set(snapshot.selectedAutoSource());
         autoOptionsPub.set(snapshot.autoOptions());
         autoCommandRunningPub.set(snapshot.autoCommandRunning());
+
+        // Expected auto starting pose
+        autoStartXPub.set(snapshot.autoStartX_m());
+        autoStartYPub.set(snapshot.autoStartY_m());
+        autoStartHeadingPub.set(snapshot.autoStartHeadingDeg());
 
         // Match info
         matchNumberPub.set(snapshot.matchNumber());

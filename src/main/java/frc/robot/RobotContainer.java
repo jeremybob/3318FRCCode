@@ -27,6 +27,8 @@ import com.pathplanner.lib.config.PIDConstants;
 import com.pathplanner.lib.config.RobotConfig;
 import com.pathplanner.lib.controllers.PPHolonomicDriveController;
 
+import edu.wpi.first.math.geometry.Pose2d;
+
 import java.util.ArrayList;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
@@ -110,6 +112,10 @@ public class RobotContainer {
     private Command selectedAutoCommand;
     private String selectedAutoName = "Do Nothing";
     private String selectedAutoSource = "DEFAULT";
+    private final Map<String, Pose2d> autoStartingPoses = new LinkedHashMap<>();
+    private double expectedAutoStartX = Double.NaN;
+    private double expectedAutoStartY = Double.NaN;
+    private double expectedAutoStartHeadingDeg = Double.NaN;
     private Command currentAutoCommand;
     private final RobotDashboardService dashboardService;
     private static final double TRIGGER_ACTIVE_THRESHOLD = 0.20;
@@ -386,6 +392,9 @@ public class RobotContainer {
     private void addPathPlannerAutoOption(String chooserName, String autoFileName) {
         try {
             registerAutoOption(chooserName, new PathPlannerAuto(autoFileName), false);
+            // Cache the starting pose (blue-side coordinates) for dashboard placement check
+            PathPlannerAuto.getStartingPoseFromAutoFile(autoFileName)
+                    .ifPresent(pose -> autoStartingPoses.put(chooserName, pose));
         } catch (Exception e) {
             System.err.println("[RobotContainer] Skipping auto '" + autoFileName + "': " + e.getMessage());
         }
@@ -427,6 +436,18 @@ public class RobotContainer {
         selectedAutoCommand = command;
         selectedAutoName = autoName;
         selectedAutoSource = source;
+
+        // Update expected starting pose (NaN = no starting pose for this auto)
+        Pose2d startPose = autoStartingPoses.get(autoName);
+        if (startPose != null) {
+            expectedAutoStartX = startPose.getX();
+            expectedAutoStartY = startPose.getY();
+            expectedAutoStartHeadingDeg = startPose.getRotation().getDegrees();
+        } else {
+            expectedAutoStartX = Double.NaN;
+            expectedAutoStartY = Double.NaN;
+            expectedAutoStartHeadingDeg = Double.NaN;
+        }
 
         if (shouldLog) {
             logControlEvent("Auto", "Selected '" + autoName + "' via " + source);
@@ -761,6 +782,10 @@ public class RobotContainer {
                 getSelectedAutoSource(),
                 getAvailableAutoNames(),
                 autoRunning,
+                // Expected auto starting pose (blue-side; dashboard flips for red)
+                expectedAutoStartX,
+                expectedAutoStartY,
+                expectedAutoStartHeadingDeg,
                 // Match info
                 DriverStation.getMatchNumber(),
                 DriverStation.getEventName(),
