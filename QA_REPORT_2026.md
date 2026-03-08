@@ -125,7 +125,23 @@ if (!HubActivityTracker.isOurHubActive()) {
 **Impact:** FUEL wasted by shooting during inactive HUB shifts.
 **Action:** Consider either aborting the shot or adding operator confirmation when HUB is inactive. At minimum, surface this warning prominently on the dashboard.
 
-### M2. Intake Homing Scheduled Before Robot Enables — May Conflict
+### M2. Shot Geometry Check Missing Yaw Validation — May Fire While Misaligned
+**File:** `AlignAndShootCommand.java:324-330`
+
+`isShotGeometryFeasible()` only validates the **pitch** angle (vertical). It does **not** check whether the yaw (horizontal alignment) is within a reasonable bound. This means the robot could evaluate geometry as "feasible" and proceed toward feeding even when the robot is pointed 45+ degrees away from the target. The PID controller does check yaw tolerance before transitioning from ALIGN to CLEAR, but the geometry check itself doesn't gate on yaw.
+
+```java
+private boolean isShotGeometryFeasible(VisionResult result) {
+    double pitchDeg = result.pitchDeg();
+    // ... only checks pitch, not yaw
+    return isShotPitchFeasible(pitchDeg);
+}
+```
+
+**Impact:** Edge case where geometry is "feasible" but robot is severely misaligned. The PID gate catches this in ALIGN, but if vision is intermittent, geometry could pass while yaw is large.
+**Action:** Add a yaw magnitude check to `isShotGeometryFeasible()` (e.g., `Math.abs(yawDeg) < 45.0`).
+
+### M3. Intake Homing Scheduled Before Robot Enables — May Conflict
 **File:** `RobotContainer.java:148`
 
 `CommandScheduler.getInstance().schedule(buildIntakeHomeCommand())` is called in the constructor, but the CommandScheduler won't execute commands while disabled. The home command will execute when the robot first enables, potentially conflicting with autonomous commands if auto enables first.
@@ -133,7 +149,7 @@ if (!HubActivityTracker.isOurHubActive()) {
 **Impact:** If the robot enables in auto, the intake home command and auto path commands may fight for the intake subsystem.
 **Action:** Verify that auto routines include their own `HomeIntake` named command (they do via `registerPathPlannerCommands`), but the startup-scheduled one may still interfere. Consider making startup homing conditional on auto vs teleop.
 
-### M3. CANcoder Offsets May Need Recalibration
+### M4. CANcoder Offsets May Need Recalibration
 **File:** `Constants.java:199-207`
 
 There are commented-out older offset values that differ from the active ones:
@@ -145,7 +161,7 @@ These deltas suggest the offsets have been recalibrated at least once. If wheels
 **Impact:** Misaligned swerve modules cause crab-walking and poor auto path tracking.
 **Action:** Recalibrate all 4 offsets using `CalibrateCANcoders` auto before every event.
 
-### M4. No Simulation Support Enabled
+### M5. No Simulation Support Enabled
 **File:** `build.gradle` — `includeDesktopSupport = false`
 
 Desktop simulation is disabled. This prevents using WPILib's simulation GUI for testing code changes without a robot. For a team that may need to iterate quickly at competition, this is a missed opportunity.
@@ -153,7 +169,7 @@ Desktop simulation is disabled. This prevents using WPILib's simulation GUI for 
 **Impact:** Cannot test code changes without deploying to the robot.
 **Action:** Enable `includeDesktopSupport = true` and create basic simulation support.
 
-### M5. Hardcoded Current Limits Not Centralized
+### M6. Hardcoded Current Limits Not Centralized
 **Files:** `SwerveModule.java`, `ShooterSubsystem.java`, `IntakeSubsystem.java`
 
 Motor current limits are hardcoded in subsystem files rather than centralized in Constants:
@@ -166,7 +182,7 @@ Only intake limits are partially in Constants. This makes it harder to tune curr
 **Impact:** Maintenance burden; easy to miss when adjusting limits.
 **Action:** Move all current limits to `Constants` classes.
 
-### M6. Brownout Threshold Hardcoded
+### M7. Brownout Threshold Hardcoded
 **File:** `Robot.java:61`
 
 `batteryVoltage < 7.0` is hardcoded. The FRC brownout threshold is 6.3V, but the alert threshold (7.0V) is a team preference that should be in Constants.
@@ -174,7 +190,7 @@ Only intake limits are partially in Constants. This makes it harder to tune curr
 **Impact:** Minor maintenance issue.
 **Action:** Move to `Constants.Robot.BROWNOUT_ALERT_VOLTAGE`.
 
-### M7. PathPlanner Translation/Rotation PID Are Guesses
+### M8. PathPlanner Translation/Rotation PID Are Guesses
 **File:** `RobotContainer.java:253-257`
 
 Both translation and rotation PID for PathPlanner are set to `kP = 5.0, kI = 0, kD = 0`. These are starting estimates that need robot validation. If too aggressive, auto paths will overshoot waypoints. If too conservative, the robot won't track paths tightly.
@@ -182,7 +198,7 @@ Both translation and rotation PID for PathPlanner are set to `kP = 5.0, kI = 0, 
 **Impact:** Auto path following may be inaccurate.
 **Action:** Test auto paths and tune PID values. Start by running a simple straight-line path and measuring tracking error.
 
-### M8. `secondsUntilNextShiftChange()` Is Never Called
+### M9. `secondsUntilNextShiftChange()` Is Never Called
 **File:** `HubActivityTracker.java:142-153`
 
 The `secondsUntilNextShiftChange()` method exists but is never used by any command or dashboard publishing. This information would be valuable for operators deciding whether to shoot now or wait for the next active window.
@@ -265,7 +281,7 @@ Build failed due to `GradleRIO:2026.2.1` not being downloadable in this environm
 |----------|-------|------------|
 | CRITICAL | 3 | Missing climber, limited autos, unverified physics |
 | HIGH | 5 | Uncalibrated vision, conservative PID, unverified tag IDs, no piece detection |
-| MEDIUM | 8 | Inactive HUB shooting, hardcoded values, no simulation, PID tuning needed |
+| MEDIUM | 9 | Inactive HUB shooting, missing yaw gate, hardcoded values, no simulation, PID tuning needed |
 | LOW | 10 | Code quality, comments, edge cases, operator UX |
 
 ---
