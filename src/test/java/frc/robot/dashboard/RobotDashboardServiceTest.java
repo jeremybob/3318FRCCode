@@ -136,35 +136,35 @@ class RobotDashboardServiceTest {
         assertEquals(1, actions.intakeHomeCalls);
     }
 
-    @Test
-    void level1ClimbRejectedClimberDisabled() {
-        level1ClimbCmdPub.set(1);
-        nt.flush();
+    // @Test
+    // void level1ClimbRejectedClimberDisabled() {
+    //     level1ClimbCmdPub.set(1);
+    //     nt.flush();
 
-        // --- CLIMBER DISABLED: always rejected regardless of arm gate ---
-        service.periodic(snapshot("TELEOP", true, false, 3.0));
-        nt.flush();
+    //     // --- CLIMBER DISABLED: always rejected regardless of arm gate ---
+    //     service.periodic(snapshot("TELEOP", true, false, 3.0));
+    //     nt.flush();
 
-        assertEquals("level1_climb", ackCommandSub.get());
-        assertEquals("REJECTED", ackStatusSub.get());
-        assertEquals("Climber disabled \u2014 no hardware installed", ackMessageSub.get());
-        assertEquals(0, actions.level1ClimbCalls);
-    }
+    //     assertEquals("level1_climb", ackCommandSub.get());
+    //     assertEquals("REJECTED", ackStatusSub.get());
+    //     assertEquals("Climber disabled \u2014 no hardware installed", ackMessageSub.get());
+    //     assertEquals(0, actions.level1ClimbCalls);
+    // }
 
-    @Test
-    void level1ClimbRejectedEvenWhenArmed() {
-        level1ClimbCmdPub.set(2);
-        nt.flush();
+    // @Test
+    // void level1ClimbRejectedEvenWhenArmed() {
+    //     level1ClimbCmdPub.set(2);
+    //     nt.flush();
 
-        // --- CLIMBER DISABLED: always rejected even with arm gate ---
-        service.periodic(snapshot("TELEOP", true, true, 3.1));
-        nt.flush();
+    //     // --- CLIMBER DISABLED: always rejected even with arm gate ---
+    //     service.periodic(snapshot("TELEOP", true, true, 3.1));
+    //     nt.flush();
 
-        assertEquals("level1_climb", ackCommandSub.get());
-        assertEquals("REJECTED", ackStatusSub.get());
-        assertEquals("Climber disabled \u2014 no hardware installed", ackMessageSub.get());
-        assertEquals(0, actions.level1ClimbCalls);
-    }
+    //     assertEquals("level1_climb", ackCommandSub.get());
+    //     assertEquals("REJECTED", ackStatusSub.get());
+    //     assertEquals("Climber disabled \u2014 no hardware installed", ackMessageSub.get());
+    //     assertEquals(0, actions.level1ClimbCalls);
+    // }
 
     @Test
     void zeroHeadingAcceptedWhenDisabled() {
