@@ -14,7 +14,10 @@ import java.awt.GridBagLayout;
 import java.awt.GridLayout;
 import java.awt.Insets;
 import java.awt.RenderingHints;
+import java.io.IOException;
+import java.nio.file.Path;
 import java.text.DecimalFormat;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayDeque;
@@ -196,6 +199,25 @@ public class DashboardFrame extends JFrame {
     private JButton intakeHomeButton;
     private JButton level1ClimbButton;
 
+    // Trend charts (Trends tab)
+    private static final int TREND_CAPACITY = 1800; // 3 minutes at 10 Hz
+    private final TrendDataStore batteryTrend = new TrendDataStore(TREND_CAPACITY);
+    private final TrendDataStore loopTimingTrend = new TrendDataStore(TREND_CAPACITY);
+    private final TrendDataStore shooterSpinUpTrend = new TrendDataStore(TREND_CAPACITY);
+    private final TrendChartPanel batteryChart =
+            new TrendChartPanel("Battery Voltage (V)", OK, 11.5, WARN);
+    private final TrendChartPanel loopTimingChart =
+            new TrendChartPanel("Loop Period (ms)", INFO, 25.0, BAD);
+    private final TrendChartPanel shooterSpinUpChart =
+            new TrendChartPanel("Shooter Left RPS", new Color(140, 100, 255));
+
+    // Event replay
+    private final EventReplayPanel replayPanel = new EventReplayPanel();
+
+    // CSV match logger
+    private MatchCsvLogger csvLogger;
+    private boolean csvLoggingEnabled;
+
     // State tracking
     private double lastRobotTimestampSec = Double.NaN;
     private long lastTimestampSeenNanos = System.nanoTime();
@@ -272,6 +294,8 @@ public class DashboardFrame extends JFrame {
         tabs.addTab("Controls", buildControlsTab());
         tabs.addTab("Swerve Tools", buildSwerveToolsTab());
         tabs.addTab("Vision", buildVisionTab());
+        tabs.addTab("Trends", buildTrendsTab());
+        tabs.addTab("Replay", replayPanel);
         tabs.addTab("Bring-up", buildBringUpTab());
         tabs.addTab("Pit", buildPitTab());
         return tabs;
@@ -502,6 +526,87 @@ public class DashboardFrame extends JFrame {
                 infoLabel("Run calibration with wheels straight before updating offsets.")));
         root.add(center, BorderLayout.CENTER);
         return root;
+    }
+
+    // =========================================================================
+    // TRENDS TAB
+    // =========================================================================
+    private JPanel buildTrendsTab() {
+        JPanel root = new JPanel(new BorderLayout(8, 8));
+        root.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        root.setBackground(BG);
+
+        batteryChart.setStore(batteryTrend);
+        batteryChart.setFixedYRange(10.0, 14.0);
+        loopTimingChart.setStore(loopTimingTrend);
+        loopTimingChart.setFixedYRange(0.0, 40.0);
+        shooterSpinUpChart.setStore(shooterSpinUpTrend);
+
+        JPanel chartsGrid = new JPanel(new GridLayout(3, 1, 8, 8));
+        chartsGrid.setBackground(BG);
+        chartsGrid.add(wrapCard("Battery Voltage", batteryChart));
+        chartsGrid.add(wrapCard("Loop Timing", loopTimingChart));
+        chartsGrid.add(wrapCard("Shooter Spin-Up", shooterSpinUpChart));
+        root.add(chartsGrid, BorderLayout.CENTER);
+
+        JPanel csvPanel = new JPanel();
+        csvPanel.setLayout(new BoxLayout(csvPanel, BoxLayout.X_AXIS));
+        csvPanel.setBackground(CARD);
+        csvPanel.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(BORDER, 1),
+                BorderFactory.createEmptyBorder(6, 10, 6, 10)));
+        JButton csvToggle = new JButton("Start CSV Log");
+        csvToggle.setFocusPainted(false);
+        csvToggle.setFont(ACTION_FONT);
+        csvToggle.setBackground(BUTTON_ACTIVE);
+        csvToggle.setForeground(TEXT);
+        csvToggle.setBorder(BorderFactory.createEmptyBorder(6, 12, 6, 12));
+        JLabel csvStatusLabel = new JLabel("CSV: idle");
+        csvStatusLabel.setForeground(MUTED);
+        csvStatusLabel.setFont(new Font("Segoe UI", Font.PLAIN, 14));
+        csvToggle.addActionListener(e -> {
+            if (csvLoggingEnabled) {
+                stopCsvLogger();
+                csvToggle.setText("Start CSV Log");
+                csvStatusLabel.setText("CSV: stopped");
+            } else {
+                startCsvLogger();
+                csvToggle.setText("Stop CSV Log");
+                if (csvLogger != null) {
+                    csvStatusLabel.setText("CSV: " + csvLogger.getPath().getFileName());
+                }
+            }
+        });
+        csvPanel.add(csvToggle);
+        csvPanel.add(Box.createHorizontalStrut(12));
+        csvPanel.add(csvStatusLabel);
+        root.add(csvPanel, BorderLayout.SOUTH);
+
+        return root;
+    }
+
+    private void startCsvLogger() {
+        try {
+            String filename = "match_" + DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss")
+                    .format(LocalDateTime.now()) + ".csv";
+            csvLogger = new MatchCsvLogger(Path.of(filename));
+            csvLoggingEnabled = true;
+        } catch (IOException ex) {
+            System.err.println("Failed to start CSV logger: " + ex.getMessage());
+            csvLoggingEnabled = false;
+        }
+    }
+
+    private void stopCsvLogger() {
+        csvLoggingEnabled = false;
+        if (csvLogger != null) {
+            try {
+                csvLogger.close();
+            } catch (IOException ex) {
+                System.err.println("Failed to close CSV logger: " + ex.getMessage());
+            }
+            csvLogger = null;
+        }
     }
 
     // =========================================================================
@@ -858,6 +963,31 @@ public class DashboardFrame extends JFrame {
     private void refresh() {
         DashboardData data = client.read();
         long nowNanos = System.nanoTime();
+
+        // Feed trend stores
+        double ts = data.robotTimestampSec();
+        if (data.connected() && Double.isFinite(ts) && ts > 0.0) {
+            batteryTrend.add(ts, data.batteryVoltage());
+            shooterSpinUpTrend.add(ts, data.shooterLeftRps());
+            // Loop period estimated from successive robot timestamps
+            if (Double.isFinite(lastRobotTimestampSec) && ts > lastRobotTimestampSec) {
+                double periodMs = (ts - lastRobotTimestampSec) * 1000.0;
+                loopTimingTrend.add(ts, periodMs);
+            }
+        }
+        batteryChart.repaint();
+        loopTimingChart.repaint();
+        shooterSpinUpChart.repaint();
+
+        // CSV logging
+        if (csvLoggingEnabled && csvLogger != null && data.connected()) {
+            try {
+                csvLogger.log(data);
+            } catch (IOException ex) {
+                System.err.println("CSV log error: " + ex.getMessage());
+                stopCsvLogger();
+            }
+        }
 
         // Header
         connectionLabel.setText(data.connected() ? "Connected" : "Disconnected");
