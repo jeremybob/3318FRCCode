@@ -416,6 +416,14 @@ public class DashboardNtClient implements AutoCloseable {
         return Double.isFinite(fallback) ? fallback : Double.NaN;
     }
 
+    static long nextCommandSequence(long localSeq, long topicSeq) {
+        long highestSeen = Math.max(localSeq, topicSeq);
+        if (highestSeen == Long.MAX_VALUE) {
+            return Long.MAX_VALUE;
+        }
+        return highestSeen + 1;
+    }
+
     public synchronized void sendCommand(DashboardCommand command) {
         // Use local-only sequence tracking. The previous approach subscribed to
         // the same topic being published, causing self-reflection race conditions.
