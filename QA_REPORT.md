@@ -7,7 +7,7 @@
 
 ## Summary
 
-The codebase is well-structured and extensively documented. The custom Swing dashboard is impressively comprehensive. Below are identified bugs and functional issues, excluding tuning parameters as requested.
+The codebase is well-structured and extensively documented. The custom Swing dashboard is impressively comprehensive. 24 issues identified below, ranging from critical bugs to code quality concerns, excluding tuning parameters as requested.
 
 ---
 
@@ -133,6 +133,21 @@ The codebase is well-structured and extensively documented. The custom Swing das
 **File:** `src/main/java/frc/robot/RobotContainer.java:692`
 **Issue:** Line 692 calls `HubActivityTracker.isOurHubActive()` and discards the return value. This is solely for the SmartDashboard side effects inside that method. But the `buildDashboardSnapshot()` on line 688 already calls `HubActivityTracker.isOurHubActive()` (line 774), meaning the method is called twice per loop with redundant SmartDashboard writes.
 **Impact:** Double SmartDashboard writes for HUB activity. Minor performance waste.
+
+### 22. `SwerveSubsystem` belt-skip SmartDashboard indicator is never cleared
+**File:** `src/main/java/frc/robot/subsystems/SwerveSubsystem.java:227-237`
+**Issue:** When a belt skip is detected, `SmartDashboard.putBoolean("Swerve/" + mod.getName() + "_BeltSkip", true)` is set, but it is never reset to `false`. Once a belt skip is detected and corrected, the indicator remains `true` for the rest of the match, giving the false impression that the belt is still slipping.
+**Impact:** Operators and pit crew cannot tell whether a belt skip is an ongoing issue or a one-time event that was already corrected.
+
+### 23. `SwerveModule` CANcoder seed does not check status before seeding steer encoder
+**File:** `src/main/java/frc/robot/subsystems/swerve/SwerveModule.java:198-203`
+**Issue:** The non-Pro steer encoder seeding calls `cancoderPosition.waitForUpdate(0.5).getValueAsDouble()` and immediately uses the result to seed the steer motor via `steerMotor.setPosition(cancoderRot)`. The code does not check whether `waitForUpdate()` returned an OK status. If CAN communication fails or times out, `getValueAsDouble()` returns a stale/default value (typically `0.0`), causing the steer motor to be seeded with an incorrect position.
+**Impact:** On CAN bus congestion during startup, a module could be seeded to position 0.0 when the wheel is actually at a different angle. The robot would steer incorrectly until the periodic re-sync (every 1 second) detects and corrects the error.
+
+### 24. `FeederSubsystem` lacks explicit motor inversion configuration
+**File:** `src/main/java/frc/robot/subsystems/FeederSubsystem.java`
+**Issue:** The feeder motor SparkMaxConfig does not call `config.inverted(...)`, unlike the adjacent `HopperSubsystem` which explicitly sets `config.inverted(Constants.Hopper.MOTOR_INVERTED)` with the comment "Wired opposite the feeder motor, so invert the SparkMax." This inconsistency suggests the feeder motor direction may rely on the physical wiring being correct rather than being explicitly controlled in software.
+**Impact:** If the feeder motor wiring is changed or a replacement motor is installed with different wiring, the feeder will run backwards with no software-level inversion constant to adjust. Low risk but inconsistent with the hopper's explicit approach.
 
 ---
 
