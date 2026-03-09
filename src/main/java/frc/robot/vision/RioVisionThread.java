@@ -128,6 +128,23 @@ public class RioVisionThread extends Thread {
 
             // Configure AprilTag detector for 36h11 tag family
             detector = new AprilTagDetector();
+            AprilTagDetector.Config detectorConfig = detector.getConfig();
+            detectorConfig.numThreads = Constants.Vision.APRILTAG_NUM_THREADS;
+            detectorConfig.quadDecimate = Constants.Vision.APRILTAG_QUAD_DECIMATE;
+            detectorConfig.quadSigma = Constants.Vision.APRILTAG_QUAD_SIGMA;
+            detectorConfig.refineEdges = true;
+            detectorConfig.decodeSharpening = Constants.Vision.APRILTAG_DECODE_SHARPENING;
+            detectorConfig.debug = false;
+            detector.setConfig(detectorConfig);
+
+            AprilTagDetector.QuadThresholdParameters quadThresholds = detector.getQuadThresholdParameters();
+            quadThresholds.minClusterPixels = Constants.Vision.APRILTAG_MIN_CLUSTER_PIXELS;
+            quadThresholds.maxNumMaxima = Constants.Vision.APRILTAG_MAX_NUM_MAXIMA;
+            quadThresholds.criticalAngle = Constants.Vision.APRILTAG_CRITICAL_ANGLE_RAD;
+            quadThresholds.maxLineFitMSE = Constants.Vision.APRILTAG_MAX_LINE_FIT_MSE;
+            quadThresholds.minWhiteBlackDiff = Constants.Vision.APRILTAG_MIN_WHITE_BLACK_DIFF;
+            quadThresholds.deglitch = Constants.Vision.APRILTAG_DEGLITCH;
+            detector.setQuadThresholdParameters(quadThresholds);
             detector.addFamily("tag36h11");
         } catch (Throwable ex) {
             System.err.println("[RioVisionThread] FATAL: Camera/detector init failed: " + ex.getMessage());

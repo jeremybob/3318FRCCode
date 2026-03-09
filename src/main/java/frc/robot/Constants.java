@@ -438,13 +438,15 @@ public final class Constants {
 
         // ---- USB camera settings (Logitech C920 / C920 HD Pro) ----
         public static final int CAMERA_DEVICE_ID = 0;     // /dev/video0
-        public static final int CAMERA_WIDTH     = 320;
-        public static final int CAMERA_HEIGHT    = 240;
-        public static final int CAMERA_FPS       = 15;
+        // 640x480 gives the AprilTag detector far more pixels to work with than
+        // 320x240. We trade some frame rate to extend useful tag range.
+        public static final int CAMERA_WIDTH     = 640;
+        public static final int CAMERA_HEIGHT    = 480;
+        public static final int CAMERA_FPS       = 10;
         public static final int CAMERA_RAW_STREAM_PORT = 1181;
         public static final int CAMERA_OVERLAY_STREAM_PORT = 1182;
 
-        // ---- C920 camera intrinsics (320x240, 4:3 crop) ----
+        // ---- C920 camera intrinsics (640x480, 4:3 crop) ----
         // Horizontal FOV from Logitech C920 spec sheet (native 16:9 is 70.42°,
         // but 4:3 crop narrows it slightly — measure and adjust if needed).
         public static final double HORIZONTAL_FOV_DEG = 70.42;  // TUNE ME
@@ -452,7 +454,20 @@ public final class Constants {
         // Focal length in pixels — calibrate once per camera:
         //   Place robot at known distance d from a tag, measure tag pixel height px,
         //   then f = px * d / TAG_HEIGHT_M
-        public static final double FOCAL_LENGTH_PIXELS = 300.0;  // CALIBRATE ME
+        public static final double FOCAL_LENGTH_PIXELS = 600.0;  // CALIBRATE ME
+
+        // AprilTag detector tuning. WPILib's defaults are tuned for speed, not
+        // long-range detection on a low-res stream. These values keep more detail.
+        public static final int APRILTAG_NUM_THREADS = 2;
+        public static final float APRILTAG_QUAD_DECIMATE = 1.0f;
+        public static final float APRILTAG_QUAD_SIGMA = 0.0f;
+        public static final double APRILTAG_DECODE_SHARPENING = 0.25;
+        public static final int APRILTAG_MIN_CLUSTER_PIXELS = 60;
+        public static final int APRILTAG_MAX_NUM_MAXIMA = 10;
+        public static final double APRILTAG_CRITICAL_ANGLE_RAD = Math.PI / 4.0;
+        public static final float APRILTAG_MAX_LINE_FIT_MSE = 10.0f;
+        public static final int APRILTAG_MIN_WHITE_BLACK_DIFF = 5;
+        public static final boolean APRILTAG_DEGLITCH = false;
 
         // Standard FRC AprilTag size (6.5 inches outer, 36h11 family)
         public static final double TAG_HEIGHT_M = 0.1651;
