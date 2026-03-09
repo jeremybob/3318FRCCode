@@ -871,8 +871,10 @@ public class RobotContainer {
         // Manual stick override is intentionally allowed as a safety valve.
         return Commands.startEnd(
                 () -> {
-                    double midpoint = (Constants.Intake.INTAKE_DOWN_DEG + Constants.Intake.INTAKE_STOW_DEG) / 2.0;
-                    boolean shouldDeploy = intake.getTiltPositionDeg() < midpoint;
+                    double positionDeg = intake.getTiltPositionDeg();
+                    boolean shouldDeploy =
+                            Math.abs(positionDeg - Constants.Intake.INTAKE_STOW_DEG)
+                                    < Math.abs(positionDeg - Constants.Intake.INTAKE_DOWN_DEG);
                     intake.setTiltPosition(
                             shouldDeploy ? Constants.Intake.INTAKE_DOWN_DEG
                                          : Constants.Intake.INTAKE_STOW_DEG);

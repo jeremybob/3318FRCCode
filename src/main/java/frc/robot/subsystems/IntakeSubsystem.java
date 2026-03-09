@@ -166,16 +166,19 @@ public class IntakeSubsystem extends SubsystemBase {
     // --------------------------------------------------------------------------
     public void setTiltPower(double power) {
         double clampedPower = Math.max(-1.0, Math.min(1.0, power));
+        double homeDirection = Math.signum(Constants.Intake.HOME_POWER);
+        boolean commandingTowardHome = homeDirection != 0.0 && (clampedPower * homeDirection) > 0.0;
+        boolean commandingAwayFromHome = homeDirection != 0.0 && (clampedPower * homeDirection) < 0.0;
 
-        if (clampedPower < 0.0 && getLimitSwitchPressed()) {
+        if (commandingTowardHome && getLimitSwitchPressed()) {
             clampedPower = 0.0;
         }
         if (isHomed) {
             double positionDeg = getTiltPositionDeg();
-            if (clampedPower < 0.0 && positionDeg <= Constants.Intake.TILT_MIN_DEG) {
+            if (commandingAwayFromHome && positionDeg <= Constants.Intake.TILT_MIN_DEG) {
                 clampedPower = 0.0;
             }
-            if (clampedPower > 0.0 && positionDeg >= Constants.Intake.TILT_MAX_DEG) {
+            if (commandingTowardHome && positionDeg >= Constants.Intake.TILT_MAX_DEG) {
                 clampedPower = 0.0;
             }
         }

@@ -360,12 +360,14 @@ public final class Constants {
         public static final double TILT_kP = 0.15;  // TUNE ME
         public static final double TILT_kD = 0.005; // TUNE ME
 
-        // Power used to slowly drive toward the home limit switch
-        public static final double HOME_POWER       = -0.15;
+        // Sign convention for this robot:
+        //   stow/home is near 0 deg, deployed intake is negative degrees.
+        // Therefore positive power moves toward home (limit switch).
+        public static final double HOME_POWER       = 0.15;
         public static final double HOME_TIMEOUT_SEC =  2.0;
 
         // Target angle for the intake to be "down" and collecting game pieces
-        public static final double INTAKE_DOWN_DEG = 45.0;  // TUNE ME
+        public static final double INTAKE_DOWN_DEG = -45.0;  // TUNE ME
 
         // Target angle for the intake to be stowed (up / home position)
         public static final double INTAKE_STOW_DEG = 0.0;
@@ -373,8 +375,8 @@ public final class Constants {
         // Software limits for the tilt arm (in degrees from the homed position).
         // Prevents commanding the arm into the chassis or past its mechanical travel.
         // TUNE ME: Set these to the actual min/max safe travel of YOUR intake arm.
-        public static final double TILT_MIN_DEG = -5.0;   // small margin past home
-        public static final double TILT_MAX_DEG = 90.0;   // fully deployed
+        public static final double TILT_MIN_DEG = -90.0;  // fully deployed
+        public static final double TILT_MAX_DEG = 5.0;    // small margin past home
 
         // Current limit to protect the NEO and gearbox during homing stalls
         public static final int TILT_CURRENT_LIMIT_A = 40;
