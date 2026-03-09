@@ -83,7 +83,7 @@ public class RobotContainer {
     // =========================================================================
     // SUBSYSTEMS — created once here, shared with commands
     // =========================================================================
-    private final SwerveSubsystem  swerve  = new SwerveSubsystem(visionResult, lastVisionFrameTimestampSec);
+    private final SwerveSubsystem  swerve  = new SwerveSubsystem(lastVisionFrameTimestampSec);
     private final IntakeSubsystem  intake  = new IntakeSubsystem();
     private final HopperSubsystem  hopper  = new HopperSubsystem();
     private final FeederSubsystem  feeder  = new FeederSubsystem();
@@ -144,7 +144,12 @@ public class RobotContainer {
         // Start the background vision thread (USB camera AprilTag detection).
         if (Constants.Vision.ENABLE_VISION) {
             UsbCamera visionCamera = startVisionCamera();
-            new RioVisionThread(visionCamera, visionResult, lastVisionFrameTimestampSec, cameraDebugInfo).start();
+            if (visionCamera != null) {
+                new RioVisionThread(visionCamera, visionResult, lastVisionFrameTimestampSec, cameraDebugInfo).start();
+            } else {
+                System.err.println("[RobotContainer] Vision camera failed to open. "
+                        + "Vision-based shooting is UNAVAILABLE this match.");
+            }
         }
 
         // Intake homing is handled by:
@@ -528,17 +533,20 @@ public class RobotContainer {
 
         // Y button: Zero the gyro heading.
         // Use this when field-oriented drive drifts — face the robot away from you and press Y.
+        // No subsystem requirement so it works even during swerve validation.
         driverController.y().onTrue(
                 Commands.runOnce(() -> {
                     logControlEvent("Driver:Y", "zeroHeading()");
                     zeroHeading();
-                }, swerve));
+                }));
 
-        // B button: Emergency stop — immediately stops ALL drive motors
-        driverController.b().onTrue(Commands.runOnce(() -> {
-            logControlEvent("Driver:B", "stopDrive()");
-            stopDrive();
-        }, swerve));
+        // B button: Emergency stop — hold to keep drive stopped.
+        // Uses whileTrue so the robot stays stopped as long as B is held,
+        // preventing the default drive command from resuming immediately.
+        driverController.b().whileTrue(
+                Commands.run(() -> swerve.stop(), swerve)
+                        .beforeStarting(() -> logControlEvent("Driver:B", "stopDrive() hold start"))
+                        .finallyDo(() -> logControlEvent("Driver:B", "stopDrive() hold end")));
 
         // X button: X-Lock — all wheels point inward at 45° to resist being pushed.
         // Hold to maintain the lock; releasing returns to normal drive.
@@ -608,7 +616,8 @@ public class RobotContainer {
 
         // Right Trigger: Vision-required align-and-shoot (operator controls scoring).
         // Uses unless() to prevent re-triggering while a shoot command is already active.
-        operatorController.rightTrigger().onTrue(
+        // Threshold matches TRIGGER_ACTIVE_THRESHOLD so dashboard and actual trigger agree.
+        operatorController.rightTrigger(TRIGGER_ACTIVE_THRESHOLD).onTrue(
                 Commands.sequence(
                         Commands.runOnce(() -> logControlEvent("Operator:RT", "AlignAndShoot requested")),
                         buildAlignAndShootCommand()
@@ -686,12 +695,6 @@ public class RobotContainer {
 
     public void periodicDashboard() {
         dashboardService.periodic(buildDashboardSnapshot());
-
-        // 2026 REBUILT: Track HUB activity shifts for operator awareness.
-        // Publishes to SmartDashboard so operators know when to shoot vs. collect.
-        HubActivityTracker.isOurHubActive();
-        SmartDashboard.putNumber("HUB/SecondsToNextShift",
-                HubActivityTracker.secondsUntilNextShiftChange());
     }
 
     private DashboardSnapshot buildDashboardSnapshot() {
@@ -848,16 +851,18 @@ public class RobotContainer {
     }
 
     private Command buildIntakeTiltToggleCommand() {
+        // If not homed, finish immediately so the intake subsystem isn't held.
+        if (!intake.isHomed()) {
+            return Commands.runOnce(() ->
+                    System.out.println("[RobotContainer] Intake tilt toggle ignored: intake is not homed."),
+                    intake).withName("IntakeTiltToggle");
+        }
         // Sustained command that holds the PID setpoint until interrupted by the
         // operator moving the right stick (which activates the default tilt command).
         // This prevents the default command from immediately overriding the PID.
         // Manual stick override is intentionally allowed as a safety valve.
         return Commands.startEnd(
                 () -> {
-                    if (!intake.isHomed()) {
-                        System.out.println("[RobotContainer] Intake tilt toggle ignored: intake is not homed.");
-                        return;
-                    }
                     double midpoint = (Constants.Intake.INTAKE_DOWN_DEG + Constants.Intake.INTAKE_STOW_DEG) / 2.0;
                     boolean shouldDeploy = intake.getTiltPositionDeg() < midpoint;
                     intake.setTiltPosition(

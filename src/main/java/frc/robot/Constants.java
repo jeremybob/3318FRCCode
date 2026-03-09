@@ -49,8 +49,7 @@ public final class Constants {
         public static final int BACK_LEFT_STEER    = 8;
         public static final int BACK_LEFT_CANCODER = 12;
 
-        // NOTE: Back-right IDs jump from 9 to 12 — IDs 10 and 11 are shooter.
-        // Steer is on 19 to avoid conflict with Pigeon on 13.
+        // NOTE: Back-right IDs are 5/6/11. IDs 16-17 are shooter, 19 is hopper.
         public static final int BACK_RIGHT_DRIVE    = 5;
         public static final int BACK_RIGHT_STEER    = 6;
         public static final int BACK_RIGHT_CANCODER = 11;

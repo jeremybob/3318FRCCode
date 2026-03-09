@@ -31,9 +31,30 @@ public class CalibrateCANcodersCommand extends Command {
 
     private final SwerveSubsystem swerve;
 
+    // Persistent publishers — kept open so values remain visible on the dashboard
+    // until the next calibration run overwrites them.
+    private final DoublePublisher flRawPub;
+    private final DoublePublisher frRawPub;
+    private final DoublePublisher blRawPub;
+    private final DoublePublisher brRawPub;
+    private final DoublePublisher flOffsetPub;
+    private final DoublePublisher frOffsetPub;
+    private final DoublePublisher blOffsetPub;
+    private final DoublePublisher brOffsetPub;
+
     public CalibrateCANcodersCommand(SwerveSubsystem swerve) {
         this.swerve = swerve;
         // No subsystem requirements — only reads existing encoder data, does not drive
+
+        NetworkTable dashboardTable = NetworkTableInstance.getDefault().getTable("Dashboard");
+        flRawPub    = dashboardTable.getDoubleTopic("cancoder/fl_raw_rot").publish();
+        frRawPub    = dashboardTable.getDoubleTopic("cancoder/fr_raw_rot").publish();
+        blRawPub    = dashboardTable.getDoubleTopic("cancoder/bl_raw_rot").publish();
+        brRawPub    = dashboardTable.getDoubleTopic("cancoder/br_raw_rot").publish();
+        flOffsetPub = dashboardTable.getDoubleTopic("cancoder/fl_offset_rot").publish();
+        frOffsetPub = dashboardTable.getDoubleTopic("cancoder/fr_offset_rot").publish();
+        blOffsetPub = dashboardTable.getDoubleTopic("cancoder/bl_offset_rot").publish();
+        brOffsetPub = dashboardTable.getDoubleTopic("cancoder/br_offset_rot").publish();
     }
 
     @Override
@@ -76,16 +97,15 @@ public class CalibrateCANcodersCommand extends Command {
         SmartDashboard.putNumber("CANcoder/BL_Offset", blSample.recommendedOffsetRot());
         SmartDashboard.putNumber("CANcoder/BR_Offset", brSample.recommendedOffsetRot());
 
-        // Mirror to custom dashboard contract table using typed publishers.
-        NetworkTable dashboardTable = NetworkTableInstance.getDefault().getTable("Dashboard");
-        publishCalibrationValue(dashboardTable, "cancoder/fl_raw_rot", flSample.noOffsetRot());
-        publishCalibrationValue(dashboardTable, "cancoder/fr_raw_rot", frSample.noOffsetRot());
-        publishCalibrationValue(dashboardTable, "cancoder/bl_raw_rot", blSample.noOffsetRot());
-        publishCalibrationValue(dashboardTable, "cancoder/br_raw_rot", brSample.noOffsetRot());
-        publishCalibrationValue(dashboardTable, "cancoder/fl_offset_rot", flSample.recommendedOffsetRot());
-        publishCalibrationValue(dashboardTable, "cancoder/fr_offset_rot", frSample.recommendedOffsetRot());
-        publishCalibrationValue(dashboardTable, "cancoder/bl_offset_rot", blSample.recommendedOffsetRot());
-        publishCalibrationValue(dashboardTable, "cancoder/br_offset_rot", brSample.recommendedOffsetRot());
+        // Publish to custom dashboard contract table via persistent publishers.
+        flRawPub.set(flSample.noOffsetRot());
+        frRawPub.set(frSample.noOffsetRot());
+        blRawPub.set(blSample.noOffsetRot());
+        brRawPub.set(brSample.noOffsetRot());
+        flOffsetPub.set(flSample.recommendedOffsetRot());
+        frOffsetPub.set(frSample.recommendedOffsetRot());
+        blOffsetPub.set(blSample.recommendedOffsetRot());
+        brOffsetPub.set(brSample.recommendedOffsetRot());
     }
 
     @Override
@@ -96,11 +116,5 @@ public class CalibrateCANcodersCommand extends Command {
     @Override
     public boolean runsWhenDisabled() {
         return true;
-    }
-
-    private static void publishCalibrationValue(NetworkTable table, String key, double value) {
-        try (DoublePublisher pub = table.getDoubleTopic(key).publish()) {
-            pub.set(value);
-        }
     }
 }

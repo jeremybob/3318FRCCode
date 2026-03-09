@@ -237,17 +237,6 @@ public class DashboardNtClient implements AutoCloseable {
     private final IntegerPublisher stopSwerveValidationPub = table.getIntegerTopic("cmd/stop_swerve_validation_seq").publish();
     private final StringPublisher selectAutoNamePub = table.getStringTopic("cmd/select_auto_name").publish();
     private final IntegerPublisher selectAutoPub = table.getIntegerTopic("cmd/select_auto_seq").publish();
-    private final IntegerSubscriber zeroHeadingSeqSub = table.getIntegerTopic("cmd/zero_heading_seq").subscribe(0);
-    private final IntegerSubscriber stopDriveSeqSub = table.getIntegerTopic("cmd/stop_drive_seq").subscribe(0);
-    private final IntegerSubscriber intakeHomeSeqSub = table.getIntegerTopic("cmd/intake_home_seq").subscribe(0);
-    private final IntegerSubscriber alignShootSeqSub = table.getIntegerTopic("cmd/align_shoot_seq").subscribe(0);
-    private final IntegerSubscriber fallbackShootSeqSub = table.getIntegerTopic("cmd/fallback_shoot_seq").subscribe(0);
-    private final IntegerSubscriber level1ClimbSeqSub = table.getIntegerTopic("cmd/level1_climb_seq").subscribe(0);
-    private final IntegerSubscriber calibrateCANcodersSeqSub = table.getIntegerTopic("cmd/calibrate_cancoders_seq").subscribe(0);
-    private final IntegerSubscriber swerveValidationSeqSub = table.getIntegerTopic("cmd/swerve_validation_seq").subscribe(0);
-    private final IntegerSubscriber stopSwerveValidationSeqSub =
-            table.getIntegerTopic("cmd/stop_swerve_validation_seq").subscribe(0);
-    private final IntegerSubscriber selectAutoSeqSub = table.getIntegerTopic("cmd/select_auto_seq").subscribe(0);
 
     private long zeroHeadingSeq = 0;
     private long stopDriveSeq = 0;
@@ -428,39 +417,39 @@ public class DashboardNtClient implements AutoCloseable {
     }
 
     public synchronized void sendCommand(DashboardCommand command) {
+        // Use local-only sequence tracking. The previous approach subscribed to
+        // the same topic being published, causing self-reflection race conditions.
         switch (command) {
             case ZERO_HEADING -> {
-                zeroHeadingSeq = nextCommandSequence(zeroHeadingSeq, zeroHeadingSeqSub.get());
+                ++zeroHeadingSeq;
                 zeroHeadingPub.set(zeroHeadingSeq);
             }
             case STOP_DRIVE -> {
-                stopDriveSeq = nextCommandSequence(stopDriveSeq, stopDriveSeqSub.get());
+                ++stopDriveSeq;
                 stopDrivePub.set(stopDriveSeq);
             }
             case INTAKE_HOME -> {
-                intakeHomeSeq = nextCommandSequence(intakeHomeSeq, intakeHomeSeqSub.get());
+                ++intakeHomeSeq;
                 intakeHomePub.set(intakeHomeSeq);
             }
             case ALIGN_SHOOT -> {
-                alignShootSeq = nextCommandSequence(alignShootSeq, alignShootSeqSub.get());
+                ++alignShootSeq;
                 alignShootPub.set(alignShootSeq);
             }
             case FALLBACK_SHOOT -> {
-                fallbackShootSeq = nextCommandSequence(fallbackShootSeq, fallbackShootSeqSub.get());
+                ++fallbackShootSeq;
                 fallbackShootPub.set(fallbackShootSeq);
             }
             case LEVEL1_CLIMB -> {
-                level1ClimbSeq = nextCommandSequence(level1ClimbSeq, level1ClimbSeqSub.get());
+                ++level1ClimbSeq;
                 level1ClimbPub.set(level1ClimbSeq);
             }
             case CALIBRATE_CANCODERS -> {
-                calibrateCANcodersSeq = nextCommandSequence(calibrateCANcodersSeq, calibrateCANcodersSeqSub.get());
+                ++calibrateCANcodersSeq;
                 calibrateCANcodersPub.set(calibrateCANcodersSeq);
             }
             case STOP_SWERVE_VALIDATION -> {
-                stopSwerveValidationSeq = nextCommandSequence(
-                        stopSwerveValidationSeq,
-                        stopSwerveValidationSeqSub.get());
+                ++stopSwerveValidationSeq;
                 stopSwerveValidationPub.set(stopSwerveValidationSeq);
             }
             default -> throw new IllegalStateException("Unhandled command " + command);
@@ -472,7 +461,7 @@ public class DashboardNtClient implements AutoCloseable {
             return;
         }
 
-        selectAutoSeq = nextCommandSequence(selectAutoSeq, selectAutoSeqSub.get());
+        ++selectAutoSeq;
         selectAutoNamePub.set(autoName);
         selectAutoPub.set(selectAutoSeq);
     }
@@ -482,14 +471,10 @@ public class DashboardNtClient implements AutoCloseable {
             return;
         }
 
-        swerveValidationSeq = nextCommandSequence(swerveValidationSeq, swerveValidationSeqSub.get());
+        ++swerveValidationSeq;
         swerveValidationModulePub.set(moduleToken);
         swerveValidationModePub.set(modeToken);
         swerveValidationPub.set(swerveValidationSeq);
-    }
-
-    static long nextCommandSequence(long localSeq, long topicSeq) {
-        return Math.max(localSeq, topicSeq) + 1;
     }
 
     @Override

@@ -30,17 +30,36 @@ import frc.robot.vision.VisionResult;
 public class AlignAndShootCommand extends Command {
 
     // --------------------------------------------------------------------------
-    // Static telemetry snapshot
+    // Atomic telemetry snapshot — published as one immutable object so dashboard
+    // readers always see a consistent set of fields (fixes issue #10).
     // --------------------------------------------------------------------------
-    private static volatile String telemetryState = "IDLE";
-    private static volatile boolean telemetryCommandActive = false;
-    private static volatile boolean telemetryHasTarget = false;
-    private static volatile boolean telemetryGeometryFeasible = false;
-    private static volatile boolean telemetryHasShootableTarget = false;
-    private static volatile double telemetryYawDeg = Double.NaN;
-    private static volatile double telemetryPitchDeg = Double.NaN;
-    private static volatile double telemetryTargetRps = Double.NaN;
-    private static volatile String telemetryLastAbortReason = "";
+    public record TelemetrySnapshot(
+            String state,
+            boolean commandActive,
+            boolean hasTarget,
+            boolean geometryFeasible,
+            boolean hasShootableTarget,
+            double yawDeg,
+            double pitchDeg,
+            double targetRps,
+            String lastAbortReason) {}
+
+    private static final TelemetrySnapshot IDLE_SNAPSHOT = new TelemetrySnapshot(
+            "IDLE", false, false, false, false, Double.NaN, Double.NaN, Double.NaN, "");
+
+    private static volatile TelemetrySnapshot telemetrySnapshot = IDLE_SNAPSHOT;
+
+    // Mutable working fields — written only from the command scheduler thread,
+    // then published atomically via updateTelemetry().
+    private String workState = "IDLE";
+    private boolean workCommandActive = false;
+    private boolean workHasTarget = false;
+    private boolean workGeometryFeasible = false;
+    private boolean workHasShootableTarget = false;
+    private double workYawDeg = Double.NaN;
+    private double workPitchDeg = Double.NaN;
+    private double workTargetRps = Double.NaN;
+    private String workLastAbortReason = "";
 
     // All the subsystems this command needs to control
     private final SwerveSubsystem  swerve;
@@ -63,10 +82,14 @@ public class AlignAndShootCommand extends Command {
     private State state;
 
     private final Timer stateTimer = new Timer();
+    // Overall timer for the ALIGN state — covers both "no target" and "can't converge".
+    private final Timer alignOverallTimer = new Timer();
     private double lastValidTargetSeenSec = Double.NEGATIVE_INFINITY;
     private double calculatedRPS = Constants.Shooter.TARGET_RPS;
 
     private static final double ALIGN_TIMEOUT_SEC = 3.0;
+    // Maximum time in ALIGN with a target visible but PID/shooter not converging.
+    private static final double ALIGN_CONVERGENCE_TIMEOUT_SEC = 5.0;
 
     // Height of the HUB tags above ground (for pitch-based distance estimation).
     // This is the tag's vertical POSITION on the field, NOT its physical size.
@@ -100,16 +123,18 @@ public class AlignAndShootCommand extends Command {
         state = State.ALIGN;
         stateTimer.reset();
         stateTimer.start();
+        alignOverallTimer.reset();
+        alignOverallTimer.start();
         lastValidTargetSeenSec = Double.NEGATIVE_INFINITY;
-        telemetryState = State.ALIGN.name();
-        telemetryCommandActive = true;
-        telemetryHasTarget = false;
-        telemetryGeometryFeasible = false;
-        telemetryHasShootableTarget = false;
-        telemetryYawDeg = Double.NaN;
-        telemetryPitchDeg = Double.NaN;
-        telemetryTargetRps = Double.NaN;
-        telemetryLastAbortReason = "";
+
+        workState = State.ALIGN.name();
+        workCommandActive = true;
+        workHasTarget = false;
+        workGeometryFeasible = false;
+        workHasShootableTarget = false;
+        workYawDeg = Double.NaN;
+        workPitchDeg = Double.NaN;
+        workLastAbortReason = "";
 
         if (!HubActivityTracker.isOurHubActive()) {
             double secsToShift = HubActivityTracker.secondsUntilNextShiftChange();
@@ -121,9 +146,10 @@ public class AlignAndShootCommand extends Command {
         }
 
         calculatedRPS = Constants.Shooter.TARGET_RPS;
-        telemetryTargetRps = calculatedRPS;
+        workTargetRps = calculatedRPS;
         shooter.setShooterVelocity(calculatedRPS);
         SmartDashboard.putString("AlignShoot/State", "ALIGN");
+        updateTelemetry();
     }
 
     // --------------------------------------------------------------------------
@@ -136,18 +162,18 @@ public class AlignAndShootCommand extends Command {
             case ALIGN: {
                 VisionResult result = visionRef.get();
                 boolean hasResult = isResultFresh(result);
-                telemetryHasTarget = hasResult;
+                workHasTarget = hasResult;
 
                 if (!hasResult) {
                     swerve.drive(0, 0, 0, false);
-                    telemetryGeometryFeasible = false;
-                    telemetryHasShootableTarget = false;
-                    telemetryYawDeg = Double.NaN;
-                    telemetryPitchDeg = Double.NaN;
+                    workGeometryFeasible = false;
+                    workHasShootableTarget = false;
+                    workYawDeg = Double.NaN;
+                    workPitchDeg = Double.NaN;
 
                     if (stateTimer.hasElapsed(ALIGN_TIMEOUT_SEC)) {
                         System.out.println("[AlignAndShoot] No alliance HUB tag found, aborting.");
-                        telemetryLastAbortReason = "No alliance HUB tag found";
+                        workLastAbortReason = "No alliance HUB tag found";
                         transitionTo(State.DONE);
                     }
                     break;
@@ -155,14 +181,14 @@ public class AlignAndShootCommand extends Command {
 
                 if (!isShotGeometryFeasible(result)) {
                     System.out.println("[AlignAndShoot] Shot geometry not feasible, aborting.");
-                    telemetryHasShootableTarget = false;
-                    telemetryLastAbortReason = "Shot geometry not feasible";
+                    workHasShootableTarget = false;
+                    workLastAbortReason = "Shot geometry not feasible";
                     transitionTo(State.DONE);
                     break;
                 }
                 lastValidTargetSeenSec = Timer.getFPGATimestamp();
-                telemetryHasShootableTarget = true;
-                telemetryGeometryFeasible = true;
+                workHasShootableTarget = true;
+                workGeometryFeasible = true;
 
                 updateShooterFromVision(result);
 
@@ -171,6 +197,10 @@ public class AlignAndShootCommand extends Command {
                 if (turnPID.atSetpoint() && shooter.isAtSpeed(calculatedRPS)) {
                     swerve.drive(0, 0, 0, false);
                     transitionTo(State.CLEAR);
+                } else if (alignOverallTimer.hasElapsed(ALIGN_CONVERGENCE_TIMEOUT_SEC)) {
+                    System.out.println("[AlignAndShoot] ALIGN convergence timeout, aborting.");
+                    workLastAbortReason = "Alignment convergence timeout";
+                    transitionTo(State.DONE);
                 } else if (turnPID.atSetpoint()) {
                     swerve.drive(0, 0, 0, false);
                 } else {
@@ -182,7 +212,7 @@ public class AlignAndShootCommand extends Command {
             case CLEAR: {
                 if (!hasShootableTarget()) {
                     System.out.println("[AlignAndShoot] Vision lost or geometry invalid before feed, aborting.");
-                    telemetryLastAbortReason = "Vision lost before feed";
+                    workLastAbortReason = "Vision lost before feed";
                     transitionTo(State.DONE);
                     break;
                 }
@@ -211,6 +241,7 @@ public class AlignAndShootCommand extends Command {
             case DONE:
                 break;
         }
+        updateTelemetry();
     }
 
     @Override
@@ -225,15 +256,16 @@ public class AlignAndShootCommand extends Command {
         feeder.stop();
         hopper.stop();
         intake.setRollerPower(0);
-        telemetryState = "IDLE";
-        telemetryCommandActive = false;
-        telemetryHasShootableTarget = false;
-        telemetryTargetRps = Double.NaN;
         SmartDashboard.putString("AlignShoot/State", "IDLE");
         if (interrupted) {
             System.out.println("[AlignAndShoot] Command was interrupted.");
-            telemetryLastAbortReason = "Interrupted";
+            workLastAbortReason = "Interrupted";
         }
+        workState = "IDLE";
+        workCommandActive = false;
+        workHasShootableTarget = false;
+        workTargetRps = Double.NaN;
+        updateTelemetry();
     }
 
     // --------------------------------------------------------------------------
@@ -244,8 +276,16 @@ public class AlignAndShootCommand extends Command {
         state = newState;
         stateTimer.reset();
         stateTimer.start();
-        telemetryState = newState.toString();
+        workState = newState.toString();
         SmartDashboard.putString("AlignShoot/State", newState.toString());
+    }
+
+    /** Publish a consistent telemetry snapshot atomically. */
+    private void updateTelemetry() {
+        telemetrySnapshot = new TelemetrySnapshot(
+                workState, workCommandActive, workHasTarget,
+                workGeometryFeasible, workHasShootableTarget,
+                workYawDeg, workPitchDeg, workTargetRps, workLastAbortReason);
     }
 
     /** Update shooter velocity from the current vision result. */
@@ -253,7 +293,7 @@ public class AlignAndShootCommand extends Command {
         double yawDeg = result.yawDeg();
         SmartDashboard.putNumber("AlignShoot/YawError", yawDeg);
         SmartDashboard.putNumber("AlignShoot/TargetTagId", result.tagId());
-        telemetryYawDeg = yawDeg;
+        workYawDeg = yawDeg;
 
         double distanceM = result.estimateDistanceM(
                 Constants.Vision.TAG_HEIGHT_M,
@@ -267,7 +307,7 @@ public class AlignAndShootCommand extends Command {
             distanceM = pitchFallback;
         }
         calculatedRPS = ShooterSubsystem.calculateTargetRPS(distanceM);
-        telemetryTargetRps = calculatedRPS;
+        workTargetRps = calculatedRPS;
         shooter.setShooterVelocity(calculatedRPS);
         SmartDashboard.putNumber("AlignShoot/CalculatedRPS", calculatedRPS);
         SmartDashboard.putNumber("AlignShoot/EstDistanceM", distanceM);
@@ -304,22 +344,22 @@ public class AlignAndShootCommand extends Command {
     private boolean hasShootableTarget() {
         VisionResult result = visionRef.get();
         boolean hasResult = isResultFresh(result);
-        telemetryHasTarget = hasResult;
+        workHasTarget = hasResult;
 
         if (hasResult) {
             boolean geometryFeasible = isShotGeometryFeasible(result);
-            telemetryGeometryFeasible = geometryFeasible;
+            workGeometryFeasible = geometryFeasible;
             if (geometryFeasible) {
                 lastValidTargetSeenSec = Timer.getFPGATimestamp();
-                telemetryHasShootableTarget = true;
+                workHasShootableTarget = true;
                 return true;
             }
-            telemetryHasShootableTarget = false;
+            workHasShootableTarget = false;
             return false;
         }
-        telemetryGeometryFeasible = false;
+        workGeometryFeasible = false;
         boolean recent = hasRecentValidTarget();
-        telemetryHasShootableTarget = recent;
+        workHasShootableTarget = recent;
         return recent;
     }
 
@@ -333,11 +373,9 @@ public class AlignAndShootCommand extends Command {
         double yawDeg = result.yawDeg();
         SmartDashboard.putNumber("AlignShoot/TargetPitchDeg", pitchDeg);
         SmartDashboard.putNumber("AlignShoot/YawGeometryCheck", yawDeg);
-        telemetryPitchDeg = pitchDeg;
+        workPitchDeg = pitchDeg;
 
         // Reject shots where the robot is facing far off-target.
-        // The PID will align us, but if yaw is wildly wrong the target
-        // may be a misdetection or the wrong tag entirely.
         if (Math.abs(yawDeg) > Constants.Vision.YAW_TOLERANCE_DEG * 10) {
             return false;
         }
@@ -361,15 +399,17 @@ public class AlignAndShootCommand extends Command {
     // --------------------------------------------------------------------------
     // Static telemetry accessors (for dashboard)
     // --------------------------------------------------------------------------
-    public static String getTelemetryState() { return telemetryState; }
-    public static boolean isTelemetryCommandActive() { return telemetryCommandActive; }
-    public static boolean telemetryHasTarget() { return telemetryHasTarget; }
-    public static boolean telemetryGeometryFeasible() { return telemetryGeometryFeasible; }
-    public static boolean telemetryHasShootableTarget() { return telemetryHasShootableTarget; }
-    public static double getTelemetryYawDeg() { return telemetryYawDeg; }
-    public static double getTelemetryPitchDeg() { return telemetryPitchDeg; }
-    public static double getTelemetryTargetRps() { return telemetryTargetRps; }
-    public static String getTelemetryLastAbortReason() { return telemetryLastAbortReason; }
+    public static TelemetrySnapshot getTelemetrySnapshot() { return telemetrySnapshot; }
+
+    public static String getTelemetryState() { return telemetrySnapshot.state(); }
+    public static boolean isTelemetryCommandActive() { return telemetrySnapshot.commandActive(); }
+    public static boolean telemetryHasTarget() { return telemetrySnapshot.hasTarget(); }
+    public static boolean telemetryGeometryFeasible() { return telemetrySnapshot.geometryFeasible(); }
+    public static boolean telemetryHasShootableTarget() { return telemetrySnapshot.hasShootableTarget(); }
+    public static double getTelemetryYawDeg() { return telemetrySnapshot.yawDeg(); }
+    public static double getTelemetryPitchDeg() { return telemetrySnapshot.pitchDeg(); }
+    public static double getTelemetryTargetRps() { return telemetrySnapshot.targetRps(); }
+    public static String getTelemetryLastAbortReason() { return telemetrySnapshot.lastAbortReason(); }
 
     static boolean isShotPitchFeasible(double pitchDeg) {
         return Double.isFinite(pitchDeg)
