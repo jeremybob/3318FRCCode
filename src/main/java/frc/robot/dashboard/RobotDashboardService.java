@@ -19,6 +19,7 @@ public class RobotDashboardService {
         void zeroHeading();
         void stopDrive();
         void scheduleIntakeHome();
+        void scheduleAlignOnly();
         void scheduleAlignAndShoot();
         void scheduleFallbackShoot();
         void scheduleLevel1Climb();
@@ -28,7 +29,7 @@ public class RobotDashboardService {
         void selectAutoByName(String autoName);
     }
 
-    private static final String CONTRACT_VERSION = "2026.11.0";
+    private static final String CONTRACT_VERSION = "2026.12.0";
 
     private final Actions actions;
 
@@ -178,6 +179,7 @@ public class RobotDashboardService {
     private final IntegerSubscriber zeroHeadingCmdSub;
     private final IntegerSubscriber stopDriveCmdSub;
     private final IntegerSubscriber intakeHomeCmdSub;
+    private final IntegerSubscriber alignOnlyCmdSub;
     private final IntegerSubscriber alignShootCmdSub;
     private final IntegerSubscriber fallbackShootCmdSub;
     private final IntegerSubscriber level1ClimbCmdSub;
@@ -192,6 +194,7 @@ public class RobotDashboardService {
     private long zeroHeadingSeqSeen = 0;
     private long stopDriveSeqSeen = 0;
     private long intakeHomeSeqSeen = 0;
+    private long alignOnlySeqSeen = 0;
     private long alignShootSeqSeen = 0;
     private long fallbackShootSeqSeen = 0;
     private long level1ClimbSeqSeen = 0;
@@ -355,6 +358,7 @@ public class RobotDashboardService {
         zeroHeadingCmdSub = table.getIntegerTopic("cmd/zero_heading_seq").subscribe(0);
         stopDriveCmdSub = table.getIntegerTopic("cmd/stop_drive_seq").subscribe(0);
         intakeHomeCmdSub = table.getIntegerTopic("cmd/intake_home_seq").subscribe(0);
+        alignOnlyCmdSub = table.getIntegerTopic("cmd/align_only_seq").subscribe(0);
         alignShootCmdSub = table.getIntegerTopic("cmd/align_shoot_seq").subscribe(0);
         fallbackShootCmdSub = table.getIntegerTopic("cmd/fallback_shoot_seq").subscribe(0);
         level1ClimbCmdSub = table.getIntegerTopic("cmd/level1_climb_seq").subscribe(0);
@@ -370,6 +374,7 @@ public class RobotDashboardService {
         zeroHeadingSeqSeen = zeroHeadingCmdSub.get();
         stopDriveSeqSeen = stopDriveCmdSub.get();
         intakeHomeSeqSeen = intakeHomeCmdSub.get();
+        alignOnlySeqSeen = alignOnlyCmdSub.get();
         alignShootSeqSeen = alignShootCmdSub.get();
         fallbackShootSeqSeen = fallbackShootCmdSub.get();
         level1ClimbSeqSeen = level1ClimbCmdSub.get();
@@ -556,6 +561,15 @@ public class RobotDashboardService {
                 actions::scheduleIntakeHome,
                 intakeHomeEnabled,
                 "Requires enabled teleop/test (disabled mode blocks motor output)",
+                snapshot.timestampSec());
+
+        alignOnlySeqSeen = runCommandIfNew(
+                alignOnlyCmdSub,
+                alignOnlySeqSeen,
+                "align_only",
+                actions::scheduleAlignOnly,
+                teleopEnabled,
+                "Only allowed in enabled teleop",
                 snapshot.timestampSec());
 
         alignShootSeqSeen = runCommandIfNew(

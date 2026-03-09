@@ -129,13 +129,14 @@ class CommandButtonAckIntegrationTest {
     void allDashboardCommandsExist() {
         // Verify that all expected commands exist in the enum
         DashboardNtClient.DashboardCommand[] commands = DashboardNtClient.DashboardCommand.values();
-        assertTrue(commands.length >= 7,
-                "Expected at least 7 dashboard commands, found " + commands.length);
+        assertTrue(commands.length >= 9,
+                "Expected at least 9 dashboard commands, found " + commands.length);
 
         // Verify specific commands that correspond to UI buttons
         DashboardNtClient.DashboardCommand.valueOf("ZERO_HEADING");
         DashboardNtClient.DashboardCommand.valueOf("STOP_DRIVE");
         DashboardNtClient.DashboardCommand.valueOf("INTAKE_HOME");
+        DashboardNtClient.DashboardCommand.valueOf("ALIGN_ONLY");
         DashboardNtClient.DashboardCommand.valueOf("ALIGN_SHOOT");
         DashboardNtClient.DashboardCommand.valueOf("FALLBACK_SHOOT");
         DashboardNtClient.DashboardCommand.valueOf("LEVEL1_CLIMB");
