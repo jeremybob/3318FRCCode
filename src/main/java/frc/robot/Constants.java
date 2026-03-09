@@ -486,8 +486,8 @@ public final class Constants {
         public static final double MAX_SHOT_PITCH_DEG =  40.0; // TUNE ME
 
         // PD controller for rotating toward a vision target
-        public static final double TURN_kP     = 0.05;
-        public static final double TURN_kD     = 0.005;
+        public static final double TURN_kP     = 0.10;   // TUNE ME
+        public static final double TURN_kD     = 0.008;  // TUNE ME
         public static final double MAX_ROT_CMD = 0.6;  // max rotation power during alignment
 
         // ---- Camera mount position ----
