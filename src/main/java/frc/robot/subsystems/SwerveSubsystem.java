@@ -37,7 +37,6 @@ import frc.robot.subsystems.swerve.SwerveCalibrationUtil;
 import frc.robot.subsystems.swerve.SwerveCorner;
 import frc.robot.subsystems.swerve.SwerveModule;
 import frc.robot.subsystems.swerve.SwerveValidationMode;
-import frc.robot.vision.VisionResult;
 import frc.robot.vision.VisionSupport;
 
 public class SwerveSubsystem extends SubsystemBase {
@@ -147,7 +146,6 @@ public class SwerveSubsystem extends SubsystemBase {
     //   visionResult - shared AtomicReference from RioVisionThread
     // --------------------------------------------------------------------------
     public SwerveSubsystem(
-            AtomicReference<VisionResult> visionResult,
             AtomicReference<Double> lastVisionFrameTimestampSec) {
         this.lastVisionFrameTimestampSec = lastVisionFrameTimestampSec;
 
@@ -230,9 +228,8 @@ public class SwerveSubsystem extends SubsystemBase {
         if (resyncLoopCounter >= 50) {
             resyncLoopCounter = 0;
             for (SwerveModule mod : modules) {
-                if (mod.checkSteerSync()) {
-                    SmartDashboard.putBoolean("Swerve/" + mod.getName() + "_BeltSkip", true);
-                }
+                boolean skipped = mod.checkSteerSync();
+                SmartDashboard.putBoolean("Swerve/" + mod.getName() + "_BeltSkip", skipped);
             }
         }
     }

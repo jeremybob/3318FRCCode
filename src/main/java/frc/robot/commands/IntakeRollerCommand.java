@@ -101,7 +101,6 @@ public class IntakeRollerCommand extends Command {
             System.out.println("[IntakeRoller] Auto-resetting after lockout cooldown.");
             protection.reset();
             restartTimer(stallTimer);
-            intake.setRollerPower(forwardPower);
         }
 
         intake.setRollerPower(protection.commandedPower(

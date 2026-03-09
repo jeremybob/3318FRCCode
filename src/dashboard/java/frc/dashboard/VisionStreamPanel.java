@@ -114,16 +114,21 @@ class VisionStreamPanel extends JPanel {
     }
 
     private void runWorker() {
+        int consecutiveErrors = 0;
         while (!Thread.currentThread().isInterrupted()) {
             try {
                 statusText = "Connecting to " + streamUrl;
                 repaintOnEdt();
                 streamFrames(streamUrl);
+                consecutiveErrors = 0;
             } catch (IOException ex) {
-                statusText = "Stream error: " + ex.getMessage();
+                consecutiveErrors++;
+                statusText = "STREAM ERROR (" + consecutiveErrors + "x): " + ex.getMessage()
+                        + " — check robot IP / camera";
                 frame = null;
                 repaintOnEdt();
-                sleepQuietly(1000);
+                // Back off more aggressively after repeated failures
+                sleepQuietly(Math.min(1000L * consecutiveErrors, 5000L));
             }
         }
     }

@@ -2073,6 +2073,7 @@ public class DashboardFrame extends JFrame {
         String desiredSelection = pendingAutoSelectionName;
         if (desiredSelection == null && autoOptions.length > 0) {
             desiredSelection = autoOptions[0];
+            pendingAutoSelectionName = desiredSelection;
         }
 
         if (desiredSelection != null && !desiredSelection.equals(currentSelection)) {

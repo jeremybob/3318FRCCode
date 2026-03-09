@@ -84,8 +84,10 @@ public class Robot extends TimedRobot {
             // Wrap the auto command with a global timeout to prevent a stuck path
             // from running into teleop. teleopInit() also cancels it, but this
             // provides a belt-and-suspenders safeguard.
-            CommandScheduler.getInstance().schedule(
-                    autonomousCommand.withTimeout(Constants.RobotConstants.AUTO_TIMEOUT_SEC));
+            // Store the wrapped command so teleopInit() cancels the right object.
+            autonomousCommand = autonomousCommand.withTimeout(Constants.RobotConstants.AUTO_TIMEOUT_SEC);
+            robotContainer.setCurrentAutoCommand(autonomousCommand);
+            CommandScheduler.getInstance().schedule(autonomousCommand);
         } else {
             System.out.println("[Robot] No autonomous command selected.");
         }

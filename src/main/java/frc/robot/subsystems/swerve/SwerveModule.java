@@ -82,6 +82,12 @@ public class SwerveModule {
     private Rotation2d lastAngle = new Rotation2d();
     private Rotation2d cachedSteerAngle = new Rotation2d();
 
+    // Track the coupling compensation offset so a belt-skip re-sync
+    // (which jumps steer position) doesn't cause a sudden change in
+    // reported drive distance for odometry.
+    private double couplingOffsetMotorRot = 0.0;
+    private double lastCouplingSteerRot = 0.0;
+
     // Reusable control request objects — avoids creating garbage every loop
     // VelocityVoltage: tells the drive motor "spin at exactly X rotations/sec"
     private final VelocityVoltage driveRequest = new VelocityVoltage(0)
@@ -196,10 +202,17 @@ public class SwerveModule {
         // motor's internal encoder so the position PID starts at the correct
         // wheel angle. With FusedCANcoder (Pro) this happens automatically.
         if (!Constants.Swerve.USE_PHOENIX_PRO_FEATURES) {
-            double cancoderRot = cancoderPosition.waitForUpdate(0.5).getValueAsDouble();
-            steerMotor.setPosition(cancoderRot);
-            System.out.println("[SwerveModule " + name + "] Seeded steer encoder from CANcoder: "
-                    + String.format("%.4f", cancoderRot) + " rot");
+            var cancoderStatus = cancoderPosition.waitForUpdate(0.5);
+            if (cancoderStatus.getStatus().isOK()) {
+                double cancoderRot = cancoderStatus.getValueAsDouble();
+                steerMotor.setPosition(cancoderRot);
+                System.out.println("[SwerveModule " + name + "] Seeded steer encoder from CANcoder: "
+                        + String.format("%.4f", cancoderRot) + " rot");
+            } else {
+                System.err.println("[SwerveModule " + name + "] WARNING: CANcoder seed failed ("
+                        + cancoderStatus.getStatus().getName()
+                        + "). Steer position may be incorrect until periodic re-sync corrects it.");
+            }
         }
 
         // ---- Optimize CAN frame rates for swerve-critical signals -----------
@@ -221,6 +234,10 @@ public class SwerveModule {
 
         refreshSteerAngle();
         lastAngle = getSteerAngle();
+
+        // Initialize coupling compensation tracking from current positions.
+        lastCouplingSteerRot = getSteerAngle().getRotations();
+        couplingOffsetMotorRot = lastCouplingSteerRot * Constants.Swerve.COUPLE_RATIO;
     }
 
     // --------------------------------------------------------------------------
@@ -311,10 +328,13 @@ public class SwerveModule {
         double motorRotations  = drivePosition.refresh().getValueAsDouble();
         // Compensate for coupling: steering the module causes the drive motor
         // to spin slightly. Subtract that parasitic motion for accurate odometry.
-        // Use cached steer angle (already refreshed this cycle) to avoid extra CAN read.
+        // Use delta-based tracking so a belt-skip re-sync (which jumps steer
+        // position) doesn't cause a sudden spike in the coupling compensation.
         double steerRotations  = cachedSteerAngle.getRotations();
-        double coupledMotorRot = steerRotations * Constants.Swerve.COUPLE_RATIO;
-        double correctedMotorRot = motorRotations - coupledMotorRot;
+        double steerDelta = steerRotations - lastCouplingSteerRot;
+        lastCouplingSteerRot = steerRotations;
+        couplingOffsetMotorRot += steerDelta * Constants.Swerve.COUPLE_RATIO;
+        double correctedMotorRot = motorRotations - couplingOffsetMotorRot;
         double wheelRotations  = correctedMotorRot / Constants.Swerve.DRIVE_GEAR_RATIO;
         double distanceMeters  = wheelRotations * Constants.Swerve.WHEEL_CIRCUMFERENCE_M;
         return new SwerveModulePosition(distanceMeters, cachedSteerAngle);

@@ -32,7 +32,6 @@
 package frc.robot;
 
 import edu.wpi.first.wpilibj.DriverStation;
-import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 
 public final class HubActivityTracker {
 
@@ -42,6 +41,9 @@ public final class HubActivityTracker {
      * Returns true if your alliance's HUB is currently active (accepting FUEL for points).
      * During auto and end game, always returns true.
      * During teleop shifts, uses Game Data from FMS to determine activity.
+     *
+     * This method is a pure function with no side effects — SmartDashboard
+     * publishing is handled by the caller (RobotDashboardService).
      */
     public static boolean isOurHubActive() {
         // During autonomous, both HUBs are always active
@@ -67,20 +69,7 @@ public final class HubActivityTracker {
         }
 
         // Determine shift number based on match time
-        // Shift 1: 2:10 to 1:45 (130 to 105 remaining)
-        // Shift 2: 1:45 to 1:20 (105 to 80 remaining)
-        // Shift 3: 1:20 to 0:55 (80 to 55 remaining)
-        // Shift 4: 0:55 to 0:30 (55 to 30 remaining)
-        int shiftNumber;
-        if (matchTime >= 105.0) {
-            shiftNumber = 1;
-        } else if (matchTime >= 80.0) {
-            shiftNumber = 2;
-        } else if (matchTime >= 55.0) {
-            shiftNumber = 3;
-        } else {
-            shiftNumber = 4;
-        }
+        int shiftNumber = getShiftNumber(matchTime);
 
         // Game Data tells us which alliance goes inactive first.
         // 'R' = Red goes inactive in Shifts 1 & 3 (Red LOST auto; winner stays active first)
@@ -109,30 +98,17 @@ public final class HubActivityTracker {
         // to avoid suppressing shots. Better to shoot into an inactive HUB (0 pts)
         // than to hold fire when the HUB is actually active.
         if (!gameDataAvailable) {
-            SmartDashboard.putBoolean("HUB/Active", true);
-            SmartDashboard.putNumber("HUB/ShiftNumber", shiftNumber);
-            SmartDashboard.putNumber("HUB/MatchTimeRemaining", matchTime);
-            SmartDashboard.putBoolean("HUB/GameDataAvailable", false);
             return true;
         }
 
         // Odd shifts (1, 3): the "inactive first" alliance is inactive
         // Even shifts (2, 4): the "inactive first" alliance is active
         boolean oddShift = (shiftNumber % 2 == 1);
-        boolean active;
         if (weGoInactiveFirst) {
-            active = !oddShift; // inactive in 1 & 3, active in 2 & 4
+            return !oddShift; // inactive in 1 & 3, active in 2 & 4
         } else {
-            active = oddShift;  // active in 1 & 3, inactive in 2 & 4
+            return oddShift;  // active in 1 & 3, inactive in 2 & 4
         }
-
-        // Publish to dashboard for operator awareness
-        SmartDashboard.putBoolean("HUB/Active", active);
-        SmartDashboard.putNumber("HUB/ShiftNumber", shiftNumber);
-        SmartDashboard.putNumber("HUB/MatchTimeRemaining", matchTime);
-        SmartDashboard.putBoolean("HUB/GameDataAvailable", true);
-
-        return active;
     }
 
     /**
@@ -150,5 +126,12 @@ public final class HubActivityTracker {
             }
         }
         return matchTime; // end game, just return remaining time
+    }
+
+    private static int getShiftNumber(double matchTime) {
+        if (matchTime >= 105.0) return 1;
+        if (matchTime >= 80.0) return 2;
+        if (matchTime >= 55.0) return 3;
+        return 4;
     }
 }

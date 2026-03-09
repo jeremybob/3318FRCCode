@@ -31,6 +31,9 @@ public class FeederSubsystem extends SubsystemBase {
         SparkMaxConfig config = new SparkMaxConfig();
         config.smartCurrentLimit(Constants.NeoMotors.DEFAULT_CURRENT_LIMIT_A);
         config.idleMode(IdleMode.kBrake);
+        // Explicit inversion: false = positive power feeds toward shooter.
+        // If the feeder runs backward after a motor swap, change this to true.
+        config.inverted(false);
         feederMotor.configure(config, ResetMode.kNoResetSafeParameters, PersistMode.kNoPersistParameters);
     }
 

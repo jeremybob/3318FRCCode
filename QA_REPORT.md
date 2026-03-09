@@ -5,196 +5,208 @@
 
 ---
 
+## Fix Status Legend
+
+| Status | Meaning |
+|--------|---------|
+| **FIXED** | Issue resolved in code |
+| **NO FIX NEEDED** | Not a bug or accepted as-is |
+| **DEFERRED** | Acknowledged, no action taken now |
+
+---
+
 ## Summary
 
 The codebase is well-structured and extensively documented. The custom Swing dashboard is impressively comprehensive. 31 issues identified below, ranging from critical bugs to code quality concerns, excluding tuning parameters as requested.
+
+**22 issues fixed, 5 accepted as-is / not a bug, 4 deferred.**
 
 ---
 
 ## CRITICAL BUGS
 
-### 1. `CalibrateCANcodersCommand` leaks NetworkTables publishers on every execution
-**File:** `src/main/java/frc/robot/commands/CalibrateCANcodersCommand.java:101-104`
-**Issue:** The `publishCalibrationValue()` method creates a `DoublePublisher` with try-with-resources, which immediately closes it after `set()`. In NetworkTables 4, closing a publisher can remove the topic or make the value non-persistent. More critically, each invocation creates new publishers for the same topic keys, and the behavior of `publish()` on an already-published topic is problematic. The published values may not actually reach the dashboard because the publisher is closed before NT has flushed the value to subscribers.
-**Impact:** Calibration values may not reliably appear on the custom dashboard. The SmartDashboard values (lines 70-77) will work, but the Dashboard contract table values may be transient.
+### 1. `CalibrateCANcodersCommand` leaks NetworkTables publishers on every execution — **FIXED**
+**File:** `src/main/java/frc/robot/commands/CalibrateCANcodersCommand.java`
+**Issue:** The `publishCalibrationValue()` method created a `DoublePublisher` with try-with-resources, which immediately closed it after `set()`. Published values may not reach the dashboard because the publisher is closed before NT flushes.
+**Fix:** Replaced try-with-resources publishers with persistent field-level publishers initialized in the constructor. Publishers remain open so calibration values persist on the dashboard.
 
-### 2. `AlignAndShootCommand` does not filter by alliance HUB tags
+### 2. `AlignAndShootCommand` does not filter by alliance HUB tags — **NO FIX NEEDED**
 **File:** `src/main/java/frc/robot/commands/AlignAndShootCommand.java`
-**Issue:** The command reads `visionRef.get()` and uses whatever tag the `RioVisionThread` publishes as "best". The `RioVisionThread` correctly filters for alliance HUB tags (line 179-200), but when alliance is unknown (`getAllianceHubTagIds()` returns null at line 258), it accepts **any** HUB tag from either alliance. During early match startup or practice mode, the robot could aim at the opponent's HUB and score for them.
-**Impact:** In practice mode or if alliance data arrives late, the robot may target the wrong HUB.
+**Issue:** When alliance is unknown, the vision thread accepts any HUB tag from either alliance.
+**Resolution:** Accepted as current behavior. The vision thread's fallback of accepting either alliance tag is preferable to refusing to shoot at all when alliance data is unavailable.
 
-### 3. `IntakeSubsystem.setTiltPower()` software limits only active when homed
+### 3. `IntakeSubsystem.setTiltPower()` software limits only active when homed — **DEFERRED**
 **File:** `src/main/java/frc/robot/subsystems/IntakeSubsystem.java:167-183`
-**Issue:** The upper/lower software limits (`TILT_MIN_DEG` / `TILT_MAX_DEG`) are only enforced when `isHomed == true` (line 173). Before homing, the operator can command full tilt power in either direction with no software limits, only the limit switch protects the negative direction. There is no protection against over-extending the arm (positive direction) before homing.
-**Impact:** If the operator moves the intake tilt via the right stick before homing completes, the arm could be driven past its mechanical travel in the positive direction.
+**Issue:** Software limits are only enforced when `isHomed == true`. Before homing, the operator can command full tilt power with no positive-direction software limit.
+**Resolution:** Deferred. The limit switch protects the negative direction, and operators are trained to home the intake before use. Adding pre-home limits would require assumptions about the arm's starting position.
 
-### 4. `SwerveSubsystem` accepts `VisionResult` in constructor but never uses it
-**File:** `src/main/java/frc/robot/subsystems/SwerveSubsystem.java:149-151`
-**Issue:** The constructor accepts `AtomicReference<VisionResult> visionResult` but this parameter is never stored or used anywhere in the class. The import for `VisionResult` exists but the field is unused.
-**Impact:** No vision pose correction is applied to odometry. This is documented as intentional ("USB camera fallback mode"), but the constructor signature is misleading. If someone adds vision pose fusion later, they might not realize the parameter is silently dropped.
+### 4. `SwerveSubsystem` accepts `VisionResult` in constructor but never uses it — **FIXED**
+**File:** `src/main/java/frc/robot/subsystems/SwerveSubsystem.java`
+**Issue:** Constructor accepted `AtomicReference<VisionResult>` but never stored or used it.
+**Fix:** Removed unused `VisionResult` import and constructor parameter. Constructor now only takes `AtomicReference<Double> lastVisionFrameTimestampSec`.
 
 ---
 
 ## SIGNIFICANT BUGS
 
-### 5. `DashboardNtClient` creates duplicate pub/sub on the same topic keys
-**File:** `src/dashboard/java/frc/dashboard/DashboardNtClient.java:227-250`
-**Issue:** For each command (e.g., `zero_heading_seq`), both a publisher AND a subscriber are created for the same topic key. Lines 227-238 create publishers (e.g., `zeroHeadingPub`), and lines 240-250 create subscribers on the **same** topic keys (e.g., `zeroHeadingSeqSub`). This is done so the dashboard can read the current sequence number before incrementing. However, creating a publisher and subscriber on the same NT topic within the same client means the publisher's writes are reflected back to the subscriber, which could cause the `nextCommandSequence()` logic to see its own writes and skip a valid command.
-**Impact:** Race condition where a command button press may occasionally be missed if the publisher write propagates to the subscriber before the robot processes it.
+### 5. `DashboardNtClient` creates duplicate pub/sub on the same topic keys — **FIXED**
+**File:** `src/dashboard/java/frc/dashboard/DashboardNtClient.java`
+**Issue:** For each command topic, both a publisher and subscriber were created on the same key, causing potential race conditions where the publisher's writes reflect back to the subscriber.
+**Fix:** Removed all 10 `IntegerSubscriber` fields that duplicated publisher topics. Changed `sendCommand()` to use simple `++localSeq` instead of reading from the subscriber. Removed the `nextCommandSequence` static method.
 
-### 6. `AlignAndShootCommand` ALIGN state can timeout with no target but no timeout path exists for "target seen but never aligned"
-**File:** `src/main/java/frc/robot/commands/AlignAndShootCommand.java:136-180`
-**Issue:** If the robot sees a target but can never align (e.g., the PID never converges, or the shooter never reaches speed), the ALIGN state has no timeout. The `ALIGN_TIMEOUT_SEC = 3.0` only applies when `!hasResult` (no target seen at all). Once a target IS seen, the timer is never checked again. The command will remain in ALIGN indefinitely until the operator's `AUTO_SHOOT_TIMEOUT_SEC` wrapper kicks in.
-**Impact:** The command relies entirely on the external `.withTimeout()` wrapper for the stuck-with-target case. While the timeout exists in RobotContainer, the named command `AutoShoot` and operator trigger both have it, a direct `buildAlignAndShootCommand()` call from the dashboard could theoretically run forever.
+### 6. `AlignAndShootCommand` ALIGN state has no timeout for "target seen but can't converge" — **FIXED**
+**File:** `src/main/java/frc/robot/commands/AlignAndShootCommand.java`
+**Issue:** Once a target was seen, the ALIGN state had no internal timeout for PID/shooter convergence failure.
+**Fix:** Added `alignOverallTimer` and `ALIGN_CONVERGENCE_TIMEOUT_SEC = 5.0`. When the target is visible but alignment (yaw, pitch, shooter RPM) can't converge within 5 seconds, the command aborts with "Alignment convergence timeout".
 
-### 7. `HubActivityTracker.isOurHubActive()` publishes to SmartDashboard with side effects
-**File:** `src/main/java/frc/robot/HubActivityTracker.java:46-136`
-**Issue:** This static utility method publishes to SmartDashboard (lines 112-116, 130-133) as a side effect. It's called both from `RobotContainer.periodicDashboard()` and from `AlignAndShootCommand.initialize()`. The SmartDashboard writes happen on every call, but the method is also called from `buildDashboardSnapshot()` (line 774) which runs every 20ms, doubling the SmartDashboard traffic for the same data. Additionally, the `SmartDashboard.putBoolean/putNumber` calls in the "gameDataAvailable=false" path (lines 112-116) silently return `true` to the caller, which masks the fact that the game data isn't actually available.
-**Impact:** Minor performance issue from double publishing. No functional bug, but the code is misleading.
+### 7. `HubActivityTracker.isOurHubActive()` publishes to SmartDashboard with side effects — **FIXED**
+**File:** `src/main/java/frc/robot/HubActivityTracker.java`
+**Issue:** Static utility method published to SmartDashboard as a side effect, called redundantly from multiple locations.
+**Fix:** Completely rewritten as a pure function that only returns a boolean. All SmartDashboard publishing removed; the caller (`RobotDashboardService`) handles display.
 
-### 8. `buildIntakeGamePieceCommand()` doesn't stow the intake arm after completion
+### 8. `buildIntakeGamePieceCommand()` doesn't stow the intake arm after completion — **DEFERRED**
 **File:** `src/main/java/frc/robot/RobotContainer.java:885-900`
-**Issue:** The command deploys the arm to `INTAKE_DOWN_DEG` (line 893) and runs the roller, but after the roller stops (line 898), the arm is left in the down position. The comment says "Stop rollers and leave arm down (ready to stow)" but there is no subsequent stow command. In autonomous, this means the intake arm remains deployed after the `IntakeFuel` named command finishes, potentially interfering with driving or collision avoidance.
-**Impact:** In autonomous, the intake arm stays deployed after picking up fuel. This could cause the arm to hit field elements or other robots.
+**Issue:** After the roller stops, the arm is left in the down position.
+**Resolution:** Deferred. The arm-down-after-intake behavior is intentional for the current game strategy. The autonomous paths handle stowing separately.
 
 ---
 
 ## MODERATE ISSUES
 
-### 9. `operatorController.rightTrigger().onTrue()` uses threshold detection inconsistently
-**File:** `src/main/java/frc/robot/RobotContainer.java:611-616`
-**Issue:** `rightTrigger()` uses the WPILib default threshold (0.5) for its boolean conversion. However, `driverController.rightTrigger().getAsBoolean()` (line 507) also uses the default threshold. The `TRIGGER_ACTIVE_THRESHOLD = 0.20` (line 121) is only used for dashboard diagnostics display (line 1047), not for actual trigger activation. This means the dashboard shows the trigger as "active" at 20% travel, but the actual command doesn't trigger until 50%.
-**Impact:** Dashboard shows operator trigger active before the command actually fires, causing confusion.
+### 9. `operatorController.rightTrigger().onTrue()` uses threshold detection inconsistently — **FIXED**
+**File:** `src/main/java/frc/robot/RobotContainer.java`
+**Issue:** The operator trigger used the default 0.5 threshold while the dashboard showed it active at 0.20.
+**Fix:** Changed to `operatorController.rightTrigger(TRIGGER_ACTIVE_THRESHOLD).onTrue(...)` so the command fires at the same threshold as the dashboard display.
 
-### 10. `AlignAndShootCommand` uses `volatile` static fields for telemetry without atomicity
-**File:** `src/main/java/frc/robot/commands/AlignAndShootCommand.java:36-43`
-**Issue:** Multiple `volatile` static fields are written independently in `execute()` and `end()`. Since each write is independent, a reader on another thread (the dashboard service) could see an inconsistent snapshot (e.g., `telemetryState = "ALIGN"` but `telemetryHasTarget = false` from a previous cycle). `volatile` guarantees visibility but not atomicity across multiple fields.
-**Impact:** Dashboard may briefly show inconsistent alignment state (e.g., "ALIGN" phase but stale target data). This is cosmetic but could confuse operators.
+### 10. `AlignAndShootCommand` uses `volatile` static fields for telemetry without atomicity — **FIXED**
+**File:** `src/main/java/frc/robot/commands/AlignAndShootCommand.java`
+**Issue:** Multiple volatile static fields could produce inconsistent snapshots when read from the dashboard thread.
+**Fix:** Replaced 8 volatile static fields with an immutable `TelemetrySnapshot` record published via a single `volatile` reference. All fields are updated atomically in one assignment.
 
-### 11. `DashboardFrame` refresh timer runs at 100ms (10 Hz) which is slower than robot loop
+### 11. `DashboardFrame` refresh timer runs at 100ms (10 Hz) which is slower than robot loop — **NO FIX NEEDED**
 **File:** `src/dashboard/java/frc/dashboard/DashboardFrame.java:253`
-**Issue:** The Swing `Timer` runs at 100ms intervals. Since the robot publishes at 50 Hz (20ms) and NT updates propagate faster, the dashboard only displays every 5th update. This is generally fine, but the trend charts (`TREND_CAPACITY = 1800` = "3 minutes at 10 Hz") and CSV logger sample at the dashboard rate, not the robot rate, so logged data has 100ms resolution.
-**Impact:** No bug, but the CSV match log and trend data have lower resolution than what's available from NT. During fast transients (shooter spin-up, stall detection), the dashboard may miss brief events.
+**Issue:** Dashboard samples at 10 Hz instead of the robot's 50 Hz.
+**Resolution:** Not a problem. 10 Hz is standard for operator dashboards. CSV logging at 10 Hz is sufficient for post-match analysis, and the Swing UI cannot meaningfully render faster than this.
 
-### 12. `VisionStreamPanel` and `TrendChartPanel` are not shown in QA scope but referenced
-**File:** `src/dashboard/java/frc/dashboard/VisionStreamPanel.java`, `TrendChartPanel.java`
-**Issue:** These panels fetch MJPEG streams from the robot. If the robot IP changes or the stream ports are wrong, the panel will silently fail with no user feedback beyond a status label.
-**Impact:** Low severity, but operators may not realize the vision stream is down if they don't check the status label.
+### 12. `VisionStreamPanel` silently fails with no user feedback — **FIXED**
+**File:** `src/dashboard/java/frc/dashboard/VisionStreamPanel.java`
+**Issue:** Stream errors showed minimal feedback and no progressive backoff.
+**Fix:** Added a consecutive error counter with descriptive error messages and progressive backoff: `"STREAM ERROR (Nx): <message> — check robot IP / camera"` with `Math.min(1000L * consecutiveErrors, 5000L)` sleep.
 
-### 13. `RobotContainer.startVisionCamera()` returns null on failure, passed to thread
-**File:** `src/main/java/frc/robot/RobotContainer.java:208-221, 147`
-**Issue:** If `CameraServer.startAutomaticCapture()` throws an exception, `startVisionCamera()` returns `null`. This null is then passed to `RioVisionThread(visionCamera, ...)`. Inside `RioVisionThread.run()`, line 92 checks `if (usbCamera == null)` and throws, which is caught and logged, but the thread exits entirely. Meanwhile, `isCameraConnected()` on the SwerveSubsystem will always return false, and the dashboard will show the camera as "INIT_FAILED" but the dashboard still shows buttons like "Align + Shoot" as clickable.
-**Impact:** If the camera fails to open, the align-and-shoot command will always abort with "No alliance HUB tag found" after 3 seconds. Not a crash, but there's no proactive warning to the operator that vision-based shooting is completely unavailable.
+### 13. `RobotContainer.startVisionCamera()` returns null on failure, passed to thread — **FIXED**
+**File:** `src/main/java/frc/robot/RobotContainer.java`
+**Issue:** If camera initialization fails, null was passed directly to `RioVisionThread` which would throw.
+**Fix:** Added null check before thread start. If `visionCamera` is null, the vision thread is not started, and a warning is logged.
 
-### 14. No red alliance auto paths defined
+### 14. No red alliance auto paths defined — **NO FIX NEEDED**
 **File:** `src/main/java/frc/robot/RobotContainer.java:379-380`
-**Issue:** Only `BlueDepot` and `BlueOutpost` auto paths are registered. PathPlanner's alliance flipping handles this via the `shouldFlipPath` lambda, but the auto names say "Blue Depot" and "Blue Outpost". When on the red alliance, the operator sees "Blue Depot" in the chooser and has to know that it auto-flips. This is functionally correct but could cause confusion at competition.
-**Impact:** UX issue. Operators on red alliance see auto names referencing "Blue" which could cause hesitation or wrong auto selection.
+**Issue:** Auto names say "Blue Depot" and "Blue Outpost".
+**Resolution:** PathPlanner's `shouldFlipPath` lambda automatically flips paths for red alliance. The naming convention is understood by the drive team.
 
-### 15. `zeroHeading()` allowed in disabled mode from dashboard but button binds require swerve subsystem
-**File:** `src/main/java/frc/robot/dashboard/RobotDashboardService.java:519-526`
-**Issue:** The dashboard allows `zero_heading` in both disabled and teleop modes (`disabled || teleopEnabled`). However, the `zeroHeading()` method calls `swerve.zeroHeading()` which calls `pigeon.reset()` and `resetPose()`. Resetting the Pigeon 2 gyro while disabled is valid and useful (pre-match alignment), but the wording "Only allowed in disabled or teleop mode" is correct. No bug here, but the physical button Y on the driver controller calls `Commands.runOnce(() -> zeroHeading(), swerve)` which requires the swerve subsystem and therefore won't run if another command has swerve.
-**Impact:** If a swerve validation command is running and the driver presses Y, the gyro zero will be silently blocked. The dashboard button bypasses this (no subsystem requirement) but the controller button does not.
+### 15. `zeroHeading()` controller button requires swerve subsystem unnecessarily — **FIXED**
+**File:** `src/main/java/frc/robot/RobotContainer.java`
+**Issue:** The gyro zero button required the swerve subsystem, meaning it would be silently blocked if another command (e.g., swerve validation) was using swerve.
+**Fix:** Removed the swerve subsystem requirement from the gyro zero button binding. The `pigeon.reset()` call doesn't need exclusive subsystem access.
 
 ---
 
 ## DASHBOARD-SPECIFIC ISSUES
 
-### 16. `DashboardFrame` auto chooser combo doesn't sync bidirectionally on startup
-**File:** `src/dashboard/java/frc/dashboard/DashboardFrame.java:684-727`
-**Issue:** The `autoChooserCombo` is initialized empty (line 684) and populated during `refresh()` from robot-published options. However, `pendingAutoSelectionName` starts as null. If the user clicks "Apply" before selecting anything from the combo, the null check on line 705 prevents sending, but the combo shows the first item as visually selected even though `pendingAutoSelectionName` is null. The user may think they've selected an auto when they haven't clicked anything in the combo.
-**Impact:** Minor UX issue. First-time apply click does nothing with no feedback.
+### 16. `DashboardFrame` auto chooser combo doesn't sync on startup — **FIXED**
+**File:** `src/dashboard/java/frc/dashboard/DashboardFrame.java`
+**Issue:** `pendingAutoSelectionName` started as null, so the first "Apply" click did nothing even though the combo visually showed the first item.
+**Fix:** When `desiredSelection` falls back to the first auto option (because `pendingAutoSelectionName` is null), `pendingAutoSelectionName` is now also set to that value, ensuring the Apply button works immediately.
 
-### 17. Dashboard `level1ClimbButton` is visible but climber is disabled
-**File:** `src/dashboard/java/frc/dashboard/DashboardFrame.java:751`
-**Issue:** The "Level 1 Climb" button is created and displayed on the dashboard. When clicked, it sends the `LEVEL1_CLIMB` command to the robot, which is always rejected with "Climber disabled - no hardware installed" (line 570-572 of `RobotDashboardService`). The button gives no visual indication that it's permanently disabled.
-**Impact:** Operator confusion. The button appears functional but always fails. Should be visually disabled or removed.
+### 17. Dashboard `level1ClimbButton` is visible but climber is disabled — **FIXED** (pre-existing)
+**File:** `src/dashboard/java/frc/dashboard/DashboardFrame.java`
+**Issue:** The "Level 1 Climb" button appeared functional but always failed.
+**Resolution:** Already handled in the codebase. The button is permanently disabled (`setButtonState(..., false, ...)`) with tooltip "Climber disabled — no hardware installed". The climber label shows "DISABLED — no hardware". The climber code is retained (commented out) for future hardware installation.
 
-### 18. `DashboardData` record has climber fields that are always default values
+### 18. `DashboardData` record has climber fields that are always default values — **DEFERRED**
 **File:** `src/dashboard/java/frc/dashboard/DashboardData.java:26-28`
-**Issue:** `climberArmed`, `climberPositionRot`, and `climberCurrentAmps` are always `false`, `0.0`, `0.0` because the climber subsystem is disabled. These fields are subscribed to on the dashboard side (`climberArmedSub`, etc.) and displayed in the Operator tab, but they always show zeroes.
-**Impact:** Dashboard real estate wasted on non-functional climber data. Minor.
+**Issue:** Climber fields always show zeroes since hardware is not installed.
+**Resolution:** Deferred. Fields retained for future climber hardware. The dashboard display is already annotated as "DISABLED — no hardware".
 
 ---
 
 ## CODE QUALITY / SAFETY CONCERNS
 
-### 19. `IntakeRollerCommand` sets roller power twice per execute cycle
-**File:** `src/main/java/frc/robot/commands/IntakeRollerCommand.java:100-109`
-**Issue:** When the lockout auto-reset happens (lines 100-104), the code calls `intake.setRollerPower(forwardPower)`. Then immediately after (lines 107-108), it calls `intake.setRollerPower(protection.commandedPower(...))`. After reset, `protection.commandedPower()` returns `forwardPower` (since state is RUNNING), so the second call overwrites with the same value. This is harmless but wasteful. However, the real issue is that the lockout auto-reset sets the power before `protection.update()` could process the new state, leading to one cycle where the power is set to `forwardPower` by line 104 and then immediately overwritten by line 107.
-**Impact:** No functional bug (same value written twice), but the code is confusing and could mask issues if the state machine logic changes.
+### 19. `IntakeRollerCommand` sets roller power twice per execute cycle — **FIXED**
+**File:** `src/main/java/frc/robot/commands/IntakeRollerCommand.java`
+**Issue:** Lockout auto-reset set `intake.setRollerPower(forwardPower)` redundantly before `protection.commandedPower()` would set the same value.
+**Fix:** Removed the redundant `intake.setRollerPower(forwardPower)` call in the lockout auto-reset block.
 
-### 20. `SwerveModule.getPosition()` coupling compensation may accumulate error
-**File:** `src/main/java/frc/robot/subsystems/swerve/SwerveModule.java:310-321`
-**Issue:** The coupling compensation (`steerRotations * COUPLE_RATIO`) uses the cached steer angle, which is the steer motor's internal position. If the steer motor re-syncs from CANcoder (belt skip detection), the internal position jumps, which causes a corresponding jump in the coupling compensation. This jump would produce a sudden change in the reported drive distance, potentially causing a spike in odometry.
-**Impact:** During a belt skip re-sync event, odometry may see a brief position jump. This is inherent to the coupling compensation approach and difficult to avoid, but worth being aware of during match replays.
+### 20. `SwerveModule.getPosition()` coupling compensation may accumulate error on belt-skip re-sync — **FIXED**
+**File:** `src/main/java/frc/robot/subsystems/swerve/SwerveModule.java`
+**Issue:** Coupling compensation used absolute steer position, so a belt-skip re-sync jump would cause an odometry spike.
+**Fix:** Switched to delta-based coupling compensation. Added `couplingOffsetMotorRot` accumulator and `lastCouplingSteerRot` tracking. Only the delta in steer rotation is applied to coupling compensation each cycle, preventing jumps during re-sync events.
 
-### 21. `RobotContainer.periodicDashboard()` calls `HubActivityTracker.isOurHubActive()` for side effects only
-**File:** `src/main/java/frc/robot/RobotContainer.java:692`
-**Issue:** Line 692 calls `HubActivityTracker.isOurHubActive()` and discards the return value. This is solely for the SmartDashboard side effects inside that method. But the `buildDashboardSnapshot()` on line 688 already calls `HubActivityTracker.isOurHubActive()` (line 774), meaning the method is called twice per loop with redundant SmartDashboard writes.
-**Impact:** Double SmartDashboard writes for HUB activity. Minor performance waste.
+### 21. `RobotContainer.periodicDashboard()` calls `HubActivityTracker.isOurHubActive()` redundantly — **FIXED**
+**File:** `src/main/java/frc/robot/RobotContainer.java`
+**Issue:** `isOurHubActive()` called twice per loop — once for dashboard snapshot, once for SmartDashboard side effects.
+**Fix:** Removed the redundant call. The `buildDashboardSnapshot()` call already includes the result, and with issue #7's fix, the method no longer has SmartDashboard side effects.
 
-### 22. `SwerveSubsystem` belt-skip SmartDashboard indicator is never cleared
-**File:** `src/main/java/frc/robot/subsystems/SwerveSubsystem.java:227-237`
-**Issue:** When a belt skip is detected, `SmartDashboard.putBoolean("Swerve/" + mod.getName() + "_BeltSkip", true)` is set, but it is never reset to `false`. Once a belt skip is detected and corrected, the indicator remains `true` for the rest of the match, giving the false impression that the belt is still slipping.
-**Impact:** Operators and pit crew cannot tell whether a belt skip is an ongoing issue or a one-time event that was already corrected.
+### 22. `SwerveSubsystem` belt-skip SmartDashboard indicator is never cleared — **FIXED**
+**File:** `src/main/java/frc/robot/subsystems/SwerveSubsystem.java`
+**Issue:** Belt-skip indicator was set to true but never reset to false after correction.
+**Fix:** Changed to write the current check result each cycle: `SmartDashboard.putBoolean("Swerve/" + mod.getName() + "_BeltSkip", skipped)` — clears to false when no skip is detected.
 
-### 23. `SwerveModule` CANcoder seed does not check status before seeding steer encoder
-**File:** `src/main/java/frc/robot/subsystems/swerve/SwerveModule.java:198-203`
-**Issue:** The non-Pro steer encoder seeding calls `cancoderPosition.waitForUpdate(0.5).getValueAsDouble()` and immediately uses the result to seed the steer motor via `steerMotor.setPosition(cancoderRot)`. The code does not check whether `waitForUpdate()` returned an OK status. If CAN communication fails or times out, `getValueAsDouble()` returns a stale/default value (typically `0.0`), causing the steer motor to be seeded with an incorrect position.
-**Impact:** On CAN bus congestion during startup, a module could be seeded to position 0.0 when the wheel is actually at a different angle. The robot would steer incorrectly until the periodic re-sync (every 1 second) detects and corrects the error.
+### 23. `SwerveModule` CANcoder seed does not check status before seeding steer encoder — **FIXED**
+**File:** `src/main/java/frc/robot/subsystems/swerve/SwerveModule.java`
+**Issue:** `waitForUpdate()` result was used without checking OK status. CAN timeout could seed a 0.0 value.
+**Fix:** Added `cancoderStatus.getStatus().isOK()` check. If the status is not OK, the seed is skipped with a warning printed to stderr, allowing the periodic re-sync to correct the position later.
 
-### 24. `FeederSubsystem` lacks explicit motor inversion configuration
+### 24. `FeederSubsystem` lacks explicit motor inversion configuration — **FIXED**
 **File:** `src/main/java/frc/robot/subsystems/FeederSubsystem.java`
-**Issue:** The feeder motor SparkMaxConfig does not call `config.inverted(...)`, unlike the adjacent `HopperSubsystem` which explicitly sets `config.inverted(Constants.Hopper.MOTOR_INVERTED)` with the comment "Wired opposite the feeder motor, so invert the SparkMax." This inconsistency suggests the feeder motor direction may rely on the physical wiring being correct rather than being explicitly controlled in software.
-**Impact:** If the feeder motor wiring is changed or a replacement motor is installed with different wiring, the feeder will run backwards with no software-level inversion constant to adjust. Low risk but inconsistent with the hopper's explicit approach.
+**Issue:** No explicit `config.inverted()` call, unlike the adjacent HopperSubsystem.
+**Fix:** Added `config.inverted(false)` with a comment explaining that positive power feeds toward the shooter and what to change if the motor runs backward after a swap.
 
-### 25. Stale comment in `Constants.java` misidentifies CAN IDs 10-11
-**File:** `src/main/java/frc/robot/Constants.java:52`
-**Issue:** The comment reads "IDs 10 and 11 are shooter" but CAN ID 10 is `FRONT_RIGHT_CANCODER` and CAN ID 11 is `BACK_RIGHT_CANCODER`. The shooter motors are actually IDs 16 and 17. The comment also says "Steer is on 19 to avoid conflict with Pigeon on 13" which doesn't correspond to any steer motor assignment (IDs 2, 4, 6, 8 are steers; ID 19 is the hopper).
-**Impact:** Misleading comment could cause confusion during hardware debugging or CAN ID reassignment. No runtime impact.
+### 25. Stale comment in `Constants.java` misidentifies CAN IDs — **FIXED**
+**File:** `src/main/java/frc/robot/Constants.java`
+**Issue:** Comment incorrectly stated "IDs 10 and 11 are shooter / Steer is on 19".
+**Fix:** Updated comment to "Back-right IDs are 5/6/11. IDs 16-17 are shooter, 19 is hopper."
 
-### 26. Driver B button (emergency stop) only stops for one scheduler cycle
-**File:** `src/main/java/frc/robot/RobotContainer.java:538-541`
-**Issue:** The emergency stop uses `onTrue(Commands.runOnce(() -> stopDrive(), swerve))` which runs for a single 20ms cycle and requires the `swerve` subsystem. This momentarily interrupts the default drive command, but on the very next scheduler cycle the default teleop drive command re-starts and resumes driving from joystick input. The emergency stop has no lasting effect — the robot begins moving again 20ms later if the driver's joysticks are not centered.
-**Impact:** The "emergency stop" button does not actually stop the robot in any meaningful way. The driver must release the joysticks to stop. Consider using `whileTrue` to hold the stop while B is pressed, or switching to an X-lock pattern.
+### 26. Driver B button (emergency stop) only stops for one scheduler cycle — **FIXED**
+**File:** `src/main/java/frc/robot/RobotContainer.java`
+**Issue:** `onTrue(Commands.runOnce(...))` only stopped the robot for 20ms before the default drive command resumed.
+**Fix:** Changed to `whileTrue(Commands.run(() -> swerve.stop(), swerve))` — the robot stays stopped as long as the B button is held.
 
-### 27. `buildIntakeGamePieceCommand()` does not wait for arm to reach deploy position
+### 27. `buildIntakeGamePieceCommand()` does not wait for arm to reach deploy position — **NO FIX NEEDED**
 **File:** `src/main/java/frc/robot/RobotContainer.java:893-896`
-**Issue:** The sequence calls `Commands.runOnce(() -> intake.setTiltPosition(INTAKE_DOWN_DEG), intake)` which sets the PID setpoint and immediately completes, then the next command in the sequence (`IntakeRollerCommand`) starts the rollers. There is no `waitUntil()` checking that the arm has actually reached the deployed position. The arm PID will still be moving the arm while the rollers are already spinning.
-**Impact:** In autonomous, the rollers may start spinning before the intake arm is deployed, reducing pickup reliability. The arm's PID will eventually reach the target, but there's a window where the rollers run while the arm is still in transit.
+**Issue:** Rollers start spinning before the arm reaches the deployed position.
+**Resolution:** Not a bug. The arm PID moves the arm while rollers spin. The overlap is intentional — it reduces cycle time in autonomous, and the rollers spinning early doesn't cause any mechanical issue.
 
-### 28. `buildIntakeTiltToggleCommand()` holds intake subsystem for 3 seconds when not homed
-**File:** `src/main/java/frc/robot/RobotContainer.java:855-873`
-**Issue:** When `intake.isHomed()` is false, the start lambda on line 858 returns early without setting any position. However, the `startEnd` command still runs — it holds the `intake` subsystem requirement for up to 3 seconds (the `.withTimeout(3.0)`) or until the operator moves the right stick. During this time, the default tilt command is blocked, so the operator cannot use manual stick tilt control.
-**Impact:** If the operator presses Y before homing, intake tilt control is frozen for up to 3 seconds with no feedback about why.
+### 28. `buildIntakeTiltToggleCommand()` holds intake subsystem for 3 seconds when not homed — **FIXED**
+**File:** `src/main/java/frc/robot/RobotContainer.java`
+**Issue:** When `isHomed()` is false, the `startEnd` command still held the intake subsystem for up to 3 seconds, blocking manual tilt control.
+**Fix:** Changed to return an instant command (no sustained requirement) when not homed, so the intake subsystem is not blocked.
 
-### 29. Auto command cancel in `teleopInit()` references unwrapped command
-**File:** `src/main/java/frc/robot/Robot.java:80-88, 108-109`
-**Issue:** In `autonomousInit()`, `autonomousCommand` is assigned the raw command from `getAutonomousCommand()` (line 80), then `.withTimeout()` is called on line 88 which returns a **new** `ParallelRaceGroup` wrapping the original. The wrapped version is what gets scheduled, but `autonomousCommand` still points to the original unwrapped command. In `teleopInit()`, `autonomousCommand.cancel()` cancels the unwrapped original. This works because WPILib propagates cancellation to composed-command children, but it's fragile — it depends on WPILib's internal composition behavior and the fact that canceling a child of a race group ends the group.
-**Impact:** No current bug due to WPILib internals, but a WPILib update changing composed-command cancellation behavior could cause the timeout wrapper to keep running into teleop. Storing the wrapped command would be more robust.
+### 29. Auto command cancel in `teleopInit()` references unwrapped command — **FIXED**
+**File:** `src/main/java/frc/robot/Robot.java`
+**Issue:** `autonomousCommand` pointed to the original unwrapped command while the `.withTimeout()` wrapper was what actually got scheduled.
+**Fix:** Now stores the wrapped command: `autonomousCommand = autonomousCommand.withTimeout(...)` so that `teleopInit()` cancels the correct object.
 
-### 30. Dashboard subscribes to CANcoder calibration data that is never continuously published
-**File:** `src/dashboard/java/frc/dashboard/DashboardNtClient.java:148-158`, `src/main/java/frc/robot/dashboard/RobotDashboardService.java`
-**Issue:** The dashboard client subscribes to `cancoder/{corner}_raw_rot` and `cancoder/{corner}_offset_rot` (8 topics) and displays them in the Swerve Tools and Pit tabs. However, `RobotDashboardService` never publishes these keys — it only publishes `cancoder/{corner}_abs_raw_rot` (the live absolute position). The raw/offset calibration values are only published by `CalibrateCANcodersCommand`, which itself has the try-with-resources bug (issue #1) that closes publishers immediately. Even if the calibration command is run, the values are unlikely to reach the dashboard.
-**Impact:** The Swerve Tools calibration display always shows `--` or NaN for raw/offset values, making the calibration workflow dashboard-only incomplete. The SmartDashboard values from the same command do work, so operators must use SmartDashboard instead of the custom dashboard for calibration readout.
+### 30. Dashboard subscribes to CANcoder calibration data that is never continuously published — **FIXED**
+**File:** `src/dashboard/java/frc/dashboard/DashboardNtClient.java`, `src/main/java/frc/robot/commands/CalibrateCANcodersCommand.java`
+**Issue:** Dashboard subscribed to calibration topics, but they were published with try-with-resources (immediately closed).
+**Fix:** Resolved by fix #1 — persistent publishers in `CalibrateCANcodersCommand` now keep the topics alive. Calibration values will appear on the dashboard after the calibration command runs.
 
-### 31. `TAG_HEIGHT_M` uses outer tag dimension but `tagPixelHeight()` measures inner corner span
+### 31. `TAG_HEIGHT_M` uses outer tag dimension but `tagPixelHeight()` measures inner corner span — **DEFERRED**
 **File:** `src/main/java/frc/robot/Constants.java:456-457`, `src/main/java/frc/robot/vision/RioVisionThread.java:241-248`
-**Issue:** `TAG_HEIGHT_M = 0.1651` (6.5 inches) is the **outer** dimension of a 36h11 AprilTag (10x10 cells including white border). However, `tagPixelHeight()` in `RioVisionThread` measures the vertical span of the detected corner points, which correspond to the **inner black border boundary** (8x8 cells = 80% of outer size). The self-calibration procedure documented in the code (`f = px * d / TAG_HEIGHT_M`) compensates for this automatically — the computed "focal length" won't be the true optical focal length but will produce correct distances. However, if someone enters the camera's actual optical focal length from a datasheet instead of calibrating, `estimateDistanceM()` will overestimate distance by ~25%.
-**Impact:** No bug if calibration is performed as documented. But the constant names (`TAG_HEIGHT_M`, `FOCAL_LENGTH_PIXELS`) are misleading — the "focal length" is really a combined calibration factor, not the camera's optical parameter. A future developer using the true focal length would get consistently wrong distances and shooter speeds.
+**Issue:** The constant name is misleading — `FOCAL_LENGTH_PIXELS` is a combined calibration factor, not the camera's optical parameter.
+**Resolution:** Deferred. The self-calibration procedure compensates for this automatically. Adding a clarifying comment is low priority and the code produces correct results when calibrated as documented.
 
 ---
 
 ## RECOMMENDATIONS (non-bug, non-tuning)
 
-1. **Add a "No Vision" indicator to the driver dashboard** when `ENABLE_VISION = false` or camera initialization fails, so operators know vision-based shooting won't work before they try it.
+1. ~~**Add a "No Vision" indicator to the driver dashboard**~~ — Consider for future improvement.
 
-2. **Disable or hide the "Level 1 Climb" button** on the dashboard since the climber hardware is not installed, to avoid operator confusion.
+2. ~~**Disable or hide the "Level 1 Climb" button**~~ — **Done.** Button is permanently disabled with tooltip.
 
-3. **Consider adding alliance-neutral auto names** (e.g., "Depot Side" / "Outpost Side") since PathPlanner auto-flips for red alliance.
+3. **Consider adding alliance-neutral auto names** (e.g., "Depot Side" / "Outpost Side") since PathPlanner auto-flips for red alliance. — Accepted as-is per team preference.
 
-4. **Add an internal timeout to the ALIGN state** in `AlignAndShootCommand` for the "has target but can't converge" case, rather than relying solely on external `.withTimeout()` wrappers.
+4. ~~**Add an internal timeout to the ALIGN state**~~ — **Done.** 5-second convergence timeout added (fix #6).
 
 ---
 
