@@ -7,7 +7,7 @@
 
 ## Summary
 
-The codebase is well-structured and extensively documented. The custom Swing dashboard is impressively comprehensive. 25 issues identified below, ranging from critical bugs to code quality concerns, excluding tuning parameters as requested.
+The codebase is well-structured and extensively documented. The custom Swing dashboard is impressively comprehensive. 26 issues identified below, ranging from critical bugs to code quality concerns, excluding tuning parameters as requested.
 
 ---
 
@@ -149,7 +149,12 @@ The codebase is well-structured and extensively documented. The custom Swing das
 **Issue:** The feeder motor SparkMaxConfig does not call `config.inverted(...)`, unlike the adjacent `HopperSubsystem` which explicitly sets `config.inverted(Constants.Hopper.MOTOR_INVERTED)` with the comment "Wired opposite the feeder motor, so invert the SparkMax." This inconsistency suggests the feeder motor direction may rely on the physical wiring being correct rather than being explicitly controlled in software.
 **Impact:** If the feeder motor wiring is changed or a replacement motor is installed with different wiring, the feeder will run backwards with no software-level inversion constant to adjust. Low risk but inconsistent with the hopper's explicit approach.
 
-### 25. `TAG_HEIGHT_M` uses outer tag dimension but `tagPixelHeight()` measures inner corner span
+### 25. Stale comment in `Constants.java` misidentifies CAN IDs 10-11
+**File:** `src/main/java/frc/robot/Constants.java:52`
+**Issue:** The comment reads "IDs 10 and 11 are shooter" but CAN ID 10 is `FRONT_RIGHT_CANCODER` and CAN ID 11 is `BACK_RIGHT_CANCODER`. The shooter motors are actually IDs 16 and 17. The comment also says "Steer is on 19 to avoid conflict with Pigeon on 13" which doesn't correspond to any steer motor assignment (IDs 2, 4, 6, 8 are steers; ID 19 is the hopper).
+**Impact:** Misleading comment could cause confusion during hardware debugging or CAN ID reassignment. No runtime impact.
+
+### 26. `TAG_HEIGHT_M` uses outer tag dimension but `tagPixelHeight()` measures inner corner span
 **File:** `src/main/java/frc/robot/Constants.java:456-457`, `src/main/java/frc/robot/vision/RioVisionThread.java:241-248`
 **Issue:** `TAG_HEIGHT_M = 0.1651` (6.5 inches) is the **outer** dimension of a 36h11 AprilTag (10x10 cells including white border). However, `tagPixelHeight()` in `RioVisionThread` measures the vertical span of the detected corner points, which correspond to the **inner black border boundary** (8x8 cells = 80% of outer size). The self-calibration procedure documented in the code (`f = px * d / TAG_HEIGHT_M`) compensates for this automatically — the computed "focal length" won't be the true optical focal length but will produce correct distances. However, if someone enters the camera's actual optical focal length from a datasheet instead of calibrating, `estimateDistanceM()` will overestimate distance by ~25%.
 **Impact:** No bug if calibration is performed as documented. But the constant names (`TAG_HEIGHT_M`, `FOCAL_LENGTH_PIXELS`) are misleading — the "focal length" is really a combined calibration factor, not the camera's optical parameter. A future developer using the true focal length would get consistently wrong distances and shooter speeds.
