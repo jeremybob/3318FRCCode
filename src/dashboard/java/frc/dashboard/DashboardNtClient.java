@@ -16,6 +16,7 @@ public class DashboardNtClient implements AutoCloseable {
         ZERO_HEADING,
         STOP_DRIVE,
         INTAKE_HOME,
+        ALIGN_ONLY,
         ALIGN_SHOOT,
         FALLBACK_SHOOT,
         LEVEL1_CLIMB,
@@ -237,6 +238,7 @@ public class DashboardNtClient implements AutoCloseable {
     private final IntegerPublisher zeroHeadingPub = table.getIntegerTopic("cmd/zero_heading_seq").publish();
     private final IntegerPublisher stopDrivePub = table.getIntegerTopic("cmd/stop_drive_seq").publish();
     private final IntegerPublisher intakeHomePub = table.getIntegerTopic("cmd/intake_home_seq").publish();
+    private final IntegerPublisher alignOnlyPub = table.getIntegerTopic("cmd/align_only_seq").publish();
     private final IntegerPublisher alignShootPub = table.getIntegerTopic("cmd/align_shoot_seq").publish();
     private final IntegerPublisher fallbackShootPub = table.getIntegerTopic("cmd/fallback_shoot_seq").publish();
     private final IntegerPublisher level1ClimbPub = table.getIntegerTopic("cmd/level1_climb_seq").publish();
@@ -251,6 +253,7 @@ public class DashboardNtClient implements AutoCloseable {
     private long zeroHeadingSeq = 0;
     private long stopDriveSeq = 0;
     private long intakeHomeSeq = 0;
+    private long alignOnlySeq = 0;
     private long alignShootSeq = 0;
     private long fallbackShootSeq = 0;
     private long level1ClimbSeq = 0;
@@ -454,6 +457,10 @@ public class DashboardNtClient implements AutoCloseable {
             case INTAKE_HOME -> {
                 ++intakeHomeSeq;
                 intakeHomePub.set(intakeHomeSeq);
+            }
+            case ALIGN_ONLY -> {
+                ++alignOnlySeq;
+                alignOnlyPub.set(alignOnlySeq);
             }
             case ALIGN_SHOOT -> {
                 ++alignShootSeq;

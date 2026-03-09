@@ -54,6 +54,7 @@ import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.CommandScheduler;
 import edu.wpi.first.wpilibj2.command.button.CommandXboxController;
 
+import frc.robot.commands.AlignOnlyCommand;
 import frc.robot.commands.AlignAndShootCommand;
 import frc.robot.commands.CalibrateCANcodersCommand;
 import frc.robot.commands.IntakeHomeCommand;
@@ -173,6 +174,11 @@ public class RobotContainer {
             @Override
             public void scheduleIntakeHome() {
                 RobotContainer.this.scheduleIntakeHome();
+            }
+
+            @Override
+            public void scheduleAlignOnly() {
+                RobotContainer.this.scheduleAlignOnly();
             }
 
             @Override
@@ -490,6 +496,7 @@ public class RobotContainer {
     //    Left Bumper (hold) ... Intake roller reverse / eject
     //    Y button ............. Toggle intake tilt (deploy/stow)
     //    X button ............. Re-home intake
+    //    A button ............. Align-only (vision yaw test, no shot)
     //
     // =========================================================================
     private void configureBindings() {
@@ -605,8 +612,14 @@ public class RobotContainer {
                     refreshOperatorCommandSummary();
                 }, intake).withName("OperatorIntakeTiltManualDefault"));
 
-        // --- CLIMBER DISABLED: A button (auto climb) and B button (climber stop) commented out ---
-        // A button: Automatic Level 1 climb (requires climb gate held)
+        // --- CLIMBER DISABLED: old climb bindings removed ---
+        // A button: Align-only test (no shooter/feed motors).
+        operatorController.a().onTrue(
+                Commands.sequence(
+                        Commands.runOnce(() -> logControlEvent("Operator:A", "AlignOnly requested")),
+                        buildAlignOnlyCommand()));
+
+        // Previous A binding: Automatic Level 1 climb (requires climb gate held)
         // operatorController.a()
         //         .and(operatorController.start())
         //         .and(operatorController.back())
@@ -863,6 +876,14 @@ public class RobotContainer {
                 .withName("AlignAndShoot");
     }
 
+    private Command buildAlignOnlyCommand() {
+        if (!Constants.Vision.ENABLE_VISION) {
+            return Commands.print("[RobotContainer] AlignOnly unavailable: vision is disabled in Constants.");
+        }
+        return new AlignOnlyCommand(swerve, visionResult)
+                .withName("AlignOnly");
+    }
+
     private Command buildFallbackShootCommand() {
         return shooter.buildShootRoutine(feeder, hopper, intake, Constants.Shooter.FALLBACK_RPS)
                 .withName("FallbackShootRoutine");
@@ -931,6 +952,15 @@ public class RobotContainer {
         }
         logControlEvent("Dashboard", "scheduleAlignAndShoot()");
         CommandScheduler.getInstance().schedule(buildAlignAndShootCommand());
+    }
+
+    private void scheduleAlignOnly() {
+        if (!DriverStation.isTeleopEnabled()) {
+            logControlEvent("Dashboard", "scheduleAlignOnly() rejected: teleop required");
+            return;
+        }
+        logControlEvent("Dashboard", "scheduleAlignOnly()");
+        CommandScheduler.getInstance().schedule(buildAlignOnlyCommand());
     }
 
     private void scheduleFallbackShoot() {

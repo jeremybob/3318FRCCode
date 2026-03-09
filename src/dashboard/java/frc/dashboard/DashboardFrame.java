@@ -199,6 +199,7 @@ public class DashboardFrame extends JFrame {
     // Buttons
     private JButton zeroHeadingButton;
     private JButton stopDriveButton;
+    private JButton alignOnlyButton;
     private JButton alignShootButton;
     private JButton fallbackShootButton;
     private JButton intakeHomeButton;
@@ -747,16 +748,18 @@ public class DashboardFrame extends JFrame {
     }
 
     private JPanel buildDriverActionCard() {
-        JPanel panel = new JPanel(new GridLayout(2, 2, 8, 8));
+        JPanel panel = new JPanel(new GridLayout(0, 2, 8, 8));
         panel.setBackground(CARD);
 
         zeroHeadingButton = createCommandButton("Zero Heading", DashboardNtClient.DashboardCommand.ZERO_HEADING);
         stopDriveButton = createCommandButton("Stop Drive", DashboardNtClient.DashboardCommand.STOP_DRIVE);
+        alignOnlyButton = createCommandButton("Align Only", DashboardNtClient.DashboardCommand.ALIGN_ONLY);
         alignShootButton = createCommandButton("Align + Shoot", DashboardNtClient.DashboardCommand.ALIGN_SHOOT);
         fallbackShootButton = createCommandButton("Fallback Shot", DashboardNtClient.DashboardCommand.FALLBACK_SHOOT);
 
         panel.add(zeroHeadingButton);
         panel.add(stopDriveButton);
+        panel.add(alignOnlyButton);
         panel.add(alignShootButton);
         panel.add(fallbackShootButton);
 
@@ -1372,6 +1375,11 @@ public class DashboardFrame extends JFrame {
                 connected,
                 "Always available when connected",
                 "No robot connection");
+        setButtonState(
+                alignOnlyButton,
+                connected && teleopEnabled,
+                "Requires enabled teleop",
+                connected ? "Enable teleop first" : "No robot connection");
         setButtonState(
                 alignShootButton,
                 connected && teleopEnabled,

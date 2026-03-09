@@ -26,6 +26,7 @@ class RobotDashboardServiceTest {
     private IntegerPublisher zeroHeadingCmdPub;
     private IntegerPublisher level1ClimbCmdPub;
     private IntegerPublisher stopDriveCmdPub;
+    private IntegerPublisher alignOnlyCmdPub;
     private IntegerPublisher alignShootCmdPub;
     private IntegerPublisher fallbackShootCmdPub;
     private IntegerPublisher calibrateCANcodersCmdPub;
@@ -61,6 +62,7 @@ class RobotDashboardServiceTest {
         zeroHeadingCmdPub = table.getIntegerTopic("cmd/zero_heading_seq").publish();
         level1ClimbCmdPub = table.getIntegerTopic("cmd/level1_climb_seq").publish();
         stopDriveCmdPub = table.getIntegerTopic("cmd/stop_drive_seq").publish();
+        alignOnlyCmdPub = table.getIntegerTopic("cmd/align_only_seq").publish();
         alignShootCmdPub = table.getIntegerTopic("cmd/align_shoot_seq").publish();
         fallbackShootCmdPub = table.getIntegerTopic("cmd/fallback_shoot_seq").publish();
         calibrateCANcodersCmdPub = table.getIntegerTopic("cmd/calibrate_cancoders_seq").publish();
@@ -194,6 +196,36 @@ class RobotDashboardServiceTest {
         assertEquals(1L, ackSeqSub.get());
         assertEquals("Accepted", ackMessageSub.get());
         assertEquals(1, actions.alignShootCalls);
+    }
+
+    @Test
+    void alignOnlyAcceptedWhenEnabledTeleop() {
+        alignOnlyCmdPub.set(1);
+        nt.flush();
+
+        service.periodic(snapshot("TELEOP", true, false, 3.78));
+        nt.flush();
+
+        assertEquals("align_only", ackCommandSub.get());
+        assertEquals("OK", ackStatusSub.get());
+        assertEquals(1L, ackSeqSub.get());
+        assertEquals("Accepted", ackMessageSub.get());
+        assertEquals(1, actions.alignOnlyCalls);
+    }
+
+    @Test
+    void alignOnlyRejectedWhenDisabled() {
+        alignOnlyCmdPub.set(2);
+        nt.flush();
+
+        service.periodic(snapshot("DISABLED", false, false, 3.79));
+        nt.flush();
+
+        assertEquals("align_only", ackCommandSub.get());
+        assertEquals("REJECTED", ackStatusSub.get());
+        assertEquals(2L, ackSeqSub.get());
+        assertEquals("Only allowed in enabled teleop", ackMessageSub.get());
+        assertEquals(0, actions.alignOnlyCalls);
     }
 
     @Test
@@ -533,6 +565,7 @@ class RobotDashboardServiceTest {
         int zeroHeadingCalls;
         int stopDriveCalls;
         int intakeHomeCalls;
+        int alignOnlyCalls;
         int alignShootCalls;
         int fallbackShootCalls;
         int level1ClimbCalls;
@@ -562,6 +595,11 @@ class RobotDashboardServiceTest {
         @Override
         public void scheduleAlignAndShoot() {
             alignShootCalls++;
+        }
+
+        @Override
+        public void scheduleAlignOnly() {
+            alignOnlyCalls++;
         }
 
         @Override
