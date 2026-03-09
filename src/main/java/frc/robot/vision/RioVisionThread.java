@@ -29,6 +29,7 @@ import org.opencv.imgproc.Imgproc;
 
 import edu.wpi.first.apriltag.AprilTagDetection;
 import edu.wpi.first.apriltag.AprilTagDetector;
+import edu.wpi.first.cameraserver.CameraServer;
 import edu.wpi.first.cscore.CameraServerJNI;
 import edu.wpi.first.cscore.CvSource;
 import edu.wpi.first.cscore.CvSink;
@@ -93,10 +94,20 @@ public class RioVisionThread extends Thread {
             if (usbCamera == null) {
                 throw new IllegalStateException("Shared USB camera was not created");
             }
-            cameraDebugInfo.set(cameraDebugInfo.get().withStatus("CAPTURE_ATTACHED"));
+            UsbCameraInfo activeCamera = safeGetCameraInfo(usbCamera);
+            CameraDebugInfo attachedState = cameraDebugInfo.get().withStatus("CAPTURE_ATTACHED");
+            if (activeCamera != null) {
+                attachedState = attachedState.withActiveCamera(
+                        activeCamera.dev,
+                        activeCamera.name,
+                        activeCamera.path);
+            }
+            cameraDebugInfo.set(attachedState);
 
-            cvSink = new CvSink("RioVisionCvSink");
-            cvSink.setSource(usbCamera);
+            // Use the CameraServer-managed sink for the shared automatic-capture
+            // camera. A manually constructed CvSink stopped receiving frames on
+            // the roboRIO even while the raw MJPEG stream remained available.
+            cvSink = CameraServer.getVideo(usbCamera);
             cvSink.setEnabled(true);
 
             overlayOutput = new CvSource(
@@ -317,6 +328,14 @@ public class RioVisionThread extends Thread {
             }
         }
         return null;
+    }
+
+    private static UsbCameraInfo safeGetCameraInfo(UsbCamera camera) {
+        try {
+            return camera.getInfo();
+        } catch (Exception ex) {
+            return null;
+        }
     }
 
     private static void annotateFrame(Mat frame, AprilTagDetection[] detections, int[] hubTagIds) {

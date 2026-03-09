@@ -40,6 +40,8 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import edu.wpi.first.cameraserver.CameraServer;
 import edu.wpi.first.cscore.UsbCamera;
+import edu.wpi.first.cscore.UsbCameraInfo;
+import edu.wpi.first.cscore.VideoSource;
 import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.system.plant.DCMotor;
 import edu.wpi.first.wpilibj.DriverStation;
@@ -213,9 +215,15 @@ public class RobotContainer {
     private UsbCamera startVisionCamera() {
         try {
             UsbCamera camera = CameraServer.startAutomaticCapture(Constants.Vision.CAMERA_DEVICE_ID);
+            camera.setConnectionStrategy(VideoSource.ConnectionStrategy.kKeepOpen);
             camera.setResolution(Constants.Vision.CAMERA_WIDTH, Constants.Vision.CAMERA_HEIGHT);
             camera.setFPS(Constants.Vision.CAMERA_FPS);
-            cameraDebugInfo.set(cameraDebugInfo.get().withStatus("CAPTURE_OPEN"));
+            CameraDebugInfo nextDebug = cameraDebugInfo.get().withStatus("CAPTURE_OPEN");
+            UsbCameraInfo info = camera.getInfo();
+            if (info != null) {
+                nextDebug = nextDebug.withActiveCamera(info.dev, info.name, info.path);
+            }
+            cameraDebugInfo.set(nextDebug);
             return camera;
         } catch (Exception ex) {
             cameraDebugInfo.set(cameraDebugInfo.get().withError("CAPTURE_OPEN_FAILED", ex.getMessage()));
