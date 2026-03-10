@@ -24,7 +24,7 @@ import edu.wpi.first.wpilibj2.command.CommandScheduler;
 public class Robot extends TimedRobot {
 
     // The RobotContainer holds all subsystems and command bindings.
-    private RobotContainer robotContainer;
+    private RobotRuntimeContainer robotContainer;
 
     // The autonomous command to run (selected from SmartDashboard)
     private Command autonomousCommand;
@@ -39,6 +39,10 @@ public class Robot extends TimedRobot {
     public void robotInit() {
         Constants.CAN.validateUniqueCanIds();
         robotContainer = new RobotContainer();
+    }
+
+    void setRobotContainerForTest(RobotRuntimeContainer robotContainer) {
+        this.robotContainer = robotContainer;
     }
 
     // --------------------------------------------------------------------------

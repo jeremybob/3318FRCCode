@@ -522,6 +522,10 @@ public final class Constants {
         public static final double MAX_FEED_TRANS_MPS = 0.50; // TUNE ME
         // Auto-aim rotation cap in rad/s.
         public static final double MAX_AUTO_AIM_OMEGA_RADPS = 0.60; // TUNE ME
+        // While the target is out of frame, keep sweeping at a controlled rate.
+        public static final double SEARCH_OMEGA_RADPS = 0.60; // TUNE ME
+        // Larger yaw errors are acquisition problems, not impossible shot geometry.
+        public static final double ACQUIRE_YAW_MAX_DEG = 30.0; // TUNE ME
 
         // Feed gate thresholds.
         public static final double YAW_TOLERANCE_DEG = 3.0; // TUNE ME

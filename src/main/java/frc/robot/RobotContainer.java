@@ -30,11 +30,8 @@ import com.pathplanner.lib.controllers.PPHolonomicDriveController;
 import edu.wpi.first.math.geometry.Pose2d;
 
 import java.util.ArrayList;
-import java.util.IdentityHashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -72,7 +69,7 @@ import frc.robot.util.DriverDriveUtil;
 import frc.robot.vision.RioVisionThread;
 import frc.robot.vision.VisionResult;
 
-public class RobotContainer {
+public class RobotContainer implements RobotRuntimeContainer {
 
     // =========================================================================
     // VISION — background thread running AprilTag detection on USB camera
@@ -109,17 +106,9 @@ public class RobotContainer {
     // the match without redeploying code.
     // =========================================================================
     private final SendableChooser<Command> autoChooser = new SendableChooser<>();
-    private final Map<Command, String> autoCommandNames = new IdentityHashMap<>();
-    private final Map<String, Command> autoCommandsByName = new LinkedHashMap<>();
+    private final AutoSelectionState autoSelection = new AutoSelectionState();
     private boolean pathPlannerConfigured = false;
     private boolean pathPlannerUsingFallbackConfig = false;
-    private Command selectedAutoCommand;
-    private String selectedAutoName = "Do Nothing";
-    private String selectedAutoSource = "DEFAULT";
-    private final Map<String, Pose2d> autoStartingPoses = new LinkedHashMap<>();
-    private double expectedAutoStartX = Double.NaN;
-    private double expectedAutoStartY = Double.NaN;
-    private double expectedAutoStartHeadingDeg = Double.NaN;
     private Command currentAutoCommand;
     private final RobotDashboardService dashboardService;
     private static final double TRIGGER_ACTIVE_THRESHOLD = 0.20;
@@ -349,16 +338,16 @@ public class RobotContainer {
     private void registerPathPlannerCommands() {
 
         // HomeIntake: re-home the intake at the start of auto (belt-and-suspenders)
-        NamedCommands.registerCommand("HomeIntake", buildIntakeHomeCommand());
+        NamedCommands.registerCommand(RobotAutoCatalog.NAMED_HOME_INTAKE, buildIntakeHomeCommand());
 
         // IntakeFuel: deploy intake, spin rollers to pick up FUEL from the ground.
         // Replaces the old "IntakeGamePiece" name to match REBUILT terminology.
-        NamedCommands.registerCommand("IntakeFuel", buildIntakeGamePieceCommand());
+        NamedCommands.registerCommand(RobotAutoCatalog.NAMED_INTAKE_FUEL, buildIntakeGamePieceCommand());
         // Keep old name registered for backwards compatibility with existing .auto files
-        NamedCommands.registerCommand("IntakeGamePiece", buildIntakeGamePieceCommand());
+        NamedCommands.registerCommand(RobotAutoCatalog.NAMED_INTAKE_GAME_PIECE, buildIntakeGamePieceCommand());
 
         // AutoShoot: align to HUB via vision and shoot FUEL (timeout in Constants.Auto)
-        NamedCommands.registerCommand("AutoShoot",
+        NamedCommands.registerCommand(RobotAutoCatalog.NAMED_AUTO_SHOOT,
                 buildAlignAndShootCommand().withTimeout(Constants.Auto.AUTO_SHOOT_TIMEOUT_SEC));
 
         // --- CLIMBER DISABLED ---
@@ -396,8 +385,9 @@ public class RobotContainer {
         //   - Robots can preload up to 8 FUEL
         //   - Winning auto determines HUB shift order in teleop
         //   - Level 1 climb is available in auto (15 pts, max 2 robots)
-        addPathPlannerAutoOption("Blue Depot", "BlueDepot");
-        addPathPlannerAutoOption("Blue Outpost", "BlueOutpost");
+        for (RobotAutoCatalog.PathPlannerAutoSpec autoSpec : RobotAutoCatalog.competitionPathPlannerAutos()) {
+            addPathPlannerAutoOption(autoSpec);
+        }
 
         // Calibration utility: reads CANcoder offsets and prints to console.
         // Align all wheels forward, select this auto, and enable briefly.
@@ -409,65 +399,52 @@ public class RobotContainer {
         SmartDashboard.putData("Auto Selector", autoChooser);
     }
 
-    private void addPathPlannerAutoOption(String chooserName, String autoFileName) {
+    private void addPathPlannerAutoOption(RobotAutoCatalog.PathPlannerAutoSpec autoSpec) {
         try {
-            PathPlannerAuto auto = new PathPlannerAuto(autoFileName);
-            registerAutoOption(chooserName, auto, false);
-            // Cache the starting pose (blue-side coordinates) for dashboard placement check
-            autoStartingPoses.put(chooserName, auto.getStartingPose());
+            PathPlannerAuto auto = new PathPlannerAuto(autoSpec.autoFileName());
+            registerAutoOption(autoSpec.chooserName(), auto, false, auto.getStartingPose());
         } catch (Exception e) {
-            System.err.println("[RobotContainer] Skipping auto '" + autoFileName + "': " + e.getMessage());
+            System.err.println("[RobotContainer] Skipping auto '" + autoSpec.autoFileName() + "': " + e.getMessage());
         }
     }
 
     private void registerAutoOption(String chooserName, Command command, boolean isDefault) {
+        registerAutoOption(chooserName, command, isDefault, null);
+    }
+
+    private void registerAutoOption(String chooserName, Command command, boolean isDefault, Pose2d startingPose) {
         if (isDefault) {
             autoChooser.setDefaultOption(chooserName, command);
         } else {
             autoChooser.addOption(chooserName, command);
         }
-        autoCommandNames.put(command, chooserName);
-        autoCommandsByName.put(chooserName, command);
-        if (isDefault || selectedAutoCommand == null) {
-            selectAutoCommand(command, "DEFAULT");
-        }
+        autoSelection.registerOption(chooserName, command, isDefault, startingPose);
     }
 
     private void selectAutoByName(String autoName, String source) {
-        Command command = autoCommandsByName.get(autoName);
-        if (command == null) {
+        if (!autoSelection.hasAutoName(autoName)) {
             logControlEvent("Dashboard", "selectAutoByName() rejected: unknown auto '" + autoName + "'");
             return;
         }
-        selectAutoCommand(command, source);
+        selectAutoCommand(autoSelection.getCommandForName(autoName), source);
     }
 
     private void selectAutoCommand(Command command, String source) {
-        if (command == null) {
+        if (command == null || !autoSelection.hasCommand(command)) {
             return;
         }
 
-        String autoName = autoCommandNames.getOrDefault(command, "Unknown");
-        boolean changed = command != selectedAutoCommand
-                || !autoName.equals(selectedAutoName)
-                || !source.equals(selectedAutoSource);
-        boolean shouldLog = selectedAutoCommand != null && changed;
+        Command previousCommand = autoSelection.getSelectedAutoCommand();
+        String previousName = autoSelection.getSelectedAutoName();
+        String previousSource = autoSelection.getSelectedAutoSource();
 
-        selectedAutoCommand = command;
-        selectedAutoName = autoName;
-        selectedAutoSource = source;
+        autoSelection.selectCommand(command, source);
 
-        // Update expected starting pose (NaN = no starting pose for this auto)
-        Pose2d startPose = autoStartingPoses.get(autoName);
-        if (startPose != null) {
-            expectedAutoStartX = startPose.getX();
-            expectedAutoStartY = startPose.getY();
-            expectedAutoStartHeadingDeg = startPose.getRotation().getDegrees();
-        } else {
-            expectedAutoStartX = Double.NaN;
-            expectedAutoStartY = Double.NaN;
-            expectedAutoStartHeadingDeg = Double.NaN;
-        }
+        String autoName = autoSelection.getSelectedAutoName();
+        boolean changed = command != previousCommand
+                || !autoName.equals(previousName)
+                || !source.equals(previousSource);
+        boolean shouldLog = previousCommand != null && changed;
 
         if (shouldLog) {
             logControlEvent("Auto", "Selected '" + autoName + "' via " + source);
@@ -670,19 +647,19 @@ public class RobotContainer {
     // Called by Robot.java during autonomousInit(). Returns the selected auto.
     // =========================================================================
     public Command getAutonomousCommand() {
-        return selectedAutoCommand;
+        return autoSelection.getSelectedAutoCommand();
     }
 
     public String getSelectedAutoName() {
-        return selectedAutoName;
+        return autoSelection.getSelectedAutoName();
     }
 
     public String getSelectedAutoSource() {
-        return selectedAutoSource;
+        return autoSelection.getSelectedAutoSource();
     }
 
     public String[] getAvailableAutoNames() {
-        return autoCommandsByName.keySet().toArray(String[]::new);
+        return autoSelection.getAvailableAutoNames();
     }
 
     public void setCurrentAutoCommand(Command cmd) {
@@ -807,9 +784,9 @@ public class RobotContainer {
                 getAvailableAutoNames(),
                 autoRunning,
                 // Expected auto starting pose (blue-side; dashboard flips for red)
-                expectedAutoStartX,
-                expectedAutoStartY,
-                expectedAutoStartHeadingDeg,
+                autoSelection.getExpectedAutoStartX(),
+                autoSelection.getExpectedAutoStartY(),
+                autoSelection.getExpectedAutoStartHeadingDeg(),
                 // Match info
                 DriverStation.getMatchNumber(),
                 DriverStation.getEventName(),
@@ -1176,6 +1153,91 @@ public class RobotContainer {
 
     private static String yesNo(boolean value) {
         return value ? "YES" : "NO";
+    }
+
+    static final class AutoSelectionState {
+        private final java.util.Map<Command, String> autoCommandNames = new java.util.IdentityHashMap<>();
+        private final java.util.Map<String, Command> autoCommandsByName = new java.util.LinkedHashMap<>();
+        private final java.util.Map<String, Pose2d> autoStartingPoses = new java.util.LinkedHashMap<>();
+
+        private Command selectedAutoCommand;
+        private String selectedAutoName = "Do Nothing";
+        private String selectedAutoSource = "DEFAULT";
+        private double expectedAutoStartX = Double.NaN;
+        private double expectedAutoStartY = Double.NaN;
+        private double expectedAutoStartHeadingDeg = Double.NaN;
+
+        void registerOption(String chooserName, Command command, boolean isDefault, Pose2d startingPose) {
+            autoCommandNames.put(command, chooserName);
+            autoCommandsByName.put(chooserName, command);
+            if (startingPose != null) {
+                autoStartingPoses.put(chooserName, startingPose);
+            }
+            if (isDefault || selectedAutoCommand == null) {
+                selectCommand(command, "DEFAULT");
+            }
+        }
+
+        boolean hasAutoName(String autoName) {
+            return autoCommandsByName.containsKey(autoName);
+        }
+
+        boolean hasCommand(Command command) {
+            return autoCommandNames.containsKey(command);
+        }
+
+        Command getCommandForName(String autoName) {
+            return autoCommandsByName.get(autoName);
+        }
+
+        void selectCommand(Command command, String source) {
+            if (command == null) {
+                return;
+            }
+
+            selectedAutoCommand = command;
+            selectedAutoName = autoCommandNames.getOrDefault(command, "Unknown");
+            selectedAutoSource = source;
+
+            Pose2d startPose = autoStartingPoses.get(selectedAutoName);
+            if (startPose != null) {
+                expectedAutoStartX = startPose.getX();
+                expectedAutoStartY = startPose.getY();
+                expectedAutoStartHeadingDeg = startPose.getRotation().getDegrees();
+            } else {
+                expectedAutoStartX = Double.NaN;
+                expectedAutoStartY = Double.NaN;
+                expectedAutoStartHeadingDeg = Double.NaN;
+            }
+        }
+
+        Command getSelectedAutoCommand() {
+            return selectedAutoCommand;
+        }
+
+        String getSelectedAutoName() {
+            return selectedAutoName;
+        }
+
+        String getSelectedAutoSource() {
+            return selectedAutoSource;
+        }
+
+        String[] getAvailableAutoNames() {
+            return autoCommandsByName.keySet().toArray(String[]::new);
+        }
+
+        double getExpectedAutoStartX() {
+            return expectedAutoStartX;
+        }
+
+        double getExpectedAutoStartY() {
+            return expectedAutoStartY;
+        }
+
+        double getExpectedAutoStartHeadingDeg() {
+            return expectedAutoStartHeadingDeg;
+        }
     }
 
     private static String getRobotMode() {

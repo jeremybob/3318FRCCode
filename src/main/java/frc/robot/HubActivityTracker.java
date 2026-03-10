@@ -7,11 +7,11 @@
 //
 // GAME MECHANIC:
 //   - Both HUBs are active during AUTO (20 sec) and END GAME (last 30 sec)
-//   - The alliance that LOSES auto has their HUB go INACTIVE first in teleop
-//     (the auto winner is rewarded with their HUB staying active first)
+//   - The alliance that scores MORE FUEL in AUTO has their HUB go INACTIVE first
+//     in SHIFT 1 (ties are broken by FMS)
 //   - Teleop is divided into: Transition (10s), Shift1-4 (25s each)
-//   - Game Data from FMS: first char tells which alliance goes inactive first
-//   - If auto is tied, FMS randomly selects
+//   - Game Data from FMS: first char tells which alliance's HUB goes inactive first
+//   - If AUTO is tied, FMS randomly selects which HUB goes inactive first
 //
 // SHIFT TIMING (DriverStation.getMatchTime() counts DOWN from 140 in teleop):
 //   140 - 130  = Transition   → BOTH active
@@ -46,17 +46,30 @@ public final class HubActivityTracker {
      * publishing is handled by the caller (RobotDashboardService).
      */
     public static boolean isOurHubActive() {
+        var alliance = DriverStation.getAlliance();
+        return isOurHubActive(
+                DriverStation.isAutonomousEnabled(),
+                DriverStation.isTeleopEnabled(),
+                DriverStation.getMatchTime(),
+                alliance.orElse(null),
+                DriverStation.getGameSpecificMessage());
+    }
+
+    static boolean isOurHubActive(
+            boolean autonomousEnabled,
+            boolean teleopEnabled,
+            double matchTime,
+            DriverStation.Alliance alliance,
+            String gameData) {
         // During autonomous, both HUBs are always active
-        if (DriverStation.isAutonomousEnabled()) {
+        if (autonomousEnabled) {
             return true;
         }
 
         // During disabled/test, assume active (doesn't matter for scoring)
-        if (!DriverStation.isTeleopEnabled()) {
+        if (!teleopEnabled) {
             return true;
         }
-
-        double matchTime = DriverStation.getMatchTime();
 
         // End Game (last 30 seconds): both HUBs active
         if (matchTime <= 30.0) {
@@ -71,25 +84,18 @@ public final class HubActivityTracker {
         // Determine shift number based on match time
         int shiftNumber = getShiftNumber(matchTime);
 
-        // Game Data tells us which alliance goes inactive first.
-        // 'R' = Red goes inactive in Shifts 1 & 3 (Red LOST auto; winner stays active first)
-        // 'B' = Blue goes inactive in Shifts 1 & 3 (Blue LOST auto; winner stays active first)
-        // If Game Data is empty, auto was tied — FMS randomly chose.
-        // VERIFY: Confirm this interpretation at your first competition event.
-        //         An inversion here means shooting during the wrong windows.
-        String gameData = DriverStation.getGameSpecificMessage();
+        // Game Data tells us which alliance's HUB goes inactive first in SHIFT 1.
         boolean weGoInactiveFirst = false;
         boolean gameDataAvailable = false;
 
         if (gameData != null && !gameData.isEmpty()) {
-            var alliance = DriverStation.getAlliance();
-            if (alliance.isPresent()) {
+            if (alliance != null) {
                 gameDataAvailable = true;
-                char inactiveFirst = gameData.charAt(0);
-                if (alliance.get() == DriverStation.Alliance.Red) {
-                    weGoInactiveFirst = (inactiveFirst == 'R');
+                char inactiveFirst = Character.toUpperCase(gameData.charAt(0));
+                if (alliance == DriverStation.Alliance.Red) {
+                    weGoInactiveFirst = inactiveFirst == 'R';
                 } else {
-                    weGoInactiveFirst = (inactiveFirst == 'B');
+                    weGoInactiveFirst = inactiveFirst == 'B';
                 }
             }
         }
@@ -116,8 +122,10 @@ public final class HubActivityTracker {
      * Useful for deciding whether to shoot now or wait.
      */
     public static double secondsUntilNextShiftChange() {
-        double matchTime = DriverStation.getMatchTime();
+        return secondsUntilNextShiftChange(DriverStation.getMatchTime());
+    }
 
+    static double secondsUntilNextShiftChange(double matchTime) {
         // Shift boundaries (match time remaining)
         double[] boundaries = {130.0, 105.0, 80.0, 55.0, 30.0};
         for (double boundary : boundaries) {

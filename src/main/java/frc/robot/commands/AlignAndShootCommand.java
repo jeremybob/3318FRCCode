@@ -100,8 +100,8 @@ public class AlignAndShootCommand extends Command {
     private final Timer feedGateTimer = new Timer();
     private double lastValidTargetSeenSec = Double.NEGATIVE_INFINITY;
     private double calculatedRps = Constants.Shooter.TARGET_RPS;
+    private double searchRotationSign = 1.0;
 
-    private static final double ALIGN_TIMEOUT_SEC = 3.0;
     private static final double ALIGN_CONVERGENCE_TIMEOUT_SEC = 5.0;
 
     private String workState = "IDLE";
@@ -154,8 +154,10 @@ public class AlignAndShootCommand extends Command {
         state = State.ALIGN;
         stateTimer.restart();
         alignOverallTimer.restart();
+        turnPID.reset();
         resetFeedGateTimer();
         lastValidTargetSeenSec = Double.NEGATIVE_INFINITY;
+        searchRotationSign = 1.0;
 
         workState = State.ALIGN.name();
         workCommandActive = true;
@@ -256,19 +258,39 @@ public class AlignAndShootCommand extends Command {
             workTimeOfFlightSec = Double.NaN;
             workFeedGateReady = false;
             resetFeedGateTimer();
-            driveTranslationWithoutTarget(driverRequest, Constants.AlignShoot.MAX_TRANS_MPS);
+            driveSearchPattern(driverRequest, Constants.AlignShoot.MAX_TRANS_MPS);
 
-            if (stateTimer.hasElapsed(ALIGN_TIMEOUT_SEC)) {
+            if (alignOverallTimer.hasElapsed(ALIGN_CONVERGENCE_TIMEOUT_SEC)) {
                 abort("No alliance HUB tag found");
             }
             return;
         }
 
-        if (!isShotGeometryFeasible(result)) {
+        workPitchDeg = result.pitchDeg();
+        workYawDeg = result.yawDeg();
+        if (!isShotPitchFeasible(result.pitchDeg())) {
             workHasShootableTarget = false;
             workFeedGateReady = false;
             resetFeedGateTimer();
-            abort("Shot geometry not feasible");
+            abort("Shot pitch out of range");
+            return;
+        }
+
+        if (!isWithinTrackingYaw(result.yawDeg())) {
+            workGeometryFeasible = false;
+            workHasShootableTarget = false;
+            workAimErrorDeg = result.yawDeg();
+            workLeadYawDeg = 0.0;
+            workRadialVelocityMps = Double.NaN;
+            workLateralVelocityMps = Double.NaN;
+            workTimeOfFlightSec = Double.NaN;
+            workFeedGateReady = false;
+            resetFeedGateTimer();
+            updateSearchDirectionFromYaw(result.yawDeg());
+            driveAcquireTarget(driverRequest, Constants.AlignShoot.MAX_TRANS_MPS, result.yawDeg());
+            if (alignOverallTimer.hasElapsed(ALIGN_CONVERGENCE_TIMEOUT_SEC)) {
+                abort("Target yaw acquisition timeout");
+            }
             return;
         }
 
@@ -494,25 +516,42 @@ public class AlignAndShootCommand extends Command {
                 tracking.rotCmdRadPerSec()));
     }
 
-    private void driveTranslationWithoutTarget(
+    private void driveSearchPattern(
             DriverDriveUtil.DriveRequest driverRequest,
             double translationCapMps) {
-        ChassisSpeeds translationCmd = toRobotRelativeTranslation(driverRequest);
-        double speedMps = Math.hypot(
-                translationCmd.vxMetersPerSecond,
-                translationCmd.vyMetersPerSecond);
-        if (speedMps > translationCapMps && speedMps > 1e-6) {
-            double scale = translationCapMps / speedMps;
-            translationCmd = new ChassisSpeeds(
-                    translationCmd.vxMetersPerSecond * scale,
-                    translationCmd.vyMetersPerSecond * scale,
-                    0.0);
-        }
+        ChassisSpeeds translationCmd = clampTranslationMagnitude(
+                toRobotRelativeTranslation(driverRequest),
+                translationCapMps);
+        double rotCmd = searchRotationSign * Constants.AlignShoot.SEARCH_OMEGA_RADPS;
 
         workCommandedXVelocityMps = translationCmd.vxMetersPerSecond;
         workCommandedYVelocityMps = translationCmd.vyMetersPerSecond;
         workActiveTranslationCapMps = translationCapMps;
-        swerve.driveRobotRelative(translationCmd);
+        swerve.driveRobotRelative(new ChassisSpeeds(
+                translationCmd.vxMetersPerSecond,
+                translationCmd.vyMetersPerSecond,
+                rotCmd));
+    }
+
+    private void driveAcquireTarget(
+            DriverDriveUtil.DriveRequest driverRequest,
+            double translationCapMps,
+            double yawDeg) {
+        ChassisSpeeds translationCmd = clampTranslationMagnitude(
+                toRobotRelativeTranslation(driverRequest),
+                translationCapMps);
+        double rotCmd = MathUtil.clamp(
+                turnPID.calculate(yawDeg, 0.0),
+                -Constants.AlignShoot.MAX_AUTO_AIM_OMEGA_RADPS,
+                Constants.AlignShoot.MAX_AUTO_AIM_OMEGA_RADPS);
+
+        workCommandedXVelocityMps = translationCmd.vxMetersPerSecond;
+        workCommandedYVelocityMps = translationCmd.vyMetersPerSecond;
+        workActiveTranslationCapMps = translationCapMps;
+        swerve.driveRobotRelative(new ChassisSpeeds(
+                translationCmd.vxMetersPerSecond,
+                translationCmd.vyMetersPerSecond,
+                rotCmd));
     }
 
     private ChassisSpeeds clampDriverTranslation(
@@ -540,14 +579,7 @@ public class AlignAndShootCommand extends Command {
         double clampedX = radialCmdMps * shotLineX + lateralCmdMps * lateralAxisX;
         double clampedY = radialCmdMps * shotLineY + lateralCmdMps * lateralAxisY;
 
-        double speedMps = Math.hypot(clampedX, clampedY);
-        if (speedMps > translationCapMps && speedMps > 1e-6) {
-            double scale = translationCapMps / speedMps;
-            clampedX *= scale;
-            clampedY *= scale;
-        }
-
-        return new ChassisSpeeds(clampedX, clampedY, 0.0);
+        return clampTranslationMagnitude(new ChassisSpeeds(clampedX, clampedY, 0.0), translationCapMps);
     }
 
     private ChassisSpeeds toRobotRelativeTranslation(DriverDriveUtil.DriveRequest driverRequest) {
@@ -626,10 +658,6 @@ public class AlignAndShootCommand extends Command {
         SmartDashboard.putNumber("AlignShoot/TargetTagId", result.tagId());
         SmartDashboard.putNumber("AlignShoot/YawGeometryCheck", yawDeg);
 
-        if (Math.abs(yawDeg) > Constants.AlignShoot.YAW_TOLERANCE_DEG * 10.0) {
-            return false;
-        }
-
         return isShotPitchFeasible(pitchDeg);
     }
 
@@ -643,6 +671,35 @@ public class AlignAndShootCommand extends Command {
     private void resetFeedGateTimer() {
         feedGateTimer.stop();
         feedGateTimer.reset();
+    }
+
+    private void updateSearchDirectionFromYaw(double yawDeg) {
+        double desiredSign = -Math.signum(yawDeg);
+        if (desiredSign != 0.0) {
+            searchRotationSign = desiredSign;
+        }
+    }
+
+    private static boolean isWithinTrackingYaw(double yawDeg) {
+        return Double.isFinite(yawDeg)
+                && Math.abs(yawDeg) <= Constants.AlignShoot.ACQUIRE_YAW_MAX_DEG;
+    }
+
+    private static ChassisSpeeds clampTranslationMagnitude(ChassisSpeeds translationCmd, double translationCapMps) {
+        double speedMps = Math.hypot(
+                translationCmd.vxMetersPerSecond,
+                translationCmd.vyMetersPerSecond);
+        if (speedMps > translationCapMps && speedMps > 1e-6) {
+            double scale = translationCapMps / speedMps;
+            return new ChassisSpeeds(
+                    translationCmd.vxMetersPerSecond * scale,
+                    translationCmd.vyMetersPerSecond * scale,
+                    0.0);
+        }
+        return new ChassisSpeeds(
+                translationCmd.vxMetersPerSecond,
+                translationCmd.vyMetersPerSecond,
+                0.0);
     }
 
     private double estimateDistanceFromPitch(double targetPitchDeg) {
