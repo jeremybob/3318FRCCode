@@ -29,7 +29,7 @@ public class RobotDashboardService {
         void selectAutoByName(String autoName);
     }
 
-    private static final String CONTRACT_VERSION = "2026.12.0";
+    private static final String CONTRACT_VERSION = "2026.13.0";
 
     private final Actions actions;
 
@@ -70,7 +70,17 @@ public class RobotDashboardService {
     private final BooleanPublisher alignGeometryFeasiblePub;
     private final BooleanPublisher alignHasShootableTargetPub;
     private final DoublePublisher alignYawPub;
+    private final DoublePublisher alignAimErrorPub;
+    private final DoublePublisher alignLeadYawPub;
     private final DoublePublisher alignPitchPub;
+    private final DoublePublisher alignTargetRpsPub;
+    private final DoublePublisher alignRadialVelocityPub;
+    private final DoublePublisher alignLateralVelocityPub;
+    private final DoublePublisher alignCommandedXVelocityPub;
+    private final DoublePublisher alignCommandedYVelocityPub;
+    private final DoublePublisher alignTranslationCapPub;
+    private final DoublePublisher alignTimeOfFlightPub;
+    private final BooleanPublisher alignFeedGateReadyPub;
     private final StringPublisher alignAbortReasonPub;
 
     private final BooleanPublisher readyToScorePub;
@@ -249,7 +259,17 @@ public class RobotDashboardService {
         alignGeometryFeasiblePub = table.getBooleanTopic("align/geometry_feasible").publish();
         alignHasShootableTargetPub = table.getBooleanTopic("align/has_shootable_target").publish();
         alignYawPub = table.getDoubleTopic("align/yaw_deg").publish();
+        alignAimErrorPub = table.getDoubleTopic("align/aim_error_deg").publish();
+        alignLeadYawPub = table.getDoubleTopic("align/lead_yaw_deg").publish();
         alignPitchPub = table.getDoubleTopic("align/pitch_deg").publish();
+        alignTargetRpsPub = table.getDoubleTopic("align/target_rps").publish();
+        alignRadialVelocityPub = table.getDoubleTopic("align/radial_velocity_mps").publish();
+        alignLateralVelocityPub = table.getDoubleTopic("align/lateral_velocity_mps").publish();
+        alignCommandedXVelocityPub = table.getDoubleTopic("align/commanded_x_mps").publish();
+        alignCommandedYVelocityPub = table.getDoubleTopic("align/commanded_y_mps").publish();
+        alignTranslationCapPub = table.getDoubleTopic("align/translation_cap_mps").publish();
+        alignTimeOfFlightPub = table.getDoubleTopic("align/time_of_flight_sec").publish();
+        alignFeedGateReadyPub = table.getBooleanTopic("align/feed_gate_ready").publish();
         alignAbortReasonPub = table.getStringTopic("align/last_abort_reason").publish();
 
         readyToScorePub = table.getBooleanTopic("shot/ready").publish();
@@ -427,7 +447,17 @@ public class RobotDashboardService {
         alignGeometryFeasiblePub.set(snapshot.alignGeometryFeasible());
         alignHasShootableTargetPub.set(snapshot.alignHasShootableTarget());
         alignYawPub.set(snapshot.alignYawDeg());
+        alignAimErrorPub.set(snapshot.alignAimErrorDeg());
+        alignLeadYawPub.set(snapshot.alignLeadYawDeg());
         alignPitchPub.set(snapshot.alignPitchDeg());
+        alignTargetRpsPub.set(snapshot.alignTargetRps());
+        alignRadialVelocityPub.set(snapshot.alignRadialVelocityMps());
+        alignLateralVelocityPub.set(snapshot.alignLateralVelocityMps());
+        alignCommandedXVelocityPub.set(snapshot.alignCommandedXVelocityMps());
+        alignCommandedYVelocityPub.set(snapshot.alignCommandedYVelocityMps());
+        alignTranslationCapPub.set(snapshot.alignTranslationCapMps());
+        alignTimeOfFlightPub.set(snapshot.alignTimeOfFlightSec());
+        alignFeedGateReadyPub.set(snapshot.alignFeedGateReady());
         alignAbortReasonPub.set(snapshot.alignAbortReason());
 
         readyToScorePub.set(snapshot.readyToScore());

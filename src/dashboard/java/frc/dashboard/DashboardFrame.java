@@ -117,12 +117,17 @@ public class DashboardFrame extends JFrame {
     private final JLabel shooterChecklistLabel = createChecklistLabel("Shooter at speed");
     private final JLabel targetChecklistLabel = createChecklistLabel("Vision target");
     private final JLabel geometryChecklistLabel = createChecklistLabel("Shot geometry");
-    private final JLabel yawChecklistLabel = createChecklistLabel("Yaw aligned");
+    private final JLabel yawChecklistLabel = createChecklistLabel("Aim aligned");
+    private final JLabel motionChecklistLabel = createChecklistLabel("Motion settled");
 
     // Driver tab: align pipeline
     private final JLabel alignPhaseLabel = new JLabel("Align phase: IDLE");
-    private final JLabel yawLabel = new JLabel("Yaw: --");
+    private final JLabel aimErrorLabel = new JLabel("Aim error: --");
+    private final JLabel yawLabel = new JLabel("Raw yaw: --");
+    private final JLabel leadLabel = new JLabel("Lead: --");
     private final JLabel pitchLabel = new JLabel("Pitch: --");
+    private final JLabel shotModelLabel = new JLabel("Shot: --");
+    private final JLabel motionLabel = new JLabel("Motion: --");
     private final JProgressBar yawBar = new JProgressBar(-30, 30);
     private final JLabel visionLabel = new JLabel("Vision: --");
     private final JLabel abortLabel = new JLabel("Last abort: --");
@@ -137,6 +142,8 @@ public class DashboardFrame extends JFrame {
     private final JLabel climberLabel = new JLabel("DISABLED — no hardware");
     private final JLabel operatorVisionLabel = new JLabel("Target: NO  Feasible: NO");
     private final JLabel operatorPhaseLabel = new JLabel("Align phase: IDLE");
+    private final JLabel operatorMotionLabel = new JLabel("Motion: --");
+    private final JLabel operatorShotModelLabel = new JLabel("Shot model: --");
     private final JLabel operatorReadyLabel = new JLabel("NOT READY");
     private final JLabel operatorReadyReasonLabel = new JLabel("Reason: --");
 
@@ -332,8 +339,12 @@ public class DashboardFrame extends JFrame {
         styleMetricLabel(autoExecutionLabel);
         styleCompactLabel(autoChooserStatusLabel);
         styleCompactLabel(alignPhaseLabel);
+        styleCompactLabel(aimErrorLabel);
         styleCompactLabel(yawLabel);
+        styleCompactLabel(leadLabel);
         styleCompactLabel(pitchLabel);
+        styleCompactLabel(shotModelLabel);
+        styleCompactLabel(motionLabel);
         styleCompactLabel(visionLabel);
         styleCompactLabel(abortLabel);
         styleMetricLabel(ackLabel);
@@ -375,6 +386,8 @@ public class DashboardFrame extends JFrame {
         styleMetricLabel(climberLabel);
         styleMetricLabel(operatorVisionLabel);
         styleMetricLabel(operatorPhaseLabel);
+        styleMetricLabel(operatorMotionLabel);
+        styleMetricLabel(operatorShotModelLabel);
         styleMetricLabel(operatorReadyLabel);
         styleMetricLabel(operatorReadyReasonLabel);
         styleMetricLabel(swerveAnglesLabel);
@@ -394,7 +407,8 @@ public class DashboardFrame extends JFrame {
         top.add(wrapLabelCard("Conveyor", conveyorLabel));
         // Row 2: more subsystems
         top.add(wrapLabelCard("Climber", climberLabel));
-        top.add(wrapLabelCard("Vision", operatorVisionLabel, operatorPhaseLabel));
+        top.add(wrapLabelCard("Vision", operatorVisionLabel, operatorPhaseLabel,
+                operatorMotionLabel, operatorShotModelLabel));
         top.add(wrapLabelCard("Readiness", operatorReadyLabel, operatorReadyReasonLabel));
         // Row 3: system health
         top.add(wrapLabelCard("Swerve Modules", swerveAnglesLabel));
@@ -675,23 +689,28 @@ public class DashboardFrame extends JFrame {
     }
 
     private JPanel buildChecklistCard() {
-        JPanel panel = new JPanel(new GridLayout(5, 1, 4, 4));
+        JPanel panel = new JPanel(new GridLayout(6, 1, 4, 4));
         panel.setBackground(CARD);
         panel.add(intakeChecklistLabel);
         panel.add(shooterChecklistLabel);
         panel.add(targetChecklistLabel);
         panel.add(geometryChecklistLabel);
         panel.add(yawChecklistLabel);
+        panel.add(motionChecklistLabel);
         return wrapCard("Shot Checklist", panel);
     }
 
     private JPanel buildAlignCard() {
-        JPanel panel = new JPanel(new GridLayout(6, 1, 4, 4));
+        JPanel panel = new JPanel(new GridLayout(9, 1, 4, 4));
         panel.setBackground(CARD);
         panel.add(alignPhaseLabel);
+        panel.add(aimErrorLabel);
         panel.add(yawLabel);
+        panel.add(leadLabel);
         panel.add(yawBar);
         panel.add(pitchLabel);
+        panel.add(shotModelLabel);
+        panel.add(motionLabel);
         panel.add(visionLabel);
         panel.add(abortLabel);
         return wrapCard("Align Pipeline", panel);
@@ -944,7 +963,7 @@ public class DashboardFrame extends JFrame {
     private void styleYawBar() {
         yawBar.setValue(0);
         yawBar.setStringPainted(true);
-        yawBar.setString("Yaw error: --");
+        yawBar.setString("Aim error: --");
         yawBar.setBackground(CARD_ALT);
         yawBar.setForeground(INFO);
         yawBar.setBorder(BorderFactory.createLineBorder(BORDER, 1));
@@ -1056,20 +1075,31 @@ public class DashboardFrame extends JFrame {
 
         // Align pipeline
         alignPhaseLabel.setText("Align phase: " + data.alignState() + (data.alignCommandActive() ? " (ACTIVE)" : ""));
-        yawLabel.setText("Yaw: " + formatMaybe(data.alignYawDeg()) + " deg");
+        aimErrorLabel.setText("Aim error: " + formatMaybe(data.alignAimErrorDeg()) + " deg");
+        yawLabel.setText("Raw yaw: " + formatMaybe(data.alignYawDeg()) + " deg");
+        leadLabel.setText("Lead: " + formatMaybe(data.alignLeadYawDeg()) + " deg"
+                + "  Gate: " + yesNo(data.alignFeedGateReady()));
         pitchLabel.setText("Pitch: " + formatMaybe(data.alignPitchDeg()) + " deg");
+        shotModelLabel.setText("Shot: " + formatMaybe(data.alignTargetRps()) + " RPS"
+                + "  TOF " + formatMaybe(data.alignTimeOfFlightSec()) + " s");
+        motionLabel.setText("Motion: rad " + formatMaybe(data.alignRadialVelocityMps())
+                + "  lat " + formatMaybe(data.alignLateralVelocityMps())
+                + "  cmd " + formatMaybe(data.alignCommandedXVelocityMps()) + "/"
+                + formatMaybe(data.alignCommandedYVelocityMps())
+                + "  cap " + formatMaybe(data.alignTranslationCapMps()));
         visionLabel.setText("Vision: " + yesNo(data.alignHasTarget()) + "  Feasible: " + yesNo(data.alignGeometryFeasible()));
         abortLabel.setText("Last abort: " + sanitize(data.alignAbortReason()));
-        updateYawBar(data.alignYawDeg());
+        updateYawBar(data.alignAimErrorDeg());
 
         // Shot checklist
         updateChecklist(intakeChecklistLabel, "Intake homed", data.intakeHomed());
         updateChecklist(shooterChecklistLabel, "Shooter at speed", data.shooterAtSpeed());
         updateChecklist(targetChecklistLabel, "Vision target", data.alignHasTarget());
         updateChecklist(geometryChecklistLabel, "Shot geometry", data.alignGeometryFeasible());
-        boolean yawAligned = Double.isFinite(data.alignYawDeg())
-                && Math.abs(data.alignYawDeg()) <= Constants.Vision.YAW_TOLERANCE_DEG;
-        updateChecklist(yawChecklistLabel, "Yaw aligned", yawAligned);
+        boolean yawAligned = Double.isFinite(data.alignAimErrorDeg())
+                && Math.abs(data.alignAimErrorDeg()) <= Constants.AlignShoot.YAW_TOLERANCE_DEG;
+        updateChecklist(yawChecklistLabel, "Aim aligned", yawAligned);
+        updateChecklist(motionChecklistLabel, "Motion settled", data.alignFeedGateReady());
 
         // Operator tab: subsystem metrics
         shooterLabel.setText("Left " + ONE_DECIMAL.format(data.shooterLeftRps())
@@ -1087,8 +1117,16 @@ public class DashboardFrame extends JFrame {
         //         + " rot  I: " + ONE_DECIMAL.format(data.climberCurrentAmps()) + " A");
 
         operatorVisionLabel.setText("Target: " + yesNo(data.alignHasTarget())
-                + "  Feasible: " + yesNo(data.alignGeometryFeasible()));
+                + "  Feasible: " + yesNo(data.alignGeometryFeasible())
+                + "  Gate: " + yesNo(data.alignFeedGateReady()));
         operatorPhaseLabel.setText("Align phase: " + data.alignState());
+        operatorMotionLabel.setText("Motion: rad " + formatMaybe(data.alignRadialVelocityMps())
+                + "  lat " + formatMaybe(data.alignLateralVelocityMps())
+                + "  cmd " + formatMaybe(data.alignCommandedXVelocityMps()) + "/"
+                + formatMaybe(data.alignCommandedYVelocityMps()));
+        operatorShotModelLabel.setText("Shot model: aim " + formatMaybe(data.alignAimErrorDeg())
+                + "  lead " + formatMaybe(data.alignLeadYawDeg())
+                + "  rps " + formatMaybe(data.alignTargetRps()));
         operatorReadyLabel.setText(data.readyToScore() ? "READY" : "NOT READY");
         operatorReadyLabel.setForeground(data.readyToScore() ? OK : BAD);
         operatorReadyReasonLabel.setText("Reason: " + sanitize(data.readyReason()));
@@ -1482,20 +1520,20 @@ public class DashboardFrame extends JFrame {
                 + " offset=" + formatRotationMaybe(selectedModuleCalibrationOffsetRot(data, selectedModule)));
     }
 
-    private void updateYawBar(double yawDeg) {
-        if (!Double.isFinite(yawDeg)) {
+    private void updateYawBar(double aimErrorDeg) {
+        if (!Double.isFinite(aimErrorDeg)) {
             yawBar.setValue(0);
-            yawBar.setString("Yaw error: --");
+            yawBar.setString("Aim error: --");
             yawBar.setForeground(INFO);
             return;
         }
 
-        int clamped = (int) Math.round(Math.max(-30.0, Math.min(30.0, yawDeg)));
+        int clamped = (int) Math.round(Math.max(-30.0, Math.min(30.0, aimErrorDeg)));
         yawBar.setValue(clamped);
-        yawBar.setString("Yaw error: " + ONE_DECIMAL.format(yawDeg) + " deg");
+        yawBar.setString("Aim error: " + ONE_DECIMAL.format(aimErrorDeg) + " deg");
 
-        double absYaw = Math.abs(yawDeg);
-        if (absYaw <= Constants.Vision.YAW_TOLERANCE_DEG) {
+        double absYaw = Math.abs(aimErrorDeg);
+        if (absYaw <= Constants.AlignShoot.YAW_TOLERANCE_DEG) {
             yawBar.setForeground(OK);
         } else if (absYaw <= 8.0) {
             yawBar.setForeground(WARN);
@@ -1693,7 +1731,17 @@ public class DashboardFrame extends JFrame {
                 .append(" feasible=").append(data.alignGeometryFeasible())
                 .append(" shootable=").append(data.alignHasShootableTarget())
                 .append(" yaw=").append(data.alignYawDeg())
+                .append(" aimErr=").append(data.alignAimErrorDeg())
+                .append(" lead=").append(data.alignLeadYawDeg())
                 .append(" pitch=").append(data.alignPitchDeg())
+                .append(" rps=").append(data.alignTargetRps())
+                .append(" radial=").append(data.alignRadialVelocityMps())
+                .append(" lateral=").append(data.alignLateralVelocityMps())
+                .append(" cmd=(").append(data.alignCommandedXVelocityMps())
+                .append(",").append(data.alignCommandedYVelocityMps()).append(")")
+                .append(" cap=").append(data.alignTranslationCapMps())
+                .append(" tof=").append(data.alignTimeOfFlightSec())
+                .append(" gate=").append(data.alignFeedGateReady())
                 .append(" abort='").append(sanitize(data.alignAbortReason())).append("'\n");
         sb.append("ReadyToScore: ").append(data.readyToScore())
                 .append(" reason='").append(sanitize(data.readyReason())).append("'\n");
@@ -2242,6 +2290,9 @@ public class DashboardFrame extends JFrame {
         }
         if ("Yaw not aligned".equals(reason)) {
             return "Hold align command steady";
+        }
+        if ("Motion not settled".equals(reason)) {
+            return "Slow translation while feed gate closes";
         }
         if ("Shooter spinning up".equals(reason)) {
             return "Wait for shooter speed";

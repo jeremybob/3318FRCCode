@@ -41,7 +41,11 @@ public final class MatchCsvLogger implements AutoCloseable {
             "ready_reason",
             "align_state",
             "align_yaw_deg",
+            "align_aim_error_deg",
+            "align_lead_yaw_deg",
             "align_pitch_deg",
+            "align_target_rps",
+            "align_feed_gate_ready",
             "heading_deg",
             "pose_x_m",
             "pose_y_m",
@@ -83,7 +87,11 @@ public final class MatchCsvLogger implements AutoCloseable {
         sb.append(',').append(csvSafe(data.readyReason()));
         sb.append(',').append(csvSafe(data.alignState()));
         sb.append(',').append(data.alignYawDeg());
+        sb.append(',').append(data.alignAimErrorDeg());
+        sb.append(',').append(data.alignLeadYawDeg());
         sb.append(',').append(data.alignPitchDeg());
+        sb.append(',').append(data.alignTargetRps());
+        sb.append(',').append(data.alignFeedGateReady());
         sb.append(',').append(data.headingDeg());
         sb.append(',').append(data.poseX_m());
         sb.append(',').append(data.poseY_m());
@@ -127,7 +135,11 @@ public final class MatchCsvLogger implements AutoCloseable {
             String readyReason,
             String alignState,
             double alignYawDeg,
+            double alignAimErrorDeg,
+            double alignLeadYawDeg,
             double alignPitchDeg,
+            double alignTargetRps,
+            boolean alignFeedGateReady,
             double headingDeg,
             double poseXm,
             double poseYm,
@@ -164,8 +176,12 @@ public final class MatchCsvLogger implements AutoCloseable {
                             parseDouble(cols[15]),
                             parseDouble(cols[16]),
                             parseDouble(cols[17]),
-                            parseDouble(cols[18]),
-                            Boolean.parseBoolean(cols[19])));
+                            Boolean.parseBoolean(cols[18]),
+                            parseDouble(cols[19]),
+                            parseDouble(cols[20]),
+                            parseDouble(cols[21]),
+                            parseDouble(cols[22]),
+                            Boolean.parseBoolean(cols[23])));
                 } catch (NumberFormatException ignored) {
                     // skip malformed rows
                 }

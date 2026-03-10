@@ -509,6 +509,28 @@ public final class Constants {
     }
 
     // =========================================================================
+    // ALIGN-AND-SHOOT (driver translation + auto-aim)
+    // =========================================================================
+    public static final class AlignShoot {
+        // Maximum driver translation allowed while aligning to a moving shot.
+        public static final double MAX_TRANS_MPS = 1.25; // TUNE ME
+        // Sideways motion drives lead compensation hardest, so keep it tighter.
+        public static final double MAX_LATERAL_MPS = 0.80; // TUNE ME
+        // Clamp motion along the shot line until a separate retreat limit is needed.
+        public static final double MAX_APPROACH_MPS = 0.60; // TUNE ME
+        // Tighten translation further once the robot starts feeding.
+        public static final double MAX_FEED_TRANS_MPS = 0.50; // TUNE ME
+        // Auto-aim rotation cap in rad/s.
+        public static final double MAX_AUTO_AIM_OMEGA_RADPS = 0.60; // TUNE ME
+
+        // Feed gate thresholds.
+        public static final double YAW_TOLERANCE_DEG = 3.0; // TUNE ME
+        public static final double RPS_TOLERANCE_RPS = 1.5; // TUNE ME
+        public static final double MAX_SPEED_FOR_FEED_MPS = 0.55; // TUNE ME
+        public static final double SETTLE_TIME_SEC = 0.20; // TUNE ME
+    }
+
+    // =========================================================================
     // AUTONOMOUS CONSTANTS
     // =========================================================================
     public static final class Auto {

@@ -36,6 +36,10 @@ public final class ReadyToScoreEvaluator {
             return new ReadyToScoreResult(false, "Yaw not aligned");
         }
 
+        if (!inputs.feedGateReady()) {
+            return new ReadyToScoreResult(false, "Motion not settled");
+        }
+
         if ("DONE".equals(phase) || "IDLE".equals(phase)) {
             return new ReadyToScoreResult(false, "Shot cycle complete");
         }
@@ -52,6 +56,7 @@ public final class ReadyToScoreEvaluator {
             boolean geometryFeasible,
             boolean hasShootableTarget,
             double yawDeg,
-            double yawToleranceDeg) {
+            double yawToleranceDeg,
+            boolean feedGateReady) {
     }
 }

@@ -68,6 +68,7 @@ import frc.robot.subsystems.*;
 import frc.robot.vision.CameraDebugInfo;
 import frc.robot.subsystems.swerve.SwerveCorner;
 import frc.robot.subsystems.swerve.SwerveValidationMode;
+import frc.robot.util.DriverDriveUtil;
 import frc.robot.vision.RioVisionThread;
 import frc.robot.vision.VisionResult;
 
@@ -513,37 +514,18 @@ public class RobotContainer {
         // DEADBAND IS APPLIED HERE on raw axis values (0.0–1.0), NOT after scaling.
         swerve.setDefaultCommand(
                 Commands.run(() -> {
-                    // Get raw joystick values (-1.0 to 1.0)
-                    double rawLeftY  = -driverController.getLeftY();   // forward = positive
-                    double rawLeftX  = -driverController.getLeftX();   // left = positive
-                    double rawRightX = -driverController.getRightX();  // CCW = positive
+                    DriverDriveUtil.DriveRequest driveRequest = getDriverDriveRequest();
+                    swerve.drive(
+                            driveRequest.xVelocityMps(),
+                            driveRequest.yVelocityMps(),
+                            driveRequest.omegaRadPerSec(),
+                            driveRequest.fieldRelative());
 
-                    // Apply deadband to raw axis BEFORE scaling to m/s or rad/s
-                    double filteredX     = MathUtil.applyDeadband(rawLeftY,  Constants.Swerve.JOYSTICK_DEADBAND);
-                    double filteredY     = MathUtil.applyDeadband(rawLeftX,  Constants.Swerve.JOYSTICK_DEADBAND);
-                    double filteredOmega = MathUtil.applyDeadband(rawRightX, Constants.Swerve.JOYSTICK_DEADBAND);
-
-                    // Precision mode: hold right trigger to slow down for fine positioning
-                    boolean precisionMode = driverController.rightTrigger().getAsBoolean();
-                    double speedScale = precisionMode
-                            ? Constants.Swerve.PRECISION_SPEED_SCALE
-                            : 1.0;
-
-                    // Scale to actual velocity units (with precision mode applied)
-                    double xVelocity = filteredX     * Constants.Swerve.MAX_TRANSLATION_MPS * speedScale;
-                    double yVelocity = filteredY     * Constants.Swerve.MAX_TRANSLATION_MPS * speedScale;
-                    double omega     = filteredOmega * Constants.Swerve.MAX_ROTATION_RADPS  * speedScale;
-
-                    // Drive in field-relative mode (true = joystick "up" always = away from driver)
-                    // Hold left bumper to switch to robot-relative mode temporarily
-                    boolean fieldRelative = !driverController.leftBumper().getAsBoolean();
-                    swerve.drive(xVelocity, yVelocity, omega, fieldRelative);
-
-                    driverCommandSummary = "drive x=" + formatSigned(xVelocity)
-                            + "m/s y=" + formatSigned(yVelocity)
-                            + "m/s omega=" + formatSigned(omega)
-                            + "rad/s field=" + yesNo(fieldRelative)
-                            + " precision=" + yesNo(precisionMode);
+                    driverCommandSummary = "drive x=" + formatSigned(driveRequest.xVelocityMps())
+                            + "m/s y=" + formatSigned(driveRequest.yVelocityMps())
+                            + "m/s omega=" + formatSigned(driveRequest.omegaRadPerSec())
+                            + "rad/s field=" + yesNo(driveRequest.fieldRelative())
+                            + " precision=" + yesNo(driveRequest.precisionMode());
                 }, swerve).withName("DriverFieldDriveDefault"));
 
         // Y button: Zero the gyro heading.
@@ -739,8 +721,9 @@ public class RobotContainer {
                         AlignAndShootCommand.telemetryHasTarget(),
                         AlignAndShootCommand.telemetryGeometryFeasible(),
                         AlignAndShootCommand.telemetryHasShootableTarget(),
-                        AlignAndShootCommand.getTelemetryYawDeg(),
-                        Constants.Vision.YAW_TOLERANCE_DEG));
+                        AlignAndShootCommand.getTelemetryAimErrorDeg(),
+                        Constants.AlignShoot.YAW_TOLERANCE_DEG,
+                        AlignAndShootCommand.telemetryFeedGateReady()));
 
         VisionResult latestVision = visionResult.get();
         CameraDebugInfo latestCameraDebug = cameraDebugInfo.get();
@@ -797,7 +780,17 @@ public class RobotContainer {
                 AlignAndShootCommand.telemetryGeometryFeasible(),
                 AlignAndShootCommand.telemetryHasShootableTarget(),
                 AlignAndShootCommand.getTelemetryYawDeg(),
+                AlignAndShootCommand.getTelemetryAimErrorDeg(),
+                AlignAndShootCommand.getTelemetryLeadYawDeg(),
                 AlignAndShootCommand.getTelemetryPitchDeg(),
+                AlignAndShootCommand.getTelemetryTargetRps(),
+                AlignAndShootCommand.getTelemetryRadialVelocityMps(),
+                AlignAndShootCommand.getTelemetryLateralVelocityMps(),
+                AlignAndShootCommand.getTelemetryCommandedXVelocityMps(),
+                AlignAndShootCommand.getTelemetryCommandedYVelocityMps(),
+                AlignAndShootCommand.getTelemetryActiveTranslationCapMps(),
+                AlignAndShootCommand.getTelemetryTimeOfFlightSec(),
+                AlignAndShootCommand.telemetryFeedGateReady(),
                 AlignAndShootCommand.getTelemetryLastAbortReason(),
                 ready.ready(),
                 ready.reason(),
@@ -874,7 +867,17 @@ public class RobotContainer {
         if (!Constants.Vision.ENABLE_VISION) {
             return Commands.print("[RobotContainer] AlignAndShoot unavailable: vision is disabled in Constants.");
         }
-        return new AlignAndShootCommand(swerve, shooter, feeder, hopper, intake, visionResult)
+        return new AlignAndShootCommand(
+                swerve,
+                shooter,
+                feeder,
+                hopper,
+                intake,
+                visionResult,
+                this::getDriverForwardInput,
+                this::getDriverLeftInput,
+                this::isDriverPrecisionMode,
+                this::isDriverFieldRelative)
                 .withName("AlignAndShoot");
     }
 
@@ -889,6 +892,35 @@ public class RobotContainer {
     private Command buildFallbackShootCommand() {
         return shooter.buildShootRoutine(feeder, hopper, intake, Constants.Shooter.FALLBACK_RPS)
                 .withName("FallbackShootRoutine");
+    }
+
+    private DriverDriveUtil.DriveRequest getDriverDriveRequest() {
+        return DriverDriveUtil.shapeDrive(
+                getDriverForwardInput(),
+                getDriverLeftInput(),
+                getDriverTurnInput(),
+                isDriverPrecisionMode(),
+                isDriverFieldRelative());
+    }
+
+    private double getDriverForwardInput() {
+        return -driverController.getLeftY();
+    }
+
+    private double getDriverLeftInput() {
+        return -driverController.getLeftX();
+    }
+
+    private double getDriverTurnInput() {
+        return -driverController.getRightX();
+    }
+
+    private boolean isDriverPrecisionMode() {
+        return driverController.rightTrigger().getAsBoolean();
+    }
+
+    private boolean isDriverFieldRelative() {
+        return !driverController.leftBumper().getAsBoolean();
     }
 
     private Command buildIntakeTiltToggleCommand() {

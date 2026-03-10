@@ -55,6 +55,14 @@ class ReadyToScoreEvaluatorTest {
     }
 
     @Test
+    void notReadyWhenMotionNotSettled() {
+        ReadyToScoreResult result = ReadyToScoreEvaluator.evaluate(
+                inputs().withFeedGateReady(false).build());
+        assertFalse(result.ready());
+        assertEquals("Motion not settled", result.reason());
+    }
+
+    @Test
     void readyWhenAllConditionsSatisfied() {
         ReadyToScoreResult result = ReadyToScoreEvaluator.evaluate(inputs().withAlignPhase("CLEAR").build());
         assertTrue(result.ready());
@@ -75,6 +83,7 @@ class ReadyToScoreEvaluatorTest {
         private boolean hasShootableTarget = true;
         private double yawDeg = 0.5;
         private double yawToleranceDeg = 2.0;
+        private boolean feedGateReady = true;
 
         InputsBuilder withIntakeHomed(boolean value) {
             intakeHomed = value;
@@ -121,6 +130,11 @@ class ReadyToScoreEvaluatorTest {
             return this;
         }
 
+        InputsBuilder withFeedGateReady(boolean value) {
+            feedGateReady = value;
+            return this;
+        }
+
         ReadyToScoreEvaluator.Inputs build() {
             return new ReadyToScoreEvaluator.Inputs(
                     intakeHomed,
@@ -131,7 +145,8 @@ class ReadyToScoreEvaluatorTest {
                     geometryFeasible,
                     hasShootableTarget,
                     yawDeg,
-                    yawToleranceDeg);
+                    yawToleranceDeg,
+                    feedGateReady);
         }
     }
 }

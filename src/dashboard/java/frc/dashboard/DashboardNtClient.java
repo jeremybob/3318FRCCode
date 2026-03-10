@@ -75,7 +75,27 @@ public class DashboardNtClient implements AutoCloseable {
     private final BooleanSubscriber alignShootableSub =
             table.getBooleanTopic("align/has_shootable_target").subscribe(false);
     private final DoubleSubscriber alignYawSub = table.getDoubleTopic("align/yaw_deg").subscribe(Double.NaN);
+    private final DoubleSubscriber alignAimErrorSub =
+            table.getDoubleTopic("align/aim_error_deg").subscribe(Double.NaN);
+    private final DoubleSubscriber alignLeadYawSub =
+            table.getDoubleTopic("align/lead_yaw_deg").subscribe(Double.NaN);
     private final DoubleSubscriber alignPitchSub = table.getDoubleTopic("align/pitch_deg").subscribe(Double.NaN);
+    private final DoubleSubscriber alignTargetRpsSub =
+            table.getDoubleTopic("align/target_rps").subscribe(Double.NaN);
+    private final DoubleSubscriber alignRadialVelocitySub =
+            table.getDoubleTopic("align/radial_velocity_mps").subscribe(Double.NaN);
+    private final DoubleSubscriber alignLateralVelocitySub =
+            table.getDoubleTopic("align/lateral_velocity_mps").subscribe(Double.NaN);
+    private final DoubleSubscriber alignCommandedXVelocitySub =
+            table.getDoubleTopic("align/commanded_x_mps").subscribe(Double.NaN);
+    private final DoubleSubscriber alignCommandedYVelocitySub =
+            table.getDoubleTopic("align/commanded_y_mps").subscribe(Double.NaN);
+    private final DoubleSubscriber alignTranslationCapSub =
+            table.getDoubleTopic("align/translation_cap_mps").subscribe(Double.NaN);
+    private final DoubleSubscriber alignTimeOfFlightSub =
+            table.getDoubleTopic("align/time_of_flight_sec").subscribe(Double.NaN);
+    private final BooleanSubscriber alignFeedGateReadySub =
+            table.getBooleanTopic("align/feed_gate_ready").subscribe(false);
     private final StringSubscriber alignAbortSub = table.getStringTopic("align/last_abort_reason").subscribe("");
 
     private final BooleanSubscriber readySub = table.getBooleanTopic("shot/ready").subscribe(false);
@@ -312,7 +332,17 @@ public class DashboardNtClient implements AutoCloseable {
                 alignGeometrySub.get(),
                 alignShootableSub.get(),
                 alignYawSub.get(),
+                alignAimErrorSub.get(),
+                alignLeadYawSub.get(),
                 alignPitchSub.get(),
+                alignTargetRpsSub.get(),
+                alignRadialVelocitySub.get(),
+                alignLateralVelocitySub.get(),
+                alignCommandedXVelocitySub.get(),
+                alignCommandedYVelocitySub.get(),
+                alignTranslationCapSub.get(),
+                alignTimeOfFlightSub.get(),
+                alignFeedGateReadySub.get(),
                 alignAbortSub.get(),
                 readySub.get(),
                 readyReasonSub.get(),
