@@ -1,6 +1,6 @@
 # 3318 FRC Student User Guide (2026)
 
-Last updated: 2026-02-21
+Last updated: 2026-03-10
 Source of truth: `src/main/java/frc/robot/Constants.java`, `src/main/java/frc/robot/RobotContainer.java`
 
 ## 1. What this guide covers
@@ -19,7 +19,7 @@ The older setup guide in `docs/FRC_Robot_Setup_Guide.docx` had drift from curren
 
 - Teleop controller mapping now matches current code in `RobotContainer`
 - Shooter controls moved to operator controller
-- Climber now includes a safety arm gate (`Start + Back`)
+- Climber bindings removed (climber hardware currently disabled)
 - Driver is now drive-focused only (no shoot/intake binds)
 - Intake tilt conversion reflects current code default (`360.0 / 10.0`)
 
@@ -56,7 +56,6 @@ Then confirm vendor JSONs exist in `vendordeps/`:
 | Intake Tilt (SparkMax) / Roller (TalonFX) | 14 / 15 |
 | Hopper Floor (SparkMax) | 19 |
 | Feeder (SparkMax) | 18 |
-| Climber Leader / Follower | 20 / 21 |
 
 ### 4.2 DIO ports
 
@@ -89,8 +88,6 @@ Update these in `src/main/java/frc/robot/Constants.java` based on your real robo
 - `Intake.TILT_POS_CONV_DEG` (code default is `360.0 / 10.0`; verify your actual ratio)
 - `Intake.INTAKE_DOWN_DEG`
 - `Vision.CAMERA_NAME`
-- `Climber.FWD_SOFT_LIMIT`
-- `Climber.LEVEL1_TARGET_ROT`
 - Shooter/drive/steer PID values marked `TUNE ME`
 
 ## 6. Swerve offset calibration quick steps
@@ -126,7 +123,6 @@ Current named events available in paths:
 - `HomeIntake`
 - `IntakeGamePiece`
 - `AutoShoot`
-- `Level1Climb`
 
 ## 8. PhotonVision configuration
 
@@ -194,6 +190,8 @@ If Java still is not found, set one of:
 
 ## 10. Current two-controller teleop mapping (audited)
 
+For a drive-team quick sheet, also see `docs/DRIVER_OPERATOR_CONTROLS.md`.
+
 Controller ports (`Constants.OI`):
 
 - Driver controller: port `0`
@@ -203,27 +201,27 @@ Controller ports (`Constants.OI`):
 
 - Left stick Y/X: field-relative translation
 - Right stick X: rotate
+- Right Trigger (hold): precision mode (reduced speed)
 - Hold Left Bumper: temporary robot-relative drive
-- Y: zero heading
-- B: emergency stop swerve drive motors
+- Y (press): zero heading
+- B (hold): emergency stop swerve drive motors
+- X (hold): X-lock (wheel lock to resist pushing)
 
 ### 10.2 Operator (mechanisms)
 
-- Right Trigger: vision align + shoot
-- Right Bumper: fallback shoot (no vision alignment)
+- Right Stick Y: manual intake tilt
+- Left Stick Y: manual hopper jog
+- A (press): align-only test (no feed/shoot)
+- Right Trigger (>= 0.20, hold): vision align + shoot
+- Right Bumper (hold): fallback shoot (no vision alignment)
 - Left Trigger (hold): intake roller in
 - Left Bumper (hold): intake roller reverse/eject
-- X: intake re-home
-- Left Stick Y: manual hopper jog
-- B: climber stop
+- X (press): intake re-home
+- Y (press): intake tilt toggle (deploy/stow)
 
-### 10.3 Climber safety arm gate
+### 10.3 Climber status
 
-Manual climber and auto Level 1 climb are safety-gated:
-
-- Climb is armed only while **both** `Start + Back` are held
-- Right Stick Y controls manual climber only when armed
-- `A` triggers auto Level 1 climb only when `Start + Back` are also held
+Climber controls are currently disabled in code (no active operator bindings).
 
 ## 11. Pre-match setup and config checklist
 
@@ -243,7 +241,7 @@ Manual climber and auto Level 1 climb are safety-gated:
 - Field-relative feels wrong: zero heading (`Y`) while robot faces field forward
 - Vision shoot aborts: check PhotonVision target visibility and camera name match
 - Intake position commands ignored: intake not homed; re-home with operator `X`
-- Climber not moving: ensure `Start + Back` gate is held
+- Climber not moving: climber controls are disabled in this build
 - Build errors for motor classes: missing vendor dependency JSON/install
 
 ## 13. Suggested team workflow
