@@ -964,13 +964,21 @@ public class RobotContainer implements RobotRuntimeContainer {
                         buildIntakeHomeCommand(),
                         Commands.none(),
                         () -> !intake.isHomed()),
-                // Deploy arm to pickup position
-                Commands.runOnce(() -> intake.setTiltPosition(Constants.Intake.INTAKE_DOWN_DEG), intake),
-                // Spin rollers with stall detection — auto-reverses if jammed.
-                // 4-second timeout allows time to drive over fuel and intake it.
-                new IntakeRollerCommand(intake, 0.8).withTimeout(4.0),
-                // Stop rollers and leave arm down (ready to stow)
-                Commands.runOnce(() -> intake.setRollerPower(0.0), intake))
+                // Continue only if homing succeeded; otherwise abort loudly.
+                Commands.either(
+                        Commands.sequence(
+                                // Deploy arm to pickup position
+                                Commands.runOnce(() -> intake.setTiltPosition(Constants.Intake.INTAKE_DOWN_DEG), intake),
+                                // Spin rollers with stall detection — auto-reverses if jammed.
+                                // 4-second timeout allows time to drive over fuel and intake it.
+                                new IntakeRollerCommand(intake, 0.8).withTimeout(4.0),
+                                // Stop rollers and leave arm down (ready to stow)
+                                Commands.runOnce(() -> intake.setRollerPower(0.0), intake)),
+                        Commands.runOnce(() -> {
+                            intake.setRollerPower(0.0);
+                            System.out.println("[RobotContainer] AutoIntakeFuel aborted: intake not homed after homing attempt.");
+                        }, intake),
+                        intake::isHomed))
                 .withName("AutoIntakeFuel");
     }
 
