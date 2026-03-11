@@ -491,12 +491,14 @@ public final class Constants {
         // Verify this band on-robot after camera pitch is finalized.
         public static final double MAX_SHOT_PITCH_DEG =  40.0; // TUNE ME
 
-        // PD controller for rotating toward a vision target.
-        // Bias the tune toward strong acquisition with more damping near center
-        // so the robot stops hunting back and forth on noisy tag updates.
-        public static final double TURN_kP     = 0.11;   // TUNE ME
-        public static final double TURN_kD     = 0.012;  // TUNE ME
-        public static final double MAX_ROT_CMD = 0.95;   // rad/s cap during alignment
+        // Filter raw camera yaw before feeding it into the turn controller.
+        // 0 = no filtering, closer to 1 = heavier smoothing.
+        public static final double YAW_FILTER_ALPHA = 0.65; // TUNE ME
+        // P-only turn control works better on this low-rate vision signal than a
+        // noisy derivative term. Keep authority high, then smooth the input.
+        public static final double TURN_kP     = 0.14;   // TUNE ME
+        public static final double TURN_kD     = 0.0;    // TUNE ME
+        public static final double MAX_ROT_CMD = 1.15;   // rad/s cap during alignment
 
         // ---- Camera mount position ----
         // Used for pitch-based distance estimation.
@@ -523,14 +525,14 @@ public final class Constants {
         // Match AlignOnly so both commands feel identical while turning to target.
         public static final double MAX_AUTO_AIM_OMEGA_RADPS = Vision.MAX_ROT_CMD;
         // While the target is out of frame, keep sweeping at a controlled rate.
-        public static final double SEARCH_OMEGA_RADPS = 0.40; // TUNE ME
+        public static final double SEARCH_OMEGA_RADPS = 0.45; // TUNE ME
         // Larger yaw errors are acquisition problems, not impossible shot geometry.
         public static final double ACQUIRE_YAW_MAX_DEG = 30.0; // TUNE ME
 
         // Match AlignOnly tolerance and stable-hold timing before feeding.
         public static final double YAW_TOLERANCE_DEG = Vision.YAW_TOLERANCE_DEG;
         public static final double RPS_TOLERANCE_RPS = 1.5; // TUNE ME
-        public static final double SETTLE_TIME_SEC = 0.28; // TUNE ME
+        public static final double SETTLE_TIME_SEC = 0.30; // TUNE ME
         // During continuous hold-to-shoot, tolerate brief target/yaw dropouts
         // before stopping feed and forcing a full re-align.
         public static final double CONTINUOUS_FEED_REACQUIRE_SEC = 0.25; // TUNE ME

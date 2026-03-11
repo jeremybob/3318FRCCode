@@ -31,6 +31,7 @@ public class AlignOnlyCommand extends Command {
     private final Timer noTargetTimer = new Timer();
     private final Timer alignTimer = new Timer();
     private final Timer alignedHoldTimer = new Timer();
+    private double filteredYawDeg = Double.NaN;
 
     private boolean finished;
     private String finishReason = "";
@@ -52,10 +53,12 @@ public class AlignOnlyCommand extends Command {
         alignTimer.restart();
         alignedHoldTimer.stop();
         alignedHoldTimer.reset();
+        filteredYawDeg = Double.NaN;
 
         SmartDashboard.putString("AlignOnly/State", "ALIGN");
         SmartDashboard.putString("AlignOnly/FinishReason", "");
         SmartDashboard.putNumber("AlignOnly/YawError", Double.NaN);
+        SmartDashboard.putNumber("AlignOnly/FilteredYawError", Double.NaN);
         SmartDashboard.putNumber("AlignOnly/RotCmd", 0.0);
     }
 
@@ -66,9 +69,11 @@ public class AlignOnlyCommand extends Command {
             swerve.drive(0, 0, 0, false);
             alignedHoldTimer.stop();
             alignedHoldTimer.reset();
+            filteredYawDeg = Double.NaN;
 
             SmartDashboard.putString("AlignOnly/State", "NO_TARGET");
             SmartDashboard.putNumber("AlignOnly/YawError", Double.NaN);
+            SmartDashboard.putNumber("AlignOnly/FilteredYawError", Double.NaN);
             SmartDashboard.putNumber("AlignOnly/RotCmd", 0.0);
 
             if (noTargetTimer.hasElapsed(NO_TARGET_TIMEOUT_SEC)) {
@@ -81,13 +86,15 @@ public class AlignOnlyCommand extends Command {
         noTargetTimer.reset();
 
         double yawDeg = result.yawDeg();
+        double filteredYawDeg = filterYaw(yawDeg);
         double rotCmd = MathUtil.clamp(
-                turnPID.calculate(yawDeg, 0.0),
+                turnPID.calculate(filteredYawDeg, 0.0),
                 -Constants.Vision.MAX_ROT_CMD,
                 Constants.Vision.MAX_ROT_CMD);
 
         SmartDashboard.putNumber("AlignOnly/TargetTagId", result.tagId());
         SmartDashboard.putNumber("AlignOnly/YawError", yawDeg);
+        SmartDashboard.putNumber("AlignOnly/FilteredYawError", filteredYawDeg);
         SmartDashboard.putNumber("AlignOnly/RotCmd", rotCmd);
 
         if (turnPID.atSetpoint()) {
@@ -140,5 +147,19 @@ public class AlignOnlyCommand extends Command {
         }
         double ageSec = Timer.getFPGATimestamp() - result.timestampSec();
         return ageSec < Constants.Vision.TARGET_LOSS_TOLERANCE_SEC;
+    }
+
+    private double filterYaw(double rawYawDeg) {
+        if (!Double.isFinite(rawYawDeg)) {
+            filteredYawDeg = Double.NaN;
+            return Double.NaN;
+        }
+        if (!Double.isFinite(filteredYawDeg)) {
+            filteredYawDeg = rawYawDeg;
+        } else {
+            filteredYawDeg = Constants.Vision.YAW_FILTER_ALPHA * filteredYawDeg
+                    + (1.0 - Constants.Vision.YAW_FILTER_ALPHA) * rawYawDeg;
+        }
+        return filteredYawDeg;
     }
 }

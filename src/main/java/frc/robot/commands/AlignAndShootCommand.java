@@ -97,6 +97,7 @@ public class AlignAndShootCommand extends Command {
     private final Timer continuousLossTimer = new Timer();
     private double searchRotationSign = 1.0;
     private boolean seenTargetThisRun = false;
+    private double filteredYawDeg = Double.NaN;
 
     private String workState = "IDLE";
     private boolean workCommandActive = false;
@@ -147,6 +148,7 @@ public class AlignAndShootCommand extends Command {
         resetContinuousLossTimer();
         searchRotationSign = 1.0;
         seenTargetThisRun = false;
+        filteredYawDeg = Double.NaN;
 
         workState = State.ALIGN.name();
         workCommandActive = true;
@@ -243,6 +245,7 @@ public class AlignAndShootCommand extends Command {
             workTimeOfFlightSec = Double.NaN;
             workFeedGateReady = false;
             resetFeedGateTimer();
+            filteredYawDeg = Double.NaN;
 
             if (seenTargetThisRun) {
                 workState = "WAIT_TARGET";
@@ -265,6 +268,7 @@ public class AlignAndShootCommand extends Command {
 
         workPitchDeg = result.pitchDeg();
         workYawDeg = result.yawDeg();
+        double filteredYawDeg = filterYaw(result.yawDeg());
         if (!isShotPitchFeasible(result.pitchDeg())) {
             shooter.stop();
             workHasShootableTarget = false;
@@ -274,26 +278,26 @@ public class AlignAndShootCommand extends Command {
             return;
         }
 
-        if (!isWithinTrackingYaw(result.yawDeg())) {
+        if (!isWithinTrackingYaw(filteredYawDeg)) {
             shooter.stop();
             workGeometryFeasible = false;
             workHasShootableTarget = false;
-            workAimErrorDeg = result.yawDeg();
+            workAimErrorDeg = filteredYawDeg;
             workLeadYawDeg = 0.0;
             workRadialVelocityMps = 0.0;
             workLateralVelocityMps = 0.0;
             workTimeOfFlightSec = Double.NaN;
             workFeedGateReady = false;
             resetFeedGateTimer();
-            updateSearchDirectionFromYaw(result.yawDeg());
-            driveAcquireTarget(result.yawDeg());
+            updateSearchDirectionFromYaw(filteredYawDeg);
+            driveAcquireTarget(filteredYawDeg);
             if (alignOverallTimer.hasElapsed(ALIGN_CONVERGENCE_TIMEOUT_SEC)) {
                 abort("Target yaw acquisition timeout");
             }
             return;
         }
 
-        ShotTracking tracking = buildStationaryTracking(result);
+        ShotTracking tracking = buildStationaryTracking(result, filteredYawDeg);
         if (!tracking.solution().feasible()) {
             shooter.stop();
             workHasShootableTarget = false;
@@ -339,7 +343,7 @@ public class AlignAndShootCommand extends Command {
             return;
         }
 
-        ShotTracking tracking = buildStationaryTracking(result);
+        ShotTracking tracking = buildStationaryTracking(result, filterYaw(result.yawDeg()));
         if (!tracking.solution().feasible() || !tracking.feedGateReady()) {
             if (continuousFeedUntilInterrupted) {
                 if (shouldHoldContinuousFeed()) {
@@ -383,7 +387,7 @@ public class AlignAndShootCommand extends Command {
             return;
         }
 
-        ShotTracking tracking = buildStationaryTracking(result);
+        ShotTracking tracking = buildStationaryTracking(result, filterYaw(result.yawDeg()));
         boolean yawAligned = Math.abs(tracking.aimErrorDeg()) <= Constants.AlignShoot.YAW_TOLERANCE_DEG;
         if (!tracking.solution().feasible() || !yawAligned) {
             if (continuousFeedUntilInterrupted) {
@@ -467,13 +471,13 @@ public class AlignAndShootCommand extends Command {
         SmartDashboard.putBoolean("AlignShoot/FeedGateReady", workFeedGateReady);
     }
 
-    private ShotTracking buildStationaryTracking(VisionResult result) {
+    private ShotTracking buildStationaryTracking(VisionResult result, double filteredYawDeg) {
         double rawYawDeg = result.yawDeg();
         double distanceM = estimateDistanceM(result);
         double pitchDeg = result.pitchDeg();
         ShooterSubsystem.ShotSolution solution = ShooterSubsystem.calculateMovingShotSolution(distanceM, 0.0, 0.0);
 
-        double pidOutput = turnPID.calculate(rawYawDeg, 0.0);
+        double pidOutput = turnPID.calculate(filteredYawDeg, 0.0);
         boolean aligned = turnPID.atSetpoint();
         double rotCmd = aligned
                 ? 0.0
@@ -488,7 +492,7 @@ public class AlignAndShootCommand extends Command {
 
         return new ShotTracking(
                 rawYawDeg,
-                rawYawDeg,
+                filteredYawDeg,
                 0.0,
                 pitchDeg,
                 distanceM,
@@ -648,6 +652,20 @@ public class AlignAndShootCommand extends Command {
             intake.setRollerPower(Constants.Shooter.FEED_POWER);
         }
         swerve.driveRobotRelative(new ChassisSpeeds(0.0, 0.0, 0.0));
+    }
+
+    private double filterYaw(double rawYawDeg) {
+        if (!Double.isFinite(rawYawDeg)) {
+            filteredYawDeg = Double.NaN;
+            return Double.NaN;
+        }
+        if (!Double.isFinite(filteredYawDeg)) {
+            filteredYawDeg = rawYawDeg;
+        } else {
+            filteredYawDeg = Constants.Vision.YAW_FILTER_ALPHA * filteredYawDeg
+                    + (1.0 - Constants.Vision.YAW_FILTER_ALPHA) * rawYawDeg;
+        }
+        return filteredYawDeg;
     }
 
     private void updateSearchDirectionFromYaw(double yawDeg) {
