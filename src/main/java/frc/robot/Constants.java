@@ -301,9 +301,9 @@ public final class Constants {
         // TUNE ME: Measure the actual launch angle with a protractor or slow-mo video.
         public static final double SHOT_ANGLE_DEG        = 55.0;  // TUNE ME
         // Height of the shooter exit above the floor (20 inches).
-        public static final double SHOOTER_EXIT_HEIGHT_M = Units.inchesToMeters(20.0);
+        public static final double SHOOTER_EXIT_HEIGHT_M = Units.inchesToMeters(16.5);
         // Height of the HUB scoring opening (may differ from tag height of 1.124m).
-        public static final double HUB_SCORING_HEIGHT_M  = 1.124; // TUNE ME
+        public static final double HUB_SCORING_HEIGHT_M  = 1.8288; // TUNE ME
 
         // RPS clamps — keep within motor/mechanism limits.
         // Kraken free speed ≈ 100 RPS at 12V; leave headroom for voltage droop.
@@ -506,7 +506,7 @@ public final class Constants {
         // Only height is used today; split the 9 in offset into X/Y components if a
         // full robot-to-camera transform is added later.
         public static final double CAMERA_UP_M       = Units.inchesToMeters(16.5);
-        public static final double CAMERA_PITCH_RAD  = Math.toRadians(20.0); // tilted up, approximate
+        public static final double CAMERA_PITCH_RAD  = Math.toRadians(10.5); // tilted up, approximate
 
         // ---- Alliance-specific HUB tag IDs for targeting ----
         // AlignAndShootCommand should ONLY aim at your alliance's HUB tags.
