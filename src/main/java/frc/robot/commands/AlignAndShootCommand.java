@@ -7,7 +7,7 @@
 // SEQUENCE:
 //   1. ALIGN    - Spin shooter and rotate in place until yaw + RPM are ready
 //   2. CLEAR    - Keep aiming in place while the feeder clears the note
-//   3. FEED     - Continue aiming in place while feeding into the shooter
+//   3. FEED     - Continue aiming in place while feeding until interrupted
 //   4. DONE     - Command finishes, everything stops
 // ============================================================================
 package frc.robot.commands;
@@ -80,6 +80,7 @@ public class AlignAndShootCommand extends Command {
     private final HopperSubsystem hopper;
     private final IntakeSubsystem intake;
     private final AtomicReference<VisionResult> visionRef;
+    private final boolean continuousFeedUntilInterrupted;
     private final PIDController turnPID = new PIDController(
             Constants.Vision.TURN_kP,
             0.0,
@@ -120,13 +121,15 @@ public class AlignAndShootCommand extends Command {
             FeederSubsystem feeder,
             HopperSubsystem hopper,
             IntakeSubsystem intake,
-            AtomicReference<VisionResult> visionRef) {
+            AtomicReference<VisionResult> visionRef,
+            boolean continuousFeedUntilInterrupted) {
         this.swerve = swerve;
         this.shooter = shooter;
         this.feeder = feeder;
         this.hopper = hopper;
         this.intake = intake;
         this.visionRef = visionRef;
+        this.continuousFeedUntilInterrupted = continuousFeedUntilInterrupted;
 
         addRequirements(swerve, shooter, feeder, hopper, intake);
         turnPID.setTolerance(Constants.Vision.YAW_TOLERANCE_DEG);
@@ -302,13 +305,23 @@ public class AlignAndShootCommand extends Command {
     private void executeClear() {
         VisionResult result = visionRef.get();
         if (!hasShootableTarget(result)) {
-            abort("Vision lost before feed");
+            if (continuousFeedUntilInterrupted) {
+                stopFeedPath();
+                transitionTo(State.ALIGN);
+            } else {
+                abort("Vision lost before feed");
+            }
             return;
         }
 
         ShotTracking tracking = buildStationaryTracking(result);
         if (!tracking.solution().feasible() || !tracking.feedGateReady()) {
-            abort("Feed gate lost before feed");
+            if (continuousFeedUntilInterrupted) {
+                stopFeedPath();
+                transitionTo(State.ALIGN);
+            } else {
+                abort("Feed gate lost before feed");
+            }
             return;
         }
 
@@ -325,13 +338,24 @@ public class AlignAndShootCommand extends Command {
     private void executeFeed() {
         VisionResult result = visionRef.get();
         if (!hasShootableTarget(result)) {
-            abort("Vision lost during feed");
+            if (continuousFeedUntilInterrupted) {
+                stopFeedPath();
+                transitionTo(State.ALIGN);
+            } else {
+                abort("Vision lost during feed");
+            }
             return;
         }
 
         ShotTracking tracking = buildStationaryTracking(result);
-        if (!tracking.solution().feasible() || !tracking.feedGateReady()) {
-            abort("Feed gate lost during feed");
+        boolean yawAligned = Math.abs(tracking.aimErrorDeg()) <= Constants.AlignShoot.YAW_TOLERANCE_DEG;
+        if (!tracking.solution().feasible() || !yawAligned) {
+            if (continuousFeedUntilInterrupted) {
+                stopFeedPath();
+                transitionTo(State.ALIGN);
+            } else {
+                abort("Feed gate lost during feed");
+            }
             return;
         }
 
@@ -341,7 +365,8 @@ public class AlignAndShootCommand extends Command {
         hopper.setPower(Constants.Shooter.FEED_POWER);
         intake.setRollerPower(Constants.Shooter.FEED_POWER);
 
-        if (stateTimer.hasElapsed(Constants.Shooter.FEED_TIME_SEC)) {
+        if (!continuousFeedUntilInterrupted
+                && stateTimer.hasElapsed(Constants.Shooter.FEED_TIME_SEC)) {
             transitionTo(State.DONE);
         }
     }
@@ -550,6 +575,12 @@ public class AlignAndShootCommand extends Command {
     private void resetFeedGateTimer() {
         feedGateTimer.stop();
         feedGateTimer.reset();
+    }
+
+    private void stopFeedPath() {
+        feeder.stop();
+        hopper.stop();
+        intake.setRollerPower(0);
     }
 
     private void updateSearchDirectionFromYaw(double yawDeg) {

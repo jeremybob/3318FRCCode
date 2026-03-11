@@ -349,7 +349,7 @@ public class RobotContainer implements RobotRuntimeContainer {
 
         // AutoShoot: align to HUB via vision and shoot FUEL (timeout in Constants.Auto)
         NamedCommands.registerCommand(RobotAutoCatalog.NAMED_AUTO_SHOOT,
-                buildAlignAndShootCommand().withTimeout(Constants.Auto.AUTO_SHOOT_TIMEOUT_SEC));
+                buildAlignAndShootCommand(false).withTimeout(Constants.Auto.AUTO_SHOOT_TIMEOUT_SEC));
 
         // --- CLIMBER DISABLED ---
         // Level1Climb: automatically extends climber to Level 1 height.
@@ -594,15 +594,11 @@ public class RobotContainer implements RobotRuntimeContainer {
         //             climber.stop();
         //         }, climber));
 
-        // Right Trigger: Vision-required auto-align, hold still, and shoot.
-        // whileTrue + repeatedly keeps running full shoot cycles for the entire hold.
+        // Right Trigger: Vision-required auto-align, then feed continuously while held.
         // Threshold matches TRIGGER_ACTIVE_THRESHOLD so dashboard and actual trigger agree.
         operatorController.rightTrigger(TRIGGER_ACTIVE_THRESHOLD).whileTrue(
-                Commands.sequence(
-                        Commands.runOnce(() -> logControlEvent("Operator:RT", "AlignAndShoot requested")),
-                        buildAlignAndShootCommand()
-                                .withTimeout(Constants.Auto.AUTO_SHOOT_TIMEOUT_SEC)
-                                .repeatedly()));
+                buildAlignAndShootCommand(true)
+                        .beforeStarting(() -> logControlEvent("Operator:RT", "AlignAndShoot requested")));
 
         // Right Bumper: OVERRIDE shot at fallback speed (no alignment/vision required).
         // whileTrue + repeatedly keeps running full shoot cycles for the entire hold.
@@ -840,6 +836,10 @@ public class RobotContainer implements RobotRuntimeContainer {
     }
 
     private Command buildAlignAndShootCommand() {
+        return buildAlignAndShootCommand(true);
+    }
+
+    private Command buildAlignAndShootCommand(boolean continuousFeedUntilInterrupted) {
         if (!Constants.Vision.ENABLE_VISION) {
             return Commands.print("[RobotContainer] AlignAndShoot unavailable: vision is disabled in Constants.");
         }
@@ -849,7 +849,8 @@ public class RobotContainer implements RobotRuntimeContainer {
                 feeder,
                 hopper,
                 intake,
-                visionResult)
+                visionResult,
+                continuousFeedUntilInterrupted)
                 .withName("AlignAndShoot");
     }
 
