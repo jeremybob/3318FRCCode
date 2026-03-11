@@ -539,6 +539,11 @@ class RobotDashboardServiceTest {
                 Double.NaN,
                 Double.NaN,
                 Double.NaN,
+                Double.NaN,
+                0,
+                0,
+                Double.NaN,
+                Double.NaN,
                 // CAN health
                 0.0,
                 0,

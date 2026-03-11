@@ -495,9 +495,9 @@ public final class Constants {
         // Competition-biased starting tune for a swerve aiming at a low-FPS USB
         // AprilTag feed: more P for authority, lighter D so camera noise does not
         // make the robot dither near setpoint.
-        public static final double TURN_kP     = 0.12;   // TUNE ME
+        public static final double TURN_kP     = 0.14;   // TUNE ME
         public static final double TURN_kD     = 0.005;  // TUNE ME
-        public static final double MAX_ROT_CMD = 1.0;    // rad/s cap during alignment
+        public static final double MAX_ROT_CMD = 1.15;   // rad/s cap during alignment
 
         // ---- Camera mount position ----
         // Used for pitch-based distance estimation.
@@ -524,7 +524,7 @@ public final class Constants {
         // Match AlignOnly so both commands feel identical while turning to target.
         public static final double MAX_AUTO_AIM_OMEGA_RADPS = Vision.MAX_ROT_CMD;
         // While the target is out of frame, keep sweeping at a controlled rate.
-        public static final double SEARCH_OMEGA_RADPS = 0.75; // TUNE ME
+        public static final double SEARCH_OMEGA_RADPS = 0.45; // TUNE ME
         // Larger yaw errors are acquisition problems, not impossible shot geometry.
         public static final double ACQUIRE_YAW_MAX_DEG = 30.0; // TUNE ME
 

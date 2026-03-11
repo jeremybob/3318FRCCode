@@ -155,10 +155,20 @@ public class DashboardNtClient implements AutoCloseable {
             table.getDoubleTopic("vision/yaw_deg").subscribe(Double.NaN);
     private final DoubleSubscriber visionPitchSub =
             table.getDoubleTopic("vision/pitch_deg").subscribe(Double.NaN);
+    private final DoubleSubscriber visionBestTagYawSub =
+            table.getDoubleTopic("vision/best_tag_yaw_deg").subscribe(Double.NaN);
+    private final DoubleSubscriber visionBestTagPitchSub =
+            table.getDoubleTopic("vision/best_tag_pitch_deg").subscribe(Double.NaN);
     private final DoubleSubscriber visionDistanceSub =
             table.getDoubleTopic("vision/distance_m").subscribe(Double.NaN);
     private final DoubleSubscriber visionTagPixelHeightSub =
             table.getDoubleTopic("vision/tag_pixel_height_px").subscribe(Double.NaN);
+    private final IntegerSubscriber visionHubTagCountSub =
+            table.getIntegerTopic("vision/hub_tag_count").subscribe(0);
+    private final IntegerSubscriber visionHubFaceCountSub =
+            table.getIntegerTopic("vision/hub_face_count").subscribe(0);
+    private final DoubleSubscriber visionHubSpanSub =
+            table.getDoubleTopic("vision/hub_span_px").subscribe(Double.NaN);
     private final DoubleSubscriber visionTargetTimestampSub =
             table.getDoubleTopic("vision/target_timestamp_sec").subscribe(Double.NaN);
 
@@ -379,8 +389,13 @@ public class DashboardNtClient implements AutoCloseable {
                 visionHasTargetSub.get(),
                 visionYawSub.get(),
                 visionPitchSub.get(),
+                visionBestTagYawSub.get(),
+                visionBestTagPitchSub.get(),
                 visionDistanceSub.get(),
                 visionTagPixelHeightSub.get(),
+                (int) visionHubTagCountSub.get(),
+                (int) visionHubFaceCountSub.get(),
+                visionHubSpanSub.get(),
                 visionTargetTimestampSub.get(),
                 // CAN health
                 canBusUtilizationSub.get(),

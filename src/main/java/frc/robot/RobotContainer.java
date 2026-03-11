@@ -703,12 +703,17 @@ public class RobotContainer implements RobotRuntimeContainer {
         boolean visionHasTarget = latestVision != null;
         double visionYawDeg = latestVision != null ? latestVision.yawDeg() : Double.NaN;
         double visionPitchDeg = latestVision != null ? latestVision.pitchDeg() : Double.NaN;
+        double visionBestTagYawDeg = latestVision != null ? latestVision.bestTagYawDeg() : Double.NaN;
+        double visionBestTagPitchDeg = latestVision != null ? latestVision.bestTagPitchDeg() : Double.NaN;
         double visionDistanceM = latestVision != null
                 ? latestVision.estimateDistanceM(
                         Constants.Vision.TAG_HEIGHT_M,
                         Constants.Vision.FOCAL_LENGTH_PIXELS)
                 : Double.NaN;
         double visionTagPixelHeightPx = latestVision != null ? latestVision.tagPixelHeight() : Double.NaN;
+        int visionHubTagCount = latestVision != null ? latestVision.hubTagCount() : 0;
+        int visionHubFaceCount = latestVision != null ? latestVision.hubFaceCount() : 0;
+        double visionHubSpanPx = latestVision != null ? latestVision.hubSpanPx() : Double.NaN;
         double visionTargetTimestampSec = latestVision != null ? latestVision.timestampSec() : Double.NaN;
 
         double batteryVoltage = RobotController.getBatteryVoltage();
@@ -799,8 +804,13 @@ public class RobotContainer implements RobotRuntimeContainer {
                 visionHasTarget,
                 visionYawDeg,
                 visionPitchDeg,
+                visionBestTagYawDeg,
+                visionBestTagPitchDeg,
                 visionDistanceM,
                 visionTagPixelHeightPx,
+                visionHubTagCount,
+                visionHubFaceCount,
+                visionHubSpanPx,
                 visionTargetTimestampSec,
                 // CAN health
                 canStatus.percentBusUtilization,

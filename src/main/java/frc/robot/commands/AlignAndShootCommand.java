@@ -95,6 +95,7 @@ public class AlignAndShootCommand extends Command {
     private final Timer alignOverallTimer = new Timer();
     private final Timer feedGateTimer = new Timer();
     private double searchRotationSign = 1.0;
+    private boolean seenTargetThisRun = false;
 
     private String workState = "IDLE";
     private boolean workCommandActive = false;
@@ -143,6 +144,7 @@ public class AlignAndShootCommand extends Command {
         turnPID.reset();
         resetFeedGateTimer();
         searchRotationSign = 1.0;
+        seenTargetThisRun = false;
 
         workState = State.ALIGN.name();
         workCommandActive = true;
@@ -172,7 +174,7 @@ public class AlignAndShootCommand extends Command {
             SmartDashboard.putBoolean("AlignShoot/HubInactiveWarning", false);
         }
 
-        shooter.setShooterVelocity(Constants.Shooter.TARGET_RPS);
+        shooter.stop();
         SmartDashboard.putString("AlignShoot/State", "ALIGN");
         updateTelemetry();
         publishTelemetry();
@@ -224,6 +226,7 @@ public class AlignAndShootCommand extends Command {
         workHasTarget = hasFreshTarget;
 
         if (!hasFreshTarget) {
+            shooter.stop();
             workGeometryFeasible = false;
             workHasShootableTarget = false;
             workYawDeg = Double.NaN;
@@ -238,7 +241,15 @@ public class AlignAndShootCommand extends Command {
             workTimeOfFlightSec = Double.NaN;
             workFeedGateReady = false;
             resetFeedGateTimer();
-            driveSearchPattern();
+
+            if (seenTargetThisRun) {
+                workState = "WAIT_TARGET";
+                swerve.drive(0, 0, 0, false);
+                SmartDashboard.putString("AlignShoot/State", "WAIT_TARGET");
+            } else {
+                workState = State.ALIGN.name();
+                driveSearchPattern();
+            }
 
             if (alignOverallTimer.hasElapsed(ALIGN_CONVERGENCE_TIMEOUT_SEC)) {
                 abort("No alliance HUB tag found");
@@ -246,9 +257,14 @@ public class AlignAndShootCommand extends Command {
             return;
         }
 
+        seenTargetThisRun = true;
+        workState = State.ALIGN.name();
+        SmartDashboard.putString("AlignShoot/State", "ALIGN");
+
         workPitchDeg = result.pitchDeg();
         workYawDeg = result.yawDeg();
         if (!isShotPitchFeasible(result.pitchDeg())) {
+            shooter.stop();
             workHasShootableTarget = false;
             workFeedGateReady = false;
             resetFeedGateTimer();
@@ -257,6 +273,7 @@ public class AlignAndShootCommand extends Command {
         }
 
         if (!isWithinTrackingYaw(result.yawDeg())) {
+            shooter.stop();
             workGeometryFeasible = false;
             workHasShootableTarget = false;
             workAimErrorDeg = result.yawDeg();
@@ -276,6 +293,7 @@ public class AlignAndShootCommand extends Command {
 
         ShotTracking tracking = buildStationaryTracking(result);
         if (!tracking.solution().feasible()) {
+            shooter.stop();
             workHasShootableTarget = false;
             workFeedGateReady = false;
             resetFeedGateTimer();
@@ -307,6 +325,7 @@ public class AlignAndShootCommand extends Command {
         if (!hasShootableTarget(result)) {
             if (continuousFeedUntilInterrupted) {
                 stopFeedPath();
+                shooter.stop();
                 transitionTo(State.ALIGN);
             } else {
                 abort("Vision lost before feed");
@@ -318,6 +337,7 @@ public class AlignAndShootCommand extends Command {
         if (!tracking.solution().feasible() || !tracking.feedGateReady()) {
             if (continuousFeedUntilInterrupted) {
                 stopFeedPath();
+                shooter.stop();
                 transitionTo(State.ALIGN);
             } else {
                 abort("Feed gate lost before feed");
@@ -340,6 +360,7 @@ public class AlignAndShootCommand extends Command {
         if (!hasShootableTarget(result)) {
             if (continuousFeedUntilInterrupted) {
                 stopFeedPath();
+                shooter.stop();
                 transitionTo(State.ALIGN);
             } else {
                 abort("Vision lost during feed");
@@ -352,6 +373,7 @@ public class AlignAndShootCommand extends Command {
         if (!tracking.solution().feasible() || !yawAligned) {
             if (continuousFeedUntilInterrupted) {
                 stopFeedPath();
+                shooter.stop();
                 transitionTo(State.ALIGN);
             } else {
                 abort("Feed gate lost during feed");

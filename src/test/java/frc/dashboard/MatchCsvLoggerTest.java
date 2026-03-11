@@ -34,7 +34,7 @@ class MatchCsvLoggerTest {
                 Double.NaN, Double.NaN, Double.NaN,
                 1, "TestEvent",
                 true, "OK", 0, "cam", "/dev/video0", "", "", 100, 10.0,
-                1, true, 1.2, -0.5, 2.5, 48.0, 10.0,
+                1, true, 1.2, -0.5, 1.8, -0.6, 2.5, 48.0, 3, 2, 120.0, 10.0,
                 0.5, 0, 0,
                 10.0, 20.0, 30.0, 40.0,
                 Double.NaN, Double.NaN, Double.NaN, Double.NaN,

@@ -177,8 +177,10 @@ public class DashboardFrame extends JFrame {
     private final JLabel visionTargetStatusLabel = new JLabel("Target: --");
     private final JLabel visionTargetAnglesLabel = new JLabel("Yaw: --  Pitch: --");
     private final JLabel visionTargetDistanceLabel = new JLabel("Distance: --  Height: --");
+    private final JLabel visionTargetDebugLabel = new JLabel("Best tag: --");
+    private final JLabel visionTargetCoverageLabel = new JLabel("Hub tags: --");
     private final JLabel visionTargetAgeLabel = new JLabel("Target age: --  Frame age: --");
-    private final JLabel visionPoseSourceLabel = new JLabel("Pose source: Odometry only");
+    private final JLabel visionPoseSourceLabel = new JLabel("Estimator: --");
     private JComboBox<String> visionStreamModeCombo;
     private JToggleButton visionStreamEnabledToggle;
     // Controls tab
@@ -465,6 +467,8 @@ public class DashboardFrame extends JFrame {
         styleMetricLabel(visionTargetStatusLabel);
         styleMetricLabel(visionTargetAnglesLabel);
         styleMetricLabel(visionTargetDistanceLabel);
+        styleMetricLabel(visionTargetDebugLabel);
+        styleMetricLabel(visionTargetCoverageLabel);
         styleMetricLabel(visionTargetAgeLabel);
         styleMetricLabel(visionPoseSourceLabel);
 
@@ -516,6 +520,8 @@ public class DashboardFrame extends JFrame {
                 visionTargetStatusLabel,
                 visionTargetAnglesLabel,
                 visionTargetDistanceLabel,
+                visionTargetDebugLabel,
+                visionTargetCoverageLabel,
                 visionTargetAgeLabel,
                 visionPoseSourceLabel));
         root.add(bottom, BorderLayout.SOUTH);
@@ -1076,7 +1082,8 @@ public class DashboardFrame extends JFrame {
         // Align pipeline
         alignPhaseLabel.setText("Align phase: " + data.alignState() + (data.alignCommandActive() ? " (ACTIVE)" : ""));
         aimErrorLabel.setText("Aim error: " + formatMaybe(data.alignAimErrorDeg()) + " deg");
-        yawLabel.setText("Raw yaw: " + formatMaybe(data.alignYawDeg()) + " deg");
+        yawLabel.setText("Hub yaw: " + formatMaybe(data.alignYawDeg()) + " deg"
+                + "  Best: " + formatMaybe(data.visionBestTagYawDeg()) + " deg");
         leadLabel.setText("Lead: " + formatMaybe(data.alignLeadYawDeg()) + " deg"
                 + "  Gate: " + yesNo(data.alignFeedGateReady()));
         pitchLabel.setText("Pitch: " + formatMaybe(data.alignPitchDeg()) + " deg");
@@ -1087,7 +1094,9 @@ public class DashboardFrame extends JFrame {
                 + "  cmd " + formatMaybe(data.alignCommandedXVelocityMps()) + "/"
                 + formatMaybe(data.alignCommandedYVelocityMps())
                 + "  cap " + formatMaybe(data.alignTranslationCapMps()));
-        visionLabel.setText("Vision: " + yesNo(data.alignHasTarget()) + "  Feasible: " + yesNo(data.alignGeometryFeasible()));
+        visionLabel.setText("Vision: " + yesNo(data.alignHasTarget())
+                + "  Feasible: " + yesNo(data.alignGeometryFeasible())
+                + "  Tags/Faces: " + data.visionHubTagCount() + "/" + data.visionHubFaceCount());
         abortLabel.setText("Last abort: " + sanitize(data.alignAbortReason()));
         updateYawBar(data.alignAimErrorDeg());
 
@@ -1118,7 +1127,8 @@ public class DashboardFrame extends JFrame {
 
         operatorVisionLabel.setText("Target: " + yesNo(data.alignHasTarget())
                 + "  Feasible: " + yesNo(data.alignGeometryFeasible())
-                + "  Gate: " + yesNo(data.alignFeedGateReady()));
+                + "  Gate: " + yesNo(data.alignFeedGateReady())
+                + "  Tags/Faces: " + data.visionHubTagCount() + "/" + data.visionHubFaceCount());
         operatorPhaseLabel.setText("Align phase: " + data.alignState());
         operatorMotionLabel.setText("Motion: rad " + formatMaybe(data.alignRadialVelocityMps())
                 + "  lat " + formatMaybe(data.alignLateralVelocityMps())
@@ -1262,17 +1272,44 @@ public class DashboardFrame extends JFrame {
     private void updateVisionTargetMetrics(DashboardData data) {
         boolean hasTarget = data.visionHasTarget() && data.visionTagId() >= 0;
         visionTargetStatusLabel.setText("Target: " + yesNo(hasTarget)
-                + (hasTarget ? "  Tag: " + data.visionTagId() : ""));
+                + (hasTarget ? "  Tag: " + data.visionTagId() : "")
+                + "  Est: " + visionEstimatorLabel(data));
         visionTargetStatusLabel.setForeground(hasTarget ? OK : WARN);
-        visionTargetAnglesLabel.setText("Yaw: " + formatMaybe(data.visionYawDeg())
+        visionTargetAnglesLabel.setText("Hub yaw: " + formatMaybe(data.visionYawDeg())
                 + " deg  Pitch: " + formatMaybe(data.visionPitchDeg()) + " deg");
         visionTargetDistanceLabel.setText("Distance: " + formatMaybe(data.visionDistanceM())
                 + " m  Height: " + formatMaybe(data.visionTagPixelHeightPx()) + " px");
+        visionTargetDebugLabel.setText("Best tag yaw: " + formatMaybe(data.visionBestTagYawDeg())
+                + " deg  dYaw: " + formatMaybe(hubYawDeltaDeg(data)) + " deg");
+        visionTargetCoverageLabel.setText("Hub tags: " + data.visionHubTagCount()
+                + "  Faces: " + data.visionHubFaceCount()
+                + "  Span: " + formatMaybe(data.visionHubSpanPx()) + " px");
         visionTargetAgeLabel.setText("Target age: " + formatMaybe(visionTargetAgeSec(data))
                 + " s  Frame age: " + formatMaybe(cameraFrameAgeSec(data)) + " s");
         visionTargetAgeLabel.setForeground(hasTarget ? OK : MUTED);
-        visionPoseSourceLabel.setText("Pose source: Odometry only");
-        visionPoseSourceLabel.setForeground(MUTED);
+        visionPoseSourceLabel.setText("Estimator: " + visionEstimatorLabel(data)
+                + "  Best-vs-hub: " + formatMaybe(hubYawDeltaDeg(data)) + " deg");
+        visionPoseSourceLabel.setForeground(hasTarget ? OK : MUTED);
+    }
+
+    private double hubYawDeltaDeg(DashboardData data) {
+        if (!Double.isFinite(data.visionYawDeg()) || !Double.isFinite(data.visionBestTagYawDeg())) {
+            return Double.NaN;
+        }
+        return data.visionYawDeg() - data.visionBestTagYawDeg();
+    }
+
+    private String visionEstimatorLabel(DashboardData data) {
+        if (!data.visionHasTarget()) {
+            return "NONE";
+        }
+        if (data.visionHubFaceCount() > 1) {
+            return "MULTI_FACE";
+        }
+        if (data.visionHubTagCount() > 1) {
+            return "PAIR_MIDPOINT";
+        }
+        return "SINGLE_TAG";
     }
 
     private double visionTargetAgeSec(DashboardData data) {

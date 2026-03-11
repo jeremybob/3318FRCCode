@@ -20,11 +20,13 @@
 // ============================================================================
 package frc.robot.vision;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
+import org.opencv.core.Mat;
 import org.opencv.core.Point;
 import org.opencv.core.Scalar;
-import org.opencv.core.Mat;
 import org.opencv.imgproc.Imgproc;
 
 import edu.wpi.first.apriltag.AprilTagDetection;
@@ -40,6 +42,7 @@ import edu.wpi.first.cscore.UsbCameraInfo;
 import edu.wpi.first.util.PixelFormat;
 import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.Timer;
+import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 
 import frc.robot.Constants;
 
@@ -214,50 +217,32 @@ public class RioVisionThread extends Thread {
                 Mat detectorFrame = VisionSupport.prepareDetectorFrame(mat, grayMat);
                 AprilTagDetection[] detections = detector.detect(detectorFrame);
                 int[] hubTagIds = getAllianceHubTagIds();
-                annotateFrame(mat, detections, hubTagIds);
+                VisionSupport.HubCenterEstimate hubEstimate = estimateHubCenter(detections, hubTagIds);
+                annotateFrame(mat, detections, hubTagIds, hubEstimate);
                 overlayOutput.putFrame(mat);
-                if (detections.length == 0) {
+                if (hubEstimate == null) {
                     latestResult.set(null);
+                    publishNoTargetVisionDebug();
                     continue;
                 }
 
-                // Filter for alliance HUB tags and pick the largest (closest)
-                AprilTagDetection best = null;
-                double bestPixelHeight = 0;
-
-                for (AprilTagDetection det : detections) {
-                    if (!isHubTag(det.getId(), hubTagIds)) {
-                        continue;
-                    }
-                    double pixelHeight = tagPixelHeight(det);
-                    if (pixelHeight > bestPixelHeight) {
-                        best = det;
-                        bestPixelHeight = pixelHeight;
-                    }
-                }
-
-                if (best == null) {
-                    latestResult.set(null);
-                    continue;
-                }
-
-                // Compute tag center from corner coordinates
-                double centerX = (best.getCornerX(0) + best.getCornerX(1)
-                        + best.getCornerX(2) + best.getCornerX(3)) / 4.0;
-                double centerY = (best.getCornerY(0) + best.getCornerY(1)
-                        + best.getCornerY(2) + best.getCornerY(3)) / 4.0;
-
-                double imageCenterX = Constants.Vision.CAMERA_WIDTH / 2.0;
-                double imageCenterY = Constants.Vision.CAMERA_HEIGHT / 2.0;
-
-                // Pixel-to-angle math (from the fallback plan doc)
-                double yawDeg = (centerX - imageCenterX) / imageCenterX
-                        * (Constants.Vision.HORIZONTAL_FOV_DEG / 2.0);
-                double pitchDeg = (imageCenterY - centerY) / imageCenterY
-                        * (Constants.Vision.VERTICAL_FOV_DEG / 2.0);
+                double hubYawDeg = pixelToYawDeg(hubEstimate.centerX());
+                double hubPitchDeg = pixelToPitchDeg(hubEstimate.centerY());
+                double bestTagYawDeg = pixelToYawDeg(hubEstimate.bestTagCenterX());
+                double bestTagPitchDeg = pixelToPitchDeg(hubEstimate.bestTagCenterY());
+                publishVisionDebug(hubEstimate, hubYawDeg, hubPitchDeg, bestTagYawDeg, bestTagPitchDeg);
 
                 latestResult.set(new VisionResult(
-                        best.getId(), yawDeg, pitchDeg, bestPixelHeight, timestampSec));
+                        hubEstimate.bestTagId(),
+                        hubYawDeg,
+                        hubPitchDeg,
+                        hubEstimate.bestTagPixelHeight(),
+                        timestampSec,
+                        bestTagYawDeg,
+                        bestTagPitchDeg,
+                        hubEstimate.hubTagCount(),
+                        hubEstimate.hubFaceCount(),
+                        hubEstimate.hubSpanPx()));
             } catch (Exception ex) {
                 // Log but don't crash — keep retrying next frame
                 System.err.println("[RioVisionThread] Frame processing error: " + ex.getMessage());
@@ -310,6 +295,133 @@ public class RioVisionThread extends Thread {
             if (id == fiducialId) return true;
         }
         return false;
+    }
+
+    private static VisionSupport.HubCenterEstimate estimateHubCenter(
+            AprilTagDetection[] detections,
+            int[] hubTagIds) {
+        if (detections.length == 0) {
+            return null;
+        }
+
+        AprilTagDetection bestHubDetection = null;
+        double bestPixelHeight = 0.0;
+        List<AprilTagDetection> filteredHubDetections = new ArrayList<>();
+
+        for (AprilTagDetection detection : detections) {
+            if (!isHubTag(detection.getId(), hubTagIds)) {
+                continue;
+            }
+            filteredHubDetections.add(detection);
+            double pixelHeight = tagPixelHeight(detection);
+            if (bestHubDetection == null || pixelHeight > bestPixelHeight) {
+                bestHubDetection = detection;
+                bestPixelHeight = pixelHeight;
+            }
+        }
+
+        if (bestHubDetection == null) {
+            return null;
+        }
+
+        int[] selectedHubTagIds = hubTagIds != null ? hubTagIds : hubTagIdsForTag(bestHubDetection.getId());
+        if (selectedHubTagIds == null) {
+            return null;
+        }
+
+        List<VisionSupport.HubTagObservation> observations = new ArrayList<>();
+        for (AprilTagDetection detection : filteredHubDetections) {
+            if (!isHubTag(detection.getId(), selectedHubTagIds)) {
+                continue;
+            }
+            observations.add(new VisionSupport.HubTagObservation(
+                    detection.getId(),
+                    hubFaceIndex(detection.getId(), selectedHubTagIds),
+                    tagCenterX(detection),
+                    tagCenterY(detection),
+                    tagPixelHeight(detection)));
+        }
+        return VisionSupport.estimateHubCenter(observations);
+    }
+
+    private static int[] hubTagIdsForTag(int fiducialId) {
+        if (isHubTag(fiducialId, Constants.Vision.RED_HUB_TAG_IDS)) {
+            return Constants.Vision.RED_HUB_TAG_IDS;
+        }
+        if (isHubTag(fiducialId, Constants.Vision.BLUE_HUB_TAG_IDS)) {
+            return Constants.Vision.BLUE_HUB_TAG_IDS;
+        }
+        return null;
+    }
+
+    private static int hubFaceIndex(int fiducialId, int[] hubTagIds) {
+        if (hubTagIds == null) {
+            return -1;
+        }
+        for (int i = 0; i + 1 < hubTagIds.length; i += 2) {
+            if (hubTagIds[i] == fiducialId || hubTagIds[i + 1] == fiducialId) {
+                return i / 2;
+            }
+        }
+        return -1;
+    }
+
+    private static double tagCenterX(AprilTagDetection detection) {
+        return (detection.getCornerX(0) + detection.getCornerX(1)
+                + detection.getCornerX(2) + detection.getCornerX(3)) / 4.0;
+    }
+
+    private static double tagCenterY(AprilTagDetection detection) {
+        return (detection.getCornerY(0) + detection.getCornerY(1)
+                + detection.getCornerY(2) + detection.getCornerY(3)) / 4.0;
+    }
+
+    private static double pixelToYawDeg(double centerX) {
+        double imageCenterX = Constants.Vision.CAMERA_WIDTH / 2.0;
+        return (centerX - imageCenterX) / imageCenterX
+                * (Constants.Vision.HORIZONTAL_FOV_DEG / 2.0);
+    }
+
+    private static double pixelToPitchDeg(double centerY) {
+        double imageCenterY = Constants.Vision.CAMERA_HEIGHT / 2.0;
+        return (imageCenterY - centerY) / imageCenterY
+                * (Constants.Vision.VERTICAL_FOV_DEG / 2.0);
+    }
+
+    private static void publishNoTargetVisionDebug() {
+        SmartDashboard.putString("Vision/Estimator", "NONE");
+        SmartDashboard.putNumber("Vision/TargetTagId", -1);
+        SmartDashboard.putNumber("Vision/HubTagCount", 0);
+        SmartDashboard.putNumber("Vision/HubFaceCount", 0);
+        SmartDashboard.putNumber("Vision/HubSpanPx", 0.0);
+        SmartDashboard.putNumber("Vision/BestTagYawDeg", Double.NaN);
+        SmartDashboard.putNumber("Vision/BestTagPitchDeg", Double.NaN);
+        SmartDashboard.putNumber("Vision/HubCenterYawDeg", Double.NaN);
+        SmartDashboard.putNumber("Vision/HubCenterPitchDeg", Double.NaN);
+        SmartDashboard.putNumber("Vision/HubCenterOffsetPx", Double.NaN);
+        SmartDashboard.putNumber("Vision/HubYawOffsetDeg", Double.NaN);
+    }
+
+    private static void publishVisionDebug(
+            VisionSupport.HubCenterEstimate hubEstimate,
+            double hubYawDeg,
+            double hubPitchDeg,
+            double bestTagYawDeg,
+            double bestTagPitchDeg) {
+        String estimator = hubEstimate.hubFaceCount() > 1
+                ? "MULTI_FACE"
+                : hubEstimate.hubTagCount() > 1 ? "PAIR_MIDPOINT" : "SINGLE_TAG";
+        SmartDashboard.putString("Vision/Estimator", estimator);
+        SmartDashboard.putNumber("Vision/TargetTagId", hubEstimate.bestTagId());
+        SmartDashboard.putNumber("Vision/HubTagCount", hubEstimate.hubTagCount());
+        SmartDashboard.putNumber("Vision/HubFaceCount", hubEstimate.hubFaceCount());
+        SmartDashboard.putNumber("Vision/HubSpanPx", hubEstimate.hubSpanPx());
+        SmartDashboard.putNumber("Vision/BestTagYawDeg", bestTagYawDeg);
+        SmartDashboard.putNumber("Vision/BestTagPitchDeg", bestTagPitchDeg);
+        SmartDashboard.putNumber("Vision/HubCenterYawDeg", hubYawDeg);
+        SmartDashboard.putNumber("Vision/HubCenterPitchDeg", hubPitchDeg);
+        SmartDashboard.putNumber("Vision/HubCenterOffsetPx", hubEstimate.centerOffsetFromBestPx());
+        SmartDashboard.putNumber("Vision/HubYawOffsetDeg", hubYawDeg - bestTagYawDeg);
     }
 
     private static void logEnumeratedUsbCameras(UsbCameraInfo[] cameras) {
@@ -372,11 +484,17 @@ public class RioVisionThread extends Thread {
         return throwable.getClass().getSimpleName() + ": " + message;
     }
 
-    private static void annotateFrame(Mat frame, AprilTagDetection[] detections, int[] hubTagIds) {
+    private static void annotateFrame(
+            Mat frame,
+            AprilTagDetection[] detections,
+            int[] hubTagIds,
+            VisionSupport.HubCenterEstimate hubEstimate) {
         Scalar centerColor = new Scalar(255, 255, 255);
         Scalar hubColor = new Scalar(60, 210, 80);
         Scalar otherColor = new Scalar(255, 180, 60);
         Scalar textColor = new Scalar(255, 255, 255);
+        Scalar bestTagColor = new Scalar(0, 200, 255);
+        Scalar hubCenterColor = new Scalar(255, 255, 0);
 
         int imageCenterX = Constants.Vision.CAMERA_WIDTH / 2;
         int imageCenterY = Constants.Vision.CAMERA_HEIGHT / 2;
@@ -412,5 +530,35 @@ public class RioVisionThread extends Thread {
                     color,
                     1);
         }
+
+        String summary = "HUB CTR --";
+        String coverage = "tags 0 faces 0";
+        if (hubEstimate != null) {
+            Point bestPoint = new Point(hubEstimate.bestTagCenterX(), hubEstimate.bestTagCenterY());
+            Point hubCenterPoint = new Point(hubEstimate.centerX(), hubEstimate.centerY());
+            Imgproc.drawMarker(frame, bestPoint, bestTagColor, Imgproc.MARKER_DIAMOND, 12, 1);
+            Imgproc.drawMarker(frame, hubCenterPoint, hubCenterColor, Imgproc.MARKER_TILTED_CROSS, 24, 2);
+            Imgproc.circle(frame, hubCenterPoint, 10, hubCenterColor, 2);
+            Imgproc.line(frame, new Point(imageCenterX, imageCenterY), hubCenterPoint, hubCenterColor, 1);
+            Imgproc.line(frame, bestPoint, hubCenterPoint, bestTagColor, 1);
+
+            double hubYawDeg = pixelToYawDeg(hubEstimate.centerX());
+            double bestYawDeg = pixelToYawDeg(hubEstimate.bestTagCenterX());
+            summary = "HUB " + formatSigned(hubYawDeg) + " deg"
+                    + "  BEST " + formatSigned(bestYawDeg) + " deg";
+            coverage = "tags " + hubEstimate.hubTagCount()
+                    + " faces " + hubEstimate.hubFaceCount()
+                    + " span " + Math.round(hubEstimate.hubSpanPx()) + " px";
+        }
+
+        Imgproc.putText(frame, summary, new Point(8, 36), Imgproc.FONT_HERSHEY_SIMPLEX, 0.42, textColor, 1);
+        Imgproc.putText(frame, coverage, new Point(8, 54), Imgproc.FONT_HERSHEY_SIMPLEX, 0.42, textColor, 1);
+    }
+
+    private static String formatSigned(double value) {
+        if (!Double.isFinite(value)) {
+            return "--";
+        }
+        return String.format("%+.1f", value);
     }
 }

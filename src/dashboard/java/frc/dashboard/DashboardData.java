@@ -80,8 +80,13 @@ public record DashboardData(
         boolean visionHasTarget,
         double visionYawDeg,
         double visionPitchDeg,
+        double visionBestTagYawDeg,
+        double visionBestTagPitchDeg,
         double visionDistanceM,
         double visionTagPixelHeightPx,
+        int visionHubTagCount,
+        int visionHubFaceCount,
+        double visionHubSpanPx,
         double visionTargetTimestampSec,
         // CAN bus health
         double canBusUtilization,

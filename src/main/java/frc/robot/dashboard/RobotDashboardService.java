@@ -29,7 +29,7 @@ public class RobotDashboardService {
         void selectAutoByName(String autoName);
     }
 
-    private static final String CONTRACT_VERSION = "2026.13.0";
+    private static final String CONTRACT_VERSION = "2026.14.0";
 
     private final Actions actions;
 
@@ -124,8 +124,13 @@ public class RobotDashboardService {
     private final BooleanPublisher visionHasTargetPub;
     private final DoublePublisher visionYawPub;
     private final DoublePublisher visionPitchPub;
+    private final DoublePublisher visionBestTagYawPub;
+    private final DoublePublisher visionBestTagPitchPub;
     private final DoublePublisher visionDistancePub;
     private final DoublePublisher visionTagPixelHeightPub;
+    private final IntegerPublisher visionHubTagCountPub;
+    private final IntegerPublisher visionHubFaceCountPub;
+    private final DoublePublisher visionHubSpanPub;
     private final DoublePublisher visionTargetTimestampPub;
 
     // CAN bus health
@@ -313,8 +318,13 @@ public class RobotDashboardService {
         visionHasTargetPub = table.getBooleanTopic("vision/has_target").publish();
         visionYawPub = table.getDoubleTopic("vision/yaw_deg").publish();
         visionPitchPub = table.getDoubleTopic("vision/pitch_deg").publish();
+        visionBestTagYawPub = table.getDoubleTopic("vision/best_tag_yaw_deg").publish();
+        visionBestTagPitchPub = table.getDoubleTopic("vision/best_tag_pitch_deg").publish();
         visionDistancePub = table.getDoubleTopic("vision/distance_m").publish();
         visionTagPixelHeightPub = table.getDoubleTopic("vision/tag_pixel_height_px").publish();
+        visionHubTagCountPub = table.getIntegerTopic("vision/hub_tag_count").publish();
+        visionHubFaceCountPub = table.getIntegerTopic("vision/hub_face_count").publish();
+        visionHubSpanPub = table.getDoubleTopic("vision/hub_span_px").publish();
         visionTargetTimestampPub = table.getDoubleTopic("vision/target_timestamp_sec").publish();
 
         // CAN bus health
@@ -501,8 +511,13 @@ public class RobotDashboardService {
         visionHasTargetPub.set(snapshot.visionHasTarget());
         visionYawPub.set(snapshot.visionYawDeg());
         visionPitchPub.set(snapshot.visionPitchDeg());
+        visionBestTagYawPub.set(snapshot.visionBestTagYawDeg());
+        visionBestTagPitchPub.set(snapshot.visionBestTagPitchDeg());
         visionDistancePub.set(snapshot.visionDistanceM());
         visionTagPixelHeightPub.set(snapshot.visionTagPixelHeightPx());
+        visionHubTagCountPub.set(snapshot.visionHubTagCount());
+        visionHubFaceCountPub.set(snapshot.visionHubFaceCount());
+        visionHubSpanPub.set(snapshot.visionHubSpanPx());
         visionTargetTimestampPub.set(snapshot.visionTargetTimestampSec());
 
         // CAN bus health
