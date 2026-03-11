@@ -491,10 +491,13 @@ public final class Constants {
         // Verify this band on-robot after camera pitch is finalized.
         public static final double MAX_SHOT_PITCH_DEG =  40.0; // TUNE ME
 
-        // PD controller for rotating toward a vision target
-        public static final double TURN_kP     = 0.10;   // TUNE ME
-        public static final double TURN_kD     = 0.008;  // TUNE ME
-        public static final double MAX_ROT_CMD = 0.6;  // max rotation power during alignment
+        // PD controller for rotating toward a vision target.
+        // Competition-biased starting tune for a swerve aiming at a low-FPS USB
+        // AprilTag feed: more P for authority, lighter D so camera noise does not
+        // make the robot dither near setpoint.
+        public static final double TURN_kP     = 0.12;   // TUNE ME
+        public static final double TURN_kD     = 0.005;  // TUNE ME
+        public static final double MAX_ROT_CMD = 1.0;    // rad/s cap during alignment
 
         // ---- Camera mount position ----
         // Used for pitch-based distance estimation.
@@ -515,28 +518,19 @@ public final class Constants {
     }
 
     // =========================================================================
-    // ALIGN-AND-SHOOT (driver translation + auto-aim)
+    // ALIGN-AND-SHOOT (stationary auto-align then shoot)
     // =========================================================================
     public static final class AlignShoot {
-        // Maximum driver translation allowed while aligning to a moving shot.
-        public static final double MAX_TRANS_MPS = 1.25; // TUNE ME
-        // Sideways motion drives lead compensation hardest, so keep it tighter.
-        public static final double MAX_LATERAL_MPS = 0.80; // TUNE ME
-        // Clamp motion along the shot line until a separate retreat limit is needed.
-        public static final double MAX_APPROACH_MPS = 0.60; // TUNE ME
-        // Tighten translation further once the robot starts feeding.
-        public static final double MAX_FEED_TRANS_MPS = 0.50; // TUNE ME
-        // Auto-aim rotation cap in rad/s.
-        public static final double MAX_AUTO_AIM_OMEGA_RADPS = 0.60; // TUNE ME
+        // Match AlignOnly so both commands feel identical while turning to target.
+        public static final double MAX_AUTO_AIM_OMEGA_RADPS = Vision.MAX_ROT_CMD;
         // While the target is out of frame, keep sweeping at a controlled rate.
-        public static final double SEARCH_OMEGA_RADPS = 0.60; // TUNE ME
+        public static final double SEARCH_OMEGA_RADPS = 0.75; // TUNE ME
         // Larger yaw errors are acquisition problems, not impossible shot geometry.
         public static final double ACQUIRE_YAW_MAX_DEG = 30.0; // TUNE ME
 
-        // Feed gate thresholds.
-        public static final double YAW_TOLERANCE_DEG = 3.0; // TUNE ME
+        // Match AlignOnly tolerance and stable-hold timing before feeding.
+        public static final double YAW_TOLERANCE_DEG = Vision.YAW_TOLERANCE_DEG;
         public static final double RPS_TOLERANCE_RPS = 1.5; // TUNE ME
-        public static final double MAX_SPEED_FOR_FEED_MPS = 0.55; // TUNE ME
         public static final double SETTLE_TIME_SEC = 0.20; // TUNE ME
     }
 

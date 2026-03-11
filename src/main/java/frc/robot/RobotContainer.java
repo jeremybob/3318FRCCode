@@ -594,7 +594,7 @@ public class RobotContainer implements RobotRuntimeContainer {
         //             climber.stop();
         //         }, climber));
 
-        // Right Trigger: Vision-required align-and-shoot (operator controls scoring).
+        // Right Trigger: Vision-required auto-align, hold still, and shoot.
         // whileTrue + repeatedly keeps running full shoot cycles for the entire hold.
         // Threshold matches TRIGGER_ACTIVE_THRESHOLD so dashboard and actual trigger agree.
         operatorController.rightTrigger(TRIGGER_ACTIVE_THRESHOLD).whileTrue(
@@ -849,11 +849,7 @@ public class RobotContainer implements RobotRuntimeContainer {
                 feeder,
                 hopper,
                 intake,
-                visionResult,
-                this::getDriverForwardInput,
-                this::getDriverLeftInput,
-                this::isDriverPrecisionMode,
-                this::isDriverFieldRelative)
+                visionResult)
                 .withName("AlignAndShoot");
     }
 

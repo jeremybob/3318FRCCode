@@ -1,19 +1,18 @@
 // ============================================================================
 // FILE: src/main/java/frc/robot/commands/AlignAndShootCommand.java
 //
-// PURPOSE: Lets the driver translate while the robot auto-aims and fires.
+// PURPOSE: Auto-aligns to the vision target in place, then fires while
+// stationary.
 //
 // SEQUENCE:
-//   1. ALIGN    - Spin shooter, auto-aim, and allow capped driver translation
-//   2. CLEAR    - Keep aiming/translating while the feeder clears the note
-//   3. FEED     - Continue the moving shot with a tighter translation cap
+//   1. ALIGN    - Spin shooter and rotate in place until yaw + RPM are ready
+//   2. CLEAR    - Keep aiming in place while the feeder clears the note
+//   3. FEED     - Continue aiming in place while feeding into the shooter
 //   4. DONE     - Command finishes, everything stops
 // ============================================================================
 package frc.robot.commands;
 
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.BooleanSupplier;
-import java.util.function.DoubleSupplier;
 
 import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.controller.PIDController;
@@ -29,7 +28,6 @@ import frc.robot.subsystems.HopperSubsystem;
 import frc.robot.subsystems.IntakeSubsystem;
 import frc.robot.subsystems.ShooterSubsystem;
 import frc.robot.subsystems.SwerveSubsystem;
-import frc.robot.util.DriverDriveUtil;
 import frc.robot.vision.VisionResult;
 
 public class AlignAndShootCommand extends Command {
@@ -82,11 +80,6 @@ public class AlignAndShootCommand extends Command {
     private final HopperSubsystem hopper;
     private final IntakeSubsystem intake;
     private final AtomicReference<VisionResult> visionRef;
-    private final DoubleSupplier driverForwardSupplier;
-    private final DoubleSupplier driverLeftSupplier;
-    private final BooleanSupplier driverPrecisionSupplier;
-    private final BooleanSupplier driverFieldRelativeSupplier;
-
     private final PIDController turnPID = new PIDController(
             Constants.Vision.TURN_kP,
             0.0,
@@ -94,15 +87,13 @@ public class AlignAndShootCommand extends Command {
 
     private enum State { ALIGN, CLEAR, FEED, DONE }
 
+    private static final double ALIGN_CONVERGENCE_TIMEOUT_SEC = 5.0;
+
     private State state;
     private final Timer stateTimer = new Timer();
     private final Timer alignOverallTimer = new Timer();
     private final Timer feedGateTimer = new Timer();
-    private double lastValidTargetSeenSec = Double.NEGATIVE_INFINITY;
-    private double calculatedRps = Constants.Shooter.TARGET_RPS;
     private double searchRotationSign = 1.0;
-
-    private static final double ALIGN_CONVERGENCE_TIMEOUT_SEC = 5.0;
 
     private String workState = "IDLE";
     private boolean workCommandActive = false;
@@ -129,24 +120,16 @@ public class AlignAndShootCommand extends Command {
             FeederSubsystem feeder,
             HopperSubsystem hopper,
             IntakeSubsystem intake,
-            AtomicReference<VisionResult> visionRef,
-            DoubleSupplier driverForwardSupplier,
-            DoubleSupplier driverLeftSupplier,
-            BooleanSupplier driverPrecisionSupplier,
-            BooleanSupplier driverFieldRelativeSupplier) {
+            AtomicReference<VisionResult> visionRef) {
         this.swerve = swerve;
         this.shooter = shooter;
         this.feeder = feeder;
         this.hopper = hopper;
         this.intake = intake;
         this.visionRef = visionRef;
-        this.driverForwardSupplier = driverForwardSupplier;
-        this.driverLeftSupplier = driverLeftSupplier;
-        this.driverPrecisionSupplier = driverPrecisionSupplier;
-        this.driverFieldRelativeSupplier = driverFieldRelativeSupplier;
 
         addRequirements(swerve, shooter, feeder, hopper, intake);
-        turnPID.setTolerance(Constants.AlignShoot.YAW_TOLERANCE_DEG);
+        turnPID.setTolerance(Constants.Vision.YAW_TOLERANCE_DEG);
     }
 
     @Override
@@ -156,7 +139,6 @@ public class AlignAndShootCommand extends Command {
         alignOverallTimer.restart();
         turnPID.reset();
         resetFeedGateTimer();
-        lastValidTargetSeenSec = Double.NEGATIVE_INFINITY;
         searchRotationSign = 1.0;
 
         workState = State.ALIGN.name();
@@ -166,14 +148,14 @@ public class AlignAndShootCommand extends Command {
         workHasShootableTarget = false;
         workYawDeg = Double.NaN;
         workAimErrorDeg = Double.NaN;
-        workLeadYawDeg = Double.NaN;
+        workLeadYawDeg = 0.0;
         workPitchDeg = Double.NaN;
         workTargetRps = Constants.Shooter.TARGET_RPS;
-        workRadialVelocityMps = Double.NaN;
-        workLateralVelocityMps = Double.NaN;
+        workRadialVelocityMps = 0.0;
+        workLateralVelocityMps = 0.0;
         workCommandedXVelocityMps = 0.0;
         workCommandedYVelocityMps = 0.0;
-        workActiveTranslationCapMps = Constants.AlignShoot.MAX_TRANS_MPS;
+        workActiveTranslationCapMps = 0.0;
         workTimeOfFlightSec = Double.NaN;
         workFeedGateReady = false;
         workLastAbortReason = "";
@@ -187,8 +169,7 @@ public class AlignAndShootCommand extends Command {
             SmartDashboard.putBoolean("AlignShoot/HubInactiveWarning", false);
         }
 
-        calculatedRps = Constants.Shooter.TARGET_RPS;
-        shooter.setShooterVelocity(calculatedRps);
+        shooter.setShooterVelocity(Constants.Shooter.TARGET_RPS);
         SmartDashboard.putString("AlignShoot/State", "ALIGN");
         updateTelemetry();
         publishTelemetry();
@@ -196,17 +177,10 @@ public class AlignAndShootCommand extends Command {
 
     @Override
     public void execute() {
-        DriverDriveUtil.DriveRequest driverRequest = DriverDriveUtil.shapeDrive(
-                driverForwardSupplier.getAsDouble(),
-                driverLeftSupplier.getAsDouble(),
-                0.0,
-                driverPrecisionSupplier.getAsBoolean(),
-                driverFieldRelativeSupplier.getAsBoolean());
-
         switch (state) {
-            case ALIGN -> executeAlign(driverRequest);
-            case CLEAR -> executeClear(driverRequest);
-            case FEED -> executeFeed(driverRequest);
+            case ALIGN -> executeAlign();
+            case CLEAR -> executeClear();
+            case FEED -> executeFeed();
             case DONE -> { }
         }
 
@@ -241,7 +215,7 @@ public class AlignAndShootCommand extends Command {
         publishTelemetry();
     }
 
-    private void executeAlign(DriverDriveUtil.DriveRequest driverRequest) {
+    private void executeAlign() {
         VisionResult result = visionRef.get();
         boolean hasFreshTarget = isResultFresh(result);
         workHasTarget = hasFreshTarget;
@@ -251,14 +225,17 @@ public class AlignAndShootCommand extends Command {
             workHasShootableTarget = false;
             workYawDeg = Double.NaN;
             workAimErrorDeg = Double.NaN;
-            workLeadYawDeg = Double.NaN;
+            workLeadYawDeg = 0.0;
             workPitchDeg = Double.NaN;
-            workRadialVelocityMps = Double.NaN;
-            workLateralVelocityMps = Double.NaN;
+            workRadialVelocityMps = 0.0;
+            workLateralVelocityMps = 0.0;
+            workCommandedXVelocityMps = 0.0;
+            workCommandedYVelocityMps = 0.0;
+            workActiveTranslationCapMps = 0.0;
             workTimeOfFlightSec = Double.NaN;
             workFeedGateReady = false;
             resetFeedGateTimer();
-            driveSearchPattern(driverRequest, Constants.AlignShoot.MAX_TRANS_MPS);
+            driveSearchPattern();
 
             if (alignOverallTimer.hasElapsed(ALIGN_CONVERGENCE_TIMEOUT_SEC)) {
                 abort("No alliance HUB tag found");
@@ -281,25 +258,25 @@ public class AlignAndShootCommand extends Command {
             workHasShootableTarget = false;
             workAimErrorDeg = result.yawDeg();
             workLeadYawDeg = 0.0;
-            workRadialVelocityMps = Double.NaN;
-            workLateralVelocityMps = Double.NaN;
+            workRadialVelocityMps = 0.0;
+            workLateralVelocityMps = 0.0;
             workTimeOfFlightSec = Double.NaN;
             workFeedGateReady = false;
             resetFeedGateTimer();
             updateSearchDirectionFromYaw(result.yawDeg());
-            driveAcquireTarget(driverRequest, Constants.AlignShoot.MAX_TRANS_MPS, result.yawDeg());
+            driveAcquireTarget(result.yawDeg());
             if (alignOverallTimer.hasElapsed(ALIGN_CONVERGENCE_TIMEOUT_SEC)) {
                 abort("Target yaw acquisition timeout");
             }
             return;
         }
 
-        ShotTracking tracking = buildShotTracking(result, driverRequest, Constants.AlignShoot.MAX_TRANS_MPS);
+        ShotTracking tracking = buildStationaryTracking(result);
         if (!tracking.solution().feasible()) {
             workHasShootableTarget = false;
             workFeedGateReady = false;
             resetFeedGateTimer();
-            abort("Moving-shot solution invalid");
+            abort("Shot solution invalid");
             return;
         }
 
@@ -322,14 +299,14 @@ public class AlignAndShootCommand extends Command {
         }
     }
 
-    private void executeClear(DriverDriveUtil.DriveRequest driverRequest) {
+    private void executeClear() {
         VisionResult result = visionRef.get();
         if (!hasShootableTarget(result)) {
             abort("Vision lost before feed");
             return;
         }
 
-        ShotTracking tracking = buildShotTracking(result, driverRequest, Constants.AlignShoot.MAX_TRANS_MPS);
+        ShotTracking tracking = buildStationaryTracking(result);
         if (!tracking.solution().feasible() || !tracking.feedGateReady()) {
             abort("Feed gate lost before feed");
             return;
@@ -345,14 +322,14 @@ public class AlignAndShootCommand extends Command {
         }
     }
 
-    private void executeFeed(DriverDriveUtil.DriveRequest driverRequest) {
+    private void executeFeed() {
         VisionResult result = visionRef.get();
         if (!hasShootableTarget(result)) {
             abort("Vision lost during feed");
             return;
         }
 
-        ShotTracking tracking = buildShotTracking(result, driverRequest, Constants.AlignShoot.MAX_FEED_TRANS_MPS);
+        ShotTracking tracking = buildStationaryTracking(result);
         if (!tracking.solution().feasible() || !tracking.feedGateReady()) {
             abort("Feed gate lost during feed");
             return;
@@ -422,64 +399,35 @@ public class AlignAndShootCommand extends Command {
         SmartDashboard.putBoolean("AlignShoot/FeedGateReady", workFeedGateReady);
     }
 
-    private ShotTracking buildShotTracking(
-            VisionResult result,
-            DriverDriveUtil.DriveRequest driverRequest,
-            double translationCapMps) {
+    private ShotTracking buildStationaryTracking(VisionResult result) {
         double rawYawDeg = result.yawDeg();
         double distanceM = estimateDistanceM(result);
         double pitchDeg = result.pitchDeg();
+        ShooterSubsystem.ShotSolution solution = ShooterSubsystem.calculateMovingShotSolution(distanceM, 0.0, 0.0);
 
-        double yawRad = Math.toRadians(-rawYawDeg);
-        double shotLineX = Math.cos(yawRad);
-        double shotLineY = Math.sin(yawRad);
-        double lateralAxisX = -shotLineY;
-        double lateralAxisY = shotLineX;
-
-        ChassisSpeeds actualSpeeds = swerve.getRobotRelativeSpeeds();
-        double radialVelocityMps = dot(actualSpeeds.vxMetersPerSecond, actualSpeeds.vyMetersPerSecond,
-                shotLineX, shotLineY);
-        double lateralVelocityMps = dot(actualSpeeds.vxMetersPerSecond, actualSpeeds.vyMetersPerSecond,
-                lateralAxisX, lateralAxisY);
-
-        ShooterSubsystem.ShotSolution solution = ShooterSubsystem.calculateMovingShotSolution(
-                distanceM,
-                radialVelocityMps,
-                lateralVelocityMps);
-        double leadYawDeg = calculateLeadYawDeg(solution.horizontalSpeedMps(), lateralVelocityMps);
-        double aimErrorDeg = rawYawDeg - leadYawDeg;
-
-        double rotCmd = Math.abs(aimErrorDeg) <= Constants.AlignShoot.YAW_TOLERANCE_DEG
+        double pidOutput = turnPID.calculate(rawYawDeg, 0.0);
+        boolean aligned = turnPID.atSetpoint();
+        double rotCmd = aligned
                 ? 0.0
                 : MathUtil.clamp(
-                        turnPID.calculate(rawYawDeg, leadYawDeg),
+                        pidOutput,
                         -Constants.AlignShoot.MAX_AUTO_AIM_OMEGA_RADPS,
                         Constants.AlignShoot.MAX_AUTO_AIM_OMEGA_RADPS);
 
-        ChassisSpeeds translationCmd = clampDriverTranslation(
-                driverRequest,
-                shotLineX,
-                shotLineY,
-                lateralAxisX,
-                lateralAxisY,
-                translationCapMps);
-
         boolean feedGateReady = solution.feasible()
-                && Math.abs(aimErrorDeg) <= Constants.AlignShoot.YAW_TOLERANCE_DEG
-                && isShooterReady(solution.targetRps())
-                && Math.hypot(actualSpeeds.vxMetersPerSecond, actualSpeeds.vyMetersPerSecond)
-                        <= Constants.AlignShoot.MAX_SPEED_FOR_FEED_MPS;
+                && aligned
+                && isShooterReady(solution.targetRps());
 
         return new ShotTracking(
                 rawYawDeg,
-                aimErrorDeg,
-                leadYawDeg,
+                rawYawDeg,
+                0.0,
                 pitchDeg,
                 distanceM,
-                radialVelocityMps,
-                lateralVelocityMps,
-                translationCmd,
-                translationCapMps,
+                0.0,
+                0.0,
+                new ChassisSpeeds(0.0, 0.0, 0.0),
+                0.0,
                 solution,
                 rotCmd,
                 feedGateReady);
@@ -500,11 +448,8 @@ public class AlignAndShootCommand extends Command {
         workActiveTranslationCapMps = tracking.translationCapMps();
         workFeedGateReady = tracking.feedGateReady();
         workTimeOfFlightSec = tracking.solution().timeOfFlightSec();
-
-        lastValidTargetSeenSec = Timer.getFPGATimestamp();
-        calculatedRps = tracking.solution().targetRps();
-        workTargetRps = calculatedRps;
-        shooter.setShooterVelocity(calculatedRps);
+        workTargetRps = tracking.solution().targetRps();
+        shooter.setShooterVelocity(workTargetRps);
 
         SmartDashboard.putNumber("AlignShoot/EstDistanceM", tracking.distanceM());
     }
@@ -516,84 +461,29 @@ public class AlignAndShootCommand extends Command {
                 tracking.rotCmdRadPerSec()));
     }
 
-    private void driveSearchPattern(
-            DriverDriveUtil.DriveRequest driverRequest,
-            double translationCapMps) {
-        ChassisSpeeds translationCmd = clampTranslationMagnitude(
-                toRobotRelativeTranslation(driverRequest),
-                translationCapMps);
-        double rotCmd = searchRotationSign * Constants.AlignShoot.SEARCH_OMEGA_RADPS;
-
-        workCommandedXVelocityMps = translationCmd.vxMetersPerSecond;
-        workCommandedYVelocityMps = translationCmd.vyMetersPerSecond;
-        workActiveTranslationCapMps = translationCapMps;
+    private void driveSearchPattern() {
+        workCommandedXVelocityMps = 0.0;
+        workCommandedYVelocityMps = 0.0;
+        workActiveTranslationCapMps = 0.0;
         swerve.driveRobotRelative(new ChassisSpeeds(
-                translationCmd.vxMetersPerSecond,
-                translationCmd.vyMetersPerSecond,
-                rotCmd));
+                0.0,
+                0.0,
+                searchRotationSign * Constants.AlignShoot.SEARCH_OMEGA_RADPS));
     }
 
-    private void driveAcquireTarget(
-            DriverDriveUtil.DriveRequest driverRequest,
-            double translationCapMps,
-            double yawDeg) {
-        ChassisSpeeds translationCmd = clampTranslationMagnitude(
-                toRobotRelativeTranslation(driverRequest),
-                translationCapMps);
-        double rotCmd = MathUtil.clamp(
-                turnPID.calculate(yawDeg, 0.0),
-                -Constants.AlignShoot.MAX_AUTO_AIM_OMEGA_RADPS,
-                Constants.AlignShoot.MAX_AUTO_AIM_OMEGA_RADPS);
+    private void driveAcquireTarget(double yawDeg) {
+        double pidOutput = turnPID.calculate(yawDeg, 0.0);
+        double rotCmd = turnPID.atSetpoint()
+                ? 0.0
+                : MathUtil.clamp(
+                        pidOutput,
+                        -Constants.AlignShoot.MAX_AUTO_AIM_OMEGA_RADPS,
+                        Constants.AlignShoot.MAX_AUTO_AIM_OMEGA_RADPS);
 
-        workCommandedXVelocityMps = translationCmd.vxMetersPerSecond;
-        workCommandedYVelocityMps = translationCmd.vyMetersPerSecond;
-        workActiveTranslationCapMps = translationCapMps;
-        swerve.driveRobotRelative(new ChassisSpeeds(
-                translationCmd.vxMetersPerSecond,
-                translationCmd.vyMetersPerSecond,
-                rotCmd));
-    }
-
-    private ChassisSpeeds clampDriverTranslation(
-            DriverDriveUtil.DriveRequest driverRequest,
-            double shotLineX,
-            double shotLineY,
-            double lateralAxisX,
-            double lateralAxisY,
-            double translationCapMps) {
-        ChassisSpeeds requested = toRobotRelativeTranslation(driverRequest);
-
-        double radialCmdMps = dot(requested.vxMetersPerSecond, requested.vyMetersPerSecond, shotLineX, shotLineY);
-        double lateralCmdMps = dot(requested.vxMetersPerSecond, requested.vyMetersPerSecond,
-                lateralAxisX, lateralAxisY);
-
-        radialCmdMps = MathUtil.clamp(
-                radialCmdMps,
-                -Constants.AlignShoot.MAX_APPROACH_MPS,
-                Constants.AlignShoot.MAX_APPROACH_MPS);
-        lateralCmdMps = MathUtil.clamp(
-                lateralCmdMps,
-                -Constants.AlignShoot.MAX_LATERAL_MPS,
-                Constants.AlignShoot.MAX_LATERAL_MPS);
-
-        double clampedX = radialCmdMps * shotLineX + lateralCmdMps * lateralAxisX;
-        double clampedY = radialCmdMps * shotLineY + lateralCmdMps * lateralAxisY;
-
-        return clampTranslationMagnitude(new ChassisSpeeds(clampedX, clampedY, 0.0), translationCapMps);
-    }
-
-    private ChassisSpeeds toRobotRelativeTranslation(DriverDriveUtil.DriveRequest driverRequest) {
-        if (driverRequest.fieldRelative()) {
-            return ChassisSpeeds.fromFieldRelativeSpeeds(
-                    driverRequest.xVelocityMps(),
-                    driverRequest.yVelocityMps(),
-                    0.0,
-                    swerve.getHeading());
-        }
-        return new ChassisSpeeds(
-                driverRequest.xVelocityMps(),
-                driverRequest.yVelocityMps(),
-                0.0);
+        workCommandedXVelocityMps = 0.0;
+        workCommandedYVelocityMps = 0.0;
+        workActiveTranslationCapMps = 0.0;
+        swerve.driveRobotRelative(new ChassisSpeeds(0.0, 0.0, rotCmd));
     }
 
     private double estimateDistanceM(VisionResult result) {
@@ -609,16 +499,6 @@ public class AlignAndShootCommand extends Command {
             distanceM = pitchFallbackM;
         }
         return distanceM;
-    }
-
-    private double calculateLeadYawDeg(double horizontalSpeedMps, double lateralVelocityMps) {
-        if (!Double.isFinite(horizontalSpeedMps) || horizontalSpeedMps <= 1e-6) {
-            return Double.NaN;
-        }
-        return Math.toDegrees(Math.asin(MathUtil.clamp(
-                lateralVelocityMps / horizontalSpeedMps,
-                -1.0,
-                1.0)));
     }
 
     private boolean isResultFresh(VisionResult result) {
@@ -645,7 +525,6 @@ public class AlignAndShootCommand extends Command {
             return false;
         }
 
-        lastValidTargetSeenSec = Timer.getFPGATimestamp();
         workHasShootableTarget = true;
         return true;
     }
@@ -658,7 +537,7 @@ public class AlignAndShootCommand extends Command {
         SmartDashboard.putNumber("AlignShoot/TargetTagId", result.tagId());
         SmartDashboard.putNumber("AlignShoot/YawGeometryCheck", yawDeg);
 
-        return isShotPitchFeasible(pitchDeg);
+        return isShotPitchFeasible(pitchDeg) && isWithinTrackingYaw(yawDeg);
     }
 
     private boolean isShooterReady(double targetRps) {
@@ -685,23 +564,6 @@ public class AlignAndShootCommand extends Command {
                 && Math.abs(yawDeg) <= Constants.AlignShoot.ACQUIRE_YAW_MAX_DEG;
     }
 
-    private static ChassisSpeeds clampTranslationMagnitude(ChassisSpeeds translationCmd, double translationCapMps) {
-        double speedMps = Math.hypot(
-                translationCmd.vxMetersPerSecond,
-                translationCmd.vyMetersPerSecond);
-        if (speedMps > translationCapMps && speedMps > 1e-6) {
-            double scale = translationCapMps / speedMps;
-            return new ChassisSpeeds(
-                    translationCmd.vxMetersPerSecond * scale,
-                    translationCmd.vyMetersPerSecond * scale,
-                    0.0);
-        }
-        return new ChassisSpeeds(
-                translationCmd.vxMetersPerSecond,
-                translationCmd.vyMetersPerSecond,
-                0.0);
-    }
-
     private double estimateDistanceFromPitch(double targetPitchDeg) {
         double totalPitchRad = Constants.Vision.CAMERA_PITCH_RAD
                 + Math.toRadians(targetPitchDeg);
@@ -711,10 +573,6 @@ public class AlignAndShootCommand extends Command {
             return Double.NaN;
         }
         return heightDiff / tanPitch;
-    }
-
-    private static double dot(double ax, double ay, double bx, double by) {
-        return ax * bx + ay * by;
     }
 
     public static TelemetrySnapshot getTelemetrySnapshot() { return telemetrySnapshot; }
