@@ -350,9 +350,8 @@ public final class Constants {
     // =========================================================================
     public static final class Intake {
         // How many degrees the encoder reports per motor revolution.
-        // With a 10:1 reduction, each motor rev = 360/10 = 36 degrees.
-        // TUNE ME: Check your actual tilt gearbox ratio!
-        public static final double TILT_POS_CONV_DEG = 360.0 / 10.0;  // TUNE ME
+        // With a 96:1 reduction, each motor rev = 360/96 = 3.75 degrees.
+        public static final double TILT_POS_CONV_DEG = 360.0 / 96.0;
 
         // Tilt position PID (SparkMax built-in, units are power-per-degree)
         // 10:1 NEO with gravity load: kP=0.15 gives ~15% power at 1° error,

@@ -44,8 +44,8 @@ assert_contains "$CONSTANTS_FILE" "public static final double DRIVE_kV = 0.124;"
   "Swerve kV set to CTRE default for Falcon 500"
 
 # 2) Intake + Hopper gearing
-assert_contains "$CONSTANTS_FILE" "public static final double TILT_POS_CONV_DEG = 360.0 / 10.0;" \
-  "Intake tilt conversion uses 10:1 reduction"
+assert_contains "$CONSTANTS_FILE" "public static final double TILT_POS_CONV_DEG = 360.0 / 96.0;" \
+  "Intake tilt conversion uses 96:1 reduction"
 assert_contains "$CONSTANTS_FILE" "public static final class Hopper {" \
   "Hopper constants section exists"
 assert_contains "$CONSTANTS_FILE" "public static final double GEAR_RATIO = 8.0;" \

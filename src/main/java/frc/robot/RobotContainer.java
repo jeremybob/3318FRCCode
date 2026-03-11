@@ -565,7 +565,7 @@ public class RobotContainer implements RobotRuntimeContainer {
         intake.setDefaultCommand(
                 Commands.run(() -> {
                     double tiltPower = getOperatorIntakeTiltManualPower();
-                    intake.setTiltPower(tiltPower);
+                    intake.setTiltPowerManual(tiltPower);
 
                     lastIntakeTiltPower = tiltPower;
                     refreshOperatorCommandSummary();

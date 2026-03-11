@@ -173,10 +173,24 @@ public class IntakeSubsystem extends SubsystemBase {
     // --------------------------------------------------------------------------
     // setTiltPower()
     //
-    // Directly sets tilt motor power (-1.0 to +1.0).
-    // Used during homing and manual control. Does NOT use PID.
+    // Directly sets tilt motor power (-1.0 to +1.0) with encoder soft limits.
+    // Used by homing/automated safety-controlled flows. Does NOT use PID.
     // --------------------------------------------------------------------------
     public void setTiltPower(double power) {
+        setTiltPowerInternal(power, true);
+    }
+
+    // --------------------------------------------------------------------------
+    // setTiltPowerManual()
+    //
+    // Manual control bypasses software angle limits for operator authority,
+    // but still honors the home switch when commanding toward home.
+    // --------------------------------------------------------------------------
+    public void setTiltPowerManual(double power) {
+        setTiltPowerInternal(power, false);
+    }
+
+    private void setTiltPowerInternal(double power, boolean enforceSoftLimits) {
         double clampedPower = Math.max(-1.0, Math.min(1.0, power));
         double homeDirection = Math.signum(Constants.Intake.HOME_POWER);
         boolean commandingTowardHome = homeDirection != 0.0 && (clampedPower * homeDirection) > 0.0;
@@ -185,7 +199,7 @@ public class IntakeSubsystem extends SubsystemBase {
         if (commandingTowardHome && getLimitSwitchPressed()) {
             clampedPower = 0.0;
         }
-        if (isHomed) {
+        if (enforceSoftLimits && isHomed) {
             double positionDeg = getTiltPositionDeg();
             double hysteresisDeg = Constants.Intake.TILT_SOFT_LIMIT_HYSTERESIS_DEG;
 
