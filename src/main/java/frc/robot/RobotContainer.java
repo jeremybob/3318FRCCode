@@ -595,22 +595,21 @@ public class RobotContainer implements RobotRuntimeContainer {
         //         }, climber));
 
         // Right Trigger: Vision-required align-and-shoot (operator controls scoring).
-        // Uses whileTrue() so holding the trigger re-executes the shoot routine.
-        // Uses unless() to prevent re-triggering while a shoot command is already active.
+        // whileTrue + repeatedly keeps running full shoot cycles for the entire hold.
         // Threshold matches TRIGGER_ACTIVE_THRESHOLD so dashboard and actual trigger agree.
         operatorController.rightTrigger(TRIGGER_ACTIVE_THRESHOLD).whileTrue(
                 Commands.sequence(
                         Commands.runOnce(() -> logControlEvent("Operator:RT", "AlignAndShoot requested")),
                         buildAlignAndShootCommand()
-                                .withTimeout(Constants.Auto.AUTO_SHOOT_TIMEOUT_SEC))
-                        .unless(() -> AlignAndShootCommand.isTelemetryCommandActive()));
+                                .withTimeout(Constants.Auto.AUTO_SHOOT_TIMEOUT_SEC)
+                                .repeatedly()));
 
         // Right Bumper: OVERRIDE shot at fallback speed (no alignment/vision required).
-        // Uses whileTrue() so holding the button re-executes the shoot routine.
+        // whileTrue + repeatedly keeps running full shoot cycles for the entire hold.
         operatorController.rightBumper().whileTrue(
                 Commands.sequence(
                         Commands.runOnce(() -> logControlEvent("Operator:RB", "Fallback shot requested")),
-                        buildFallbackShootCommand()));
+                        buildFallbackShootCommand().repeatedly()));
 
         // Left Trigger: Manual intake roller — spin forward with stall detection.
         // If the roller jams, it automatically reverses and retries (up to 3 times).
