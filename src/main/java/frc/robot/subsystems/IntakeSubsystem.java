@@ -32,6 +32,7 @@ import com.revrobotics.spark.SparkBase.ControlType;
 import com.revrobotics.spark.SparkClosedLoopController;
 import com.revrobotics.spark.SparkLowLevel.MotorType;
 import com.revrobotics.spark.SparkMax;
+import com.revrobotics.spark.config.MAXMotionConfig.MAXMotionPositionMode;
 import com.revrobotics.spark.config.SparkBaseConfig.IdleMode;
 import com.revrobotics.spark.config.SparkMaxConfig;
 
@@ -88,16 +89,26 @@ public class IntakeSubsystem extends SubsystemBase {
         tiltConfig.idleMode(IdleMode.kBrake);
 
         // Position conversion: sets what unit the encoder reports.
-        // If gearbox = 10:1, one motor revolution = 1/10 arm revolution = 36°
+        // If gearbox = 96:1, one motor revolution = 1/96 arm revolution = 3.75°
         // So position in "degrees" = motor_rotations × (360 / gear_ratio)
         // IMPORTANT: This MUST also be set in REV Hardware Client via burnFlash!
         //            We set it here as a safety net at runtime.
         tiltConfig.encoder.positionConversionFactor(Constants.Intake.TILT_POS_CONV_DEG);
+        // Velocity unit in deg/sec so MAXMotion can be tuned in arm units.
+        tiltConfig.encoder.velocityConversionFactor(Constants.Intake.TILT_POS_CONV_DEG / 60.0);
 
         // Tilt position PID (built into SparkMax)
         tiltConfig.closedLoop.p(Constants.Intake.TILT_kP);
         tiltConfig.closedLoop.i(0.0);  // no integral — it causes windup in position control
         tiltConfig.closedLoop.d(Constants.Intake.TILT_kD);
+        tiltConfig.closedLoop.outputRange(
+                -Constants.Intake.TILT_PID_MAX_OUTPUT_DOWN,
+                Constants.Intake.TILT_PID_MAX_OUTPUT_UP);
+        tiltConfig.closedLoop.maxMotion
+                .positionMode(MAXMotionPositionMode.kMAXMotionTrapezoidal)
+                .cruiseVelocity(Constants.Intake.TILT_MAX_MOTION_CRUISE_VEL_DEG_PER_SEC)
+                .maxAcceleration(Constants.Intake.TILT_MAX_MOTION_ACCEL_DEG_PER_SEC2)
+                .allowedProfileError(Constants.Intake.TILT_MAX_MOTION_ALLOWED_ERROR_DEG);
         tiltMotor.configure(tiltConfig, ResetMode.kNoResetSafeParameters, PersistMode.kNoPersistParameters);
 
         // ---- Roller motor (TalonFX) configuration ----
@@ -270,8 +281,8 @@ public class IntakeSubsystem extends SubsystemBase {
         if (isHomed) {
             double clamped = Math.max(Constants.Intake.TILT_MIN_DEG,
                     Math.min(Constants.Intake.TILT_MAX_DEG, targetDegrees));
-            // kPosition tells the SparkMax to run its built-in position PID loop
-            tiltPID.setSetpoint(clamped, ControlType.kPosition);
+            // MAXMotionPositionControl applies trapezoidal profiling on setpoint moves.
+            tiltPID.setSetpoint(clamped, ControlType.kMAXMotionPositionControl);
         } else {
             // Safety: refuse to move if we haven't homed yet.
             // Log a warning so the student knows why it's not moving.

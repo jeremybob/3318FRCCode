@@ -354,10 +354,17 @@ public final class Constants {
         public static final double TILT_POS_CONV_DEG = 360.0 / 96.0;
 
         // Tilt position PID (SparkMax built-in, units are power-per-degree)
-        // 10:1 NEO with gravity load: kP=0.15 gives ~15% power at 1° error,
-        // kD=0.005 damps oscillation without fighting the setpoint.
-        public static final double TILT_kP = 0.15;  // TUNE ME
-        public static final double TILT_kD = 0.005; // TUNE ME
+        // 96:1 reduction uses MAXMotion profiling + modest PD gains.
+        public static final double TILT_kP = 0.08;  // TUNE ME on robot
+        public static final double TILT_kD = 0.004; // TUNE ME on robot
+        // Closed-loop output caps for position mode (Y-toggle/autonomous setpoints).
+        // Positive = tilt up/toward home, negative = tilt down/away from home.
+        public static final double TILT_PID_MAX_OUTPUT_UP = 0.85;
+        public static final double TILT_PID_MAX_OUTPUT_DOWN = 0.35;
+        // MAXMotion profile targets ~90 deg in ~1 second for large setpoint steps.
+        public static final double TILT_MAX_MOTION_CRUISE_VEL_DEG_PER_SEC = 110.0;
+        public static final double TILT_MAX_MOTION_ACCEL_DEG_PER_SEC2 = 500.0;
+        public static final double TILT_MAX_MOTION_ALLOWED_ERROR_DEG = 1.5;
 
         // Sign convention for this robot:
         //   stow/home is near 0 deg, deployed intake is negative degrees.
