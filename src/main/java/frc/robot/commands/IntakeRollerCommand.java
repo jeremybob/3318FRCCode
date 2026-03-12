@@ -23,6 +23,9 @@
 // ============================================================================
 package frc.robot.commands;
 
+import java.util.function.DoubleSupplier;
+
+import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;
@@ -33,7 +36,7 @@ import frc.robot.subsystems.IntakeSubsystem;
 public class IntakeRollerCommand extends Command {
 
     private final IntakeSubsystem intake;
-    private final double forwardPower;
+    private final DoubleSupplier forwardPowerSupplier;
     private final IntakeRollerProtection protection = new IntakeRollerProtection();
 
     // Timer tracks how long the current has been above the stall threshold
@@ -52,11 +55,22 @@ public class IntakeRollerCommand extends Command {
     //
     // Parameters:
     //   intake       - the intake subsystem (roller motor + current sensing)
-    //   forwardPower - roller power during normal operation (0.0 to 1.0)
+    //   forwardPower - fixed roller power during normal operation (0.0 to 1.0)
     // --------------------------------------------------------------------------
     public IntakeRollerCommand(IntakeSubsystem intake, double forwardPower) {
+        this(intake, () -> forwardPower);
+    }
+
+    // --------------------------------------------------------------------------
+    // Constructor
+    //
+    // Parameters:
+    //   intake              - the intake subsystem (roller motor + current sensing)
+    //   forwardPowerSupplier - supplies desired forward roller power (0.0 to 1.0)
+    // --------------------------------------------------------------------------
+    public IntakeRollerCommand(IntakeSubsystem intake, DoubleSupplier forwardPowerSupplier) {
         this.intake = intake;
-        this.forwardPower = forwardPower;
+        this.forwardPowerSupplier = forwardPowerSupplier;
         addRequirements(intake);
     }
 
@@ -66,7 +80,7 @@ public class IntakeRollerCommand extends Command {
         restartTimer(stallTimer);
         reverseTimer.stop();
         reverseTimer.reset();
-        intake.setRollerPower(forwardPower);
+        intake.setRollerPower(getForwardPowerCommand());
     }
 
     @Override
@@ -103,12 +117,14 @@ public class IntakeRollerCommand extends Command {
             restartTimer(stallTimer);
         }
 
+        double forwardPowerCommand = getForwardPowerCommand();
         intake.setRollerPower(protection.commandedPower(
-                forwardPower,
+                forwardPowerCommand,
                 Constants.Intake.STALL_REVERSE_POWER));
 
         SmartDashboard.putString("Intake/RollerState", protection.state().name());
         SmartDashboard.putNumber("Intake/StallRetries", protection.retryCount());
+        SmartDashboard.putNumber("Intake/RollerForwardCommand", forwardPowerCommand);
     }
 
     @Override
@@ -126,5 +142,9 @@ public class IntakeRollerCommand extends Command {
     private static void restartTimer(Timer timer) {
         timer.reset();
         timer.start();
+    }
+
+    private double getForwardPowerCommand() {
+        return MathUtil.clamp(forwardPowerSupplier.getAsDouble(), 0.0, 1.0);
     }
 }
