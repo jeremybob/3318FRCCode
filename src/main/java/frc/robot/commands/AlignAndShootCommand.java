@@ -95,9 +95,11 @@ public class AlignAndShootCommand extends Command {
     private final Timer alignOverallTimer = new Timer();
     private final Timer feedGateTimer = new Timer();
     private final Timer continuousLossTimer = new Timer();
+    private final Timer alignmentLockTimer = new Timer();
     private double searchRotationSign = 1.0;
     private boolean seenTargetThisRun = false;
     private double filteredYawDeg = Double.NaN;
+    private boolean alignmentLocked = false;
 
     private String workState = "IDLE";
     private boolean workCommandActive = false;
@@ -146,9 +148,11 @@ public class AlignAndShootCommand extends Command {
         turnPID.reset();
         resetFeedGateTimer();
         resetContinuousLossTimer();
+        resetAlignmentLockTimer();
         searchRotationSign = 1.0;
         seenTargetThisRun = false;
         filteredYawDeg = Double.NaN;
+        alignmentLocked = false;
 
         workState = State.ALIGN.name();
         workCommandActive = true;
@@ -220,6 +224,8 @@ public class AlignAndShootCommand extends Command {
         workFeedGateReady = false;
         workTargetRps = Double.NaN;
         workTimeOfFlightSec = Double.NaN;
+        alignmentLocked = false;
+        resetAlignmentLockTimer();
         updateTelemetry();
         publishTelemetry();
     }
@@ -246,6 +252,8 @@ public class AlignAndShootCommand extends Command {
             workFeedGateReady = false;
             resetFeedGateTimer();
             filteredYawDeg = Double.NaN;
+            alignmentLocked = false;
+            resetAlignmentLockTimer();
 
             if (seenTargetThisRun) {
                 workState = "WAIT_TARGET";
@@ -279,6 +287,8 @@ public class AlignAndShootCommand extends Command {
         }
 
         if (!isWithinTrackingYaw(filteredYawDeg)) {
+            alignmentLocked = false;
+            resetAlignmentLockTimer();
             shooter.stop();
             workGeometryFeasible = false;
             workHasShootableTarget = false;
@@ -297,6 +307,7 @@ public class AlignAndShootCommand extends Command {
             return;
         }
 
+        updateAlignmentLock(filteredYawDeg);
         ShotTracking tracking = buildStationaryTracking(result, filteredYawDeg);
         if (!tracking.solution().feasible()) {
             shooter.stop();
@@ -308,18 +319,9 @@ public class AlignAndShootCommand extends Command {
         }
 
         applyTracking(tracking);
-        if (tracking.feedGateReady()) {
-            if (!feedGateTimer.isRunning()) {
-                feedGateTimer.restart();
-            }
-        } else {
-            resetFeedGateTimer();
-        }
-
         driveTracking(tracking);
 
-        if (tracking.feedGateReady()
-                && feedGateTimer.hasElapsed(Constants.AlignShoot.SETTLE_TIME_SEC)) {
+        if (tracking.feedGateReady()) {
             transitionTo(State.CLEAR);
         } else if (alignOverallTimer.hasElapsed(ALIGN_CONVERGENCE_TIMEOUT_SEC)) {
             abort("Alignment convergence timeout");
@@ -343,8 +345,8 @@ public class AlignAndShootCommand extends Command {
             return;
         }
 
-        ShotTracking tracking = buildStationaryTracking(result, filterYaw(result.yawDeg()));
-        if (!tracking.solution().feasible() || !tracking.feedGateReady()) {
+        double filteredYawDeg = filterYaw(result.yawDeg());
+        if (!maintainLockedAlignment(filteredYawDeg)) {
             if (continuousFeedUntilInterrupted) {
                 if (shouldHoldContinuousFeed()) {
                     holdStationaryWhileReacquiring();
@@ -352,6 +354,20 @@ public class AlignAndShootCommand extends Command {
                 }
                 stopFeedPath();
                 shooter.stop();
+                transitionTo(State.ALIGN);
+            } else {
+                abort("Alignment lock lost before feed");
+            }
+            return;
+        }
+
+        ShotTracking tracking = buildStationaryTracking(result, filteredYawDeg);
+        if (!tracking.solution().feasible()) {
+            if (continuousFeedUntilInterrupted) {
+                stopFeedPath();
+                shooter.stop();
+                alignmentLocked = false;
+                resetAlignmentLockTimer();
                 transitionTo(State.ALIGN);
             } else {
                 abort("Feed gate lost before feed");
@@ -387,9 +403,8 @@ public class AlignAndShootCommand extends Command {
             return;
         }
 
-        ShotTracking tracking = buildStationaryTracking(result, filterYaw(result.yawDeg()));
-        boolean yawAligned = Math.abs(tracking.aimErrorDeg()) <= Constants.AlignShoot.YAW_TOLERANCE_DEG;
-        if (!tracking.solution().feasible() || !yawAligned) {
+        double filteredYawDeg = filterYaw(result.yawDeg());
+        if (!maintainLockedAlignment(filteredYawDeg)) {
             if (continuousFeedUntilInterrupted) {
                 if (shouldHoldContinuousFeed()) {
                     holdStationaryWhileReacquiring();
@@ -397,6 +412,20 @@ public class AlignAndShootCommand extends Command {
                 }
                 stopFeedPath();
                 shooter.stop();
+                transitionTo(State.ALIGN);
+            } else {
+                abort("Alignment lock lost during feed");
+            }
+            return;
+        }
+
+        ShotTracking tracking = buildStationaryTracking(result, filteredYawDeg);
+        if (!tracking.solution().feasible()) {
+            if (continuousFeedUntilInterrupted) {
+                stopFeedPath();
+                shooter.stop();
+                alignmentLocked = false;
+                resetAlignmentLockTimer();
                 transitionTo(State.ALIGN);
             } else {
                 abort("Feed gate lost during feed");
@@ -421,6 +450,10 @@ public class AlignAndShootCommand extends Command {
         state = newState;
         stateTimer.restart();
         resetContinuousLossTimer();
+        if (newState == State.ALIGN || newState == State.DONE) {
+            alignmentLocked = false;
+            resetAlignmentLockTimer();
+        }
         if (newState != State.ALIGN) {
             resetFeedGateTimer();
         }
@@ -477,17 +510,18 @@ public class AlignAndShootCommand extends Command {
         double pitchDeg = result.pitchDeg();
         ShooterSubsystem.ShotSolution solution = ShooterSubsystem.calculateMovingShotSolution(distanceM, 0.0, 0.0);
 
-        double pidOutput = turnPID.calculate(filteredYawDeg, 0.0);
-        boolean aligned = turnPID.atSetpoint();
-        double rotCmd = aligned
-                ? 0.0
-                : MathUtil.clamp(
-                        pidOutput,
-                        -Constants.AlignShoot.MAX_AUTO_AIM_OMEGA_RADPS,
-                        Constants.AlignShoot.MAX_AUTO_AIM_OMEGA_RADPS);
+        boolean holdingAlignment = shouldHoldAlignment(filteredYawDeg);
+        double rotCmd = 0.0;
+        if (!holdingAlignment) {
+            double pidOutput = turnPID.calculate(filteredYawDeg, 0.0);
+            rotCmd = MathUtil.clamp(
+                    pidOutput,
+                    -Constants.AlignShoot.MAX_AUTO_AIM_OMEGA_RADPS,
+                    Constants.AlignShoot.MAX_AUTO_AIM_OMEGA_RADPS);
+        }
 
         boolean feedGateReady = solution.feasible()
-                && aligned
+                && alignmentLocked
                 && isShooterReady(solution.targetRps());
 
         return new ShotTracking(
@@ -629,10 +663,64 @@ public class AlignAndShootCommand extends Command {
         continuousLossTimer.reset();
     }
 
+    private void resetAlignmentLockTimer() {
+        alignmentLockTimer.stop();
+        alignmentLockTimer.reset();
+    }
+
     private void stopFeedPath() {
         feeder.stop();
         hopper.stop();
         intake.setRollerPower(0);
+    }
+
+    private void updateAlignmentLock(double filteredYawDeg) {
+        if (!Double.isFinite(filteredYawDeg)) {
+            alignmentLocked = false;
+            resetAlignmentLockTimer();
+            return;
+        }
+        if (alignmentLocked) {
+            if (Math.abs(filteredYawDeg) > Constants.Vision.YAW_BREAK_TOLERANCE_DEG) {
+                alignmentLocked = false;
+                resetAlignmentLockTimer();
+            }
+            return;
+        }
+        if (shouldHoldAlignment(filteredYawDeg)) {
+            if (!alignmentLockTimer.isRunning()) {
+                alignmentLockTimer.restart();
+            }
+            if (alignmentLockTimer.hasElapsed(Constants.AlignShoot.SETTLE_TIME_SEC)) {
+                alignmentLocked = true;
+            }
+        } else {
+            resetAlignmentLockTimer();
+        }
+    }
+
+    private boolean maintainLockedAlignment(double filteredYawDeg) {
+        if (!alignmentLocked) {
+            return false;
+        }
+        if (Double.isFinite(filteredYawDeg)
+                && Math.abs(filteredYawDeg) <= Constants.Vision.YAW_BREAK_TOLERANCE_DEG) {
+            return true;
+        }
+        alignmentLocked = false;
+        resetAlignmentLockTimer();
+        return false;
+    }
+
+    private boolean shouldHoldAlignment(double filteredYawDeg) {
+        if (!Double.isFinite(filteredYawDeg)) {
+            return false;
+        }
+        double absYawDeg = Math.abs(filteredYawDeg);
+        return absYawDeg <= Constants.AlignShoot.YAW_TOLERANCE_DEG
+                || (alignmentLockTimer.isRunning()
+                        && absYawDeg <= Constants.Vision.YAW_BREAK_TOLERANCE_DEG)
+                || alignmentLocked;
     }
 
     private boolean shouldHoldContinuousFeed() {

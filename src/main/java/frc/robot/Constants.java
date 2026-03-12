@@ -481,6 +481,10 @@ public final class Constants {
         // Alignment is "good enough" once yaw error is within this many degrees.
         // Wider than PhotonVision because pixel-based yaw is noisier.
         public static final double YAW_TOLERANCE_DEG = 3.0;
+        // After entering the alignment window, allow a slightly wider band
+        // before resuming turn corrections so camera jitter does not cause
+        // left-right hunting around center.
+        public static final double YAW_BREAK_TOLERANCE_DEG = 5.0; // TUNE ME
         // Tolerate brief vision dropouts instead of immediately canceling a shot.
         // Bumped from 0.35 s to account for lower frame rate (~10-15 fps).
         public static final double TARGET_LOSS_TOLERANCE_SEC = 0.5; // TUNE ME

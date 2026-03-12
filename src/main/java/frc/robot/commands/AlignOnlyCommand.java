@@ -87,19 +87,14 @@ public class AlignOnlyCommand extends Command {
 
         double yawDeg = result.yawDeg();
         double filteredYawDeg = filterYaw(yawDeg);
-        double rotCmd = MathUtil.clamp(
-                turnPID.calculate(filteredYawDeg, 0.0),
-                -Constants.Vision.MAX_ROT_CMD,
-                Constants.Vision.MAX_ROT_CMD);
 
         SmartDashboard.putNumber("AlignOnly/TargetTagId", result.tagId());
         SmartDashboard.putNumber("AlignOnly/YawError", yawDeg);
         SmartDashboard.putNumber("AlignOnly/FilteredYawError", filteredYawDeg);
-        SmartDashboard.putNumber("AlignOnly/RotCmd", rotCmd);
-
-        if (turnPID.atSetpoint()) {
+        if (shouldHoldAlignment(filteredYawDeg)) {
             swerve.drive(0, 0, 0, false);
             SmartDashboard.putString("AlignOnly/State", "ALIGNED");
+            SmartDashboard.putNumber("AlignOnly/RotCmd", 0.0);
 
             if (!alignedHoldTimer.isRunning()) {
                 alignedHoldTimer.restart();
@@ -113,8 +108,13 @@ public class AlignOnlyCommand extends Command {
 
         alignedHoldTimer.stop();
         alignedHoldTimer.reset();
+        double rotCmd = MathUtil.clamp(
+                turnPID.calculate(filteredYawDeg, 0.0),
+                -Constants.Vision.MAX_ROT_CMD,
+                Constants.Vision.MAX_ROT_CMD);
         swerve.drive(0, 0, rotCmd, false);
         SmartDashboard.putString("AlignOnly/State", "ALIGNING");
+        SmartDashboard.putNumber("AlignOnly/RotCmd", rotCmd);
 
         if (alignTimer.hasElapsed(ALIGN_CONVERGENCE_TIMEOUT_SEC)) {
             finishReason = "Alignment convergence timeout";
@@ -161,5 +161,15 @@ public class AlignOnlyCommand extends Command {
                     + (1.0 - Constants.Vision.YAW_FILTER_ALPHA) * rawYawDeg;
         }
         return filteredYawDeg;
+    }
+
+    private boolean shouldHoldAlignment(double filteredYawDeg) {
+        if (!Double.isFinite(filteredYawDeg)) {
+            return false;
+        }
+        double absYawDeg = Math.abs(filteredYawDeg);
+        return absYawDeg <= Constants.Vision.YAW_TOLERANCE_DEG
+                || (alignedHoldTimer.isRunning()
+                        && absYawDeg <= Constants.Vision.YAW_BREAK_TOLERANCE_DEG);
     }
 }
