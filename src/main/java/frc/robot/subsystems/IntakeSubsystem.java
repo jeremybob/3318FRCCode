@@ -189,10 +189,21 @@ public class IntakeSubsystem extends SubsystemBase {
     // setTiltPower()
     //
     // Directly sets tilt motor power (-1.0 to +1.0) with encoder soft limits.
-    // Used by homing/automated safety-controlled flows. Does NOT use PID.
+    // Used by automated safety-controlled flows. Does NOT use PID.
     // --------------------------------------------------------------------------
     public void setTiltPower(double power) {
         setTiltPowerInternal(power, true);
+    }
+
+    // --------------------------------------------------------------------------
+    // setTiltPowerHoming()
+    //
+    // Homing must always be able to drive to the home switch even if encoder
+    // state is stale and soft limits are latched. Home-switch stop logic still
+    // applies, so motion toward home stops when the switch is pressed.
+    // --------------------------------------------------------------------------
+    public void setTiltPowerHoming(double power) {
+        setTiltPowerInternal(power, false);
     }
 
     // --------------------------------------------------------------------------

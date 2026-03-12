@@ -71,12 +71,12 @@ public class IntakeHomeCommand extends Command {
     public void execute() {
         if (intake.getLimitSwitchPressed()) {
             // Limit switch triggered! The arm is now at the home position.
-            intake.setTiltPower(0);         // stop moving
+            intake.setTiltPowerHoming(0);   // stop moving
             intake.resetEncoderToHome();    // set this position as 0 degrees
             homed = true;
         } else {
             // Keep driving slowly toward the limit switch
-            intake.setTiltPower(Constants.Intake.HOME_POWER);
+            intake.setTiltPowerHoming(Constants.Intake.HOME_POWER);
         }
     }
 
@@ -100,7 +100,7 @@ public class IntakeHomeCommand extends Command {
     // --------------------------------------------------------------------------
     @Override
     public void end(boolean interrupted) {
-        intake.setTiltPower(0);
+        intake.setTiltPowerHoming(0);
 
         if (homed) {
             System.out.println("[IntakeHomeCommand] Homing complete.");
