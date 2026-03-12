@@ -402,6 +402,18 @@ public final class Constants {
         public static final int ROLLER_STATOR_LIMIT_A = 60;  // prevents jam burnout
         // Positive roller power should pull FUEL inward toward the hopper.
         public static final boolean ROLLER_MOTOR_INVERTED = true;
+        // Roller geometry/model for speed matching against robot forward speed.
+        public static final double ROLLER_WHEEL_DIAMETER_IN = 3.0;
+        public static final double ROLLER_WHEEL_CIRCUMFERENCE_M =
+                Math.PI * Units.inchesToMeters(ROLLER_WHEEL_DIAMETER_IN);
+        // Kraken X60 free speed at 12V is ~6000 RPM = 100 RPS.
+        public static final double ROLLER_FREE_SPEED_RPS = 100.0;
+        // Operator intake speed matching: keep a low floor at slow/stopped speed,
+        // then ramp toward speed-matched roller surface speed as robot drives forward.
+        public static final double ROLLER_MATCH_MIN_POWER = 0.12;
+        public static final double ROLLER_MATCH_FORWARD_DEADBAND_MPS = 0.10;
+        public static final double ROLLER_MATCH_RATIO = 1.0;
+        public static final double ROLLER_MATCH_MAX_POWER = 0.60;
 
         // ---- Stall detection (roller motor) ----
         // If roller current stays above STALL_CURRENT_THRESHOLD_A for STALL_TIME_SEC,

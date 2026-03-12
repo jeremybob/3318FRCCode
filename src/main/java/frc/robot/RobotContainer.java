@@ -606,10 +606,10 @@ public class RobotContainer implements RobotRuntimeContainer {
                 buildContinuousFallbackShootCommand()
                         .beforeStarting(() -> logControlEvent("Operator:RB", "Fallback shot requested")));
 
-        // Left Trigger: Manual intake roller — spin forward with stall detection.
-        // If the roller jams, it automatically reverses and retries (up to 3 times).
+        // Left Trigger: Manual intake roller — speed-match to robot forward motion
+        // with a low-speed floor, plus stall detection/recovery.
         operatorController.leftTrigger().whileTrue(
-                new IntakeRollerCommand(intake, 0.6)
+                new IntakeRollerCommand(intake, this::getSpeedMatchedIntakeRollerForwardPower)
                         .beforeStarting(() -> logControlEvent("Operator:LT", "IntakeRollerCommand start"))
                         .finallyDo(() -> logControlEvent("Operator:LT", "IntakeRollerCommand end")));
 
@@ -936,6 +936,24 @@ public class RobotContainer implements RobotRuntimeContainer {
         return 0.0;
     }
 
+    private double getSpeedMatchedIntakeRollerForwardPower() {
+        double minPower = Constants.Intake.ROLLER_MATCH_MIN_POWER;
+        double forwardMps = Math.max(0.0, swerve.getRobotRelativeSpeeds().vxMetersPerSecond);
+        if (!Double.isFinite(forwardMps)
+                || forwardMps <= Constants.Intake.ROLLER_MATCH_FORWARD_DEADBAND_MPS) {
+            return minPower;
+        }
+
+        double targetRollerRps =
+                (forwardMps / Constants.Intake.ROLLER_WHEEL_CIRCUMFERENCE_M)
+                        * Constants.Intake.ROLLER_MATCH_RATIO;
+        double matchedPower = targetRollerRps / Constants.Intake.ROLLER_FREE_SPEED_RPS;
+        return MathUtil.clamp(
+                Math.max(minPower, matchedPower),
+                minPower,
+                Constants.Intake.ROLLER_MATCH_MAX_POWER);
+    }
+
     private Command buildIntakeTiltToggleCommand() {
         Command toggleWhenHomed = Commands.startEnd(
                 () -> {
@@ -987,7 +1005,8 @@ public class RobotContainer implements RobotRuntimeContainer {
                                 Commands.runOnce(() -> intake.setTiltPosition(Constants.Intake.INTAKE_DOWN_DEG), intake),
                                 // Spin rollers with stall detection — auto-reverses if jammed.
                                 // 4-second timeout allows time to drive over fuel and intake it.
-                                new IntakeRollerCommand(intake, 0.8).withTimeout(4.0),
+                                new IntakeRollerCommand(intake, this::getSpeedMatchedIntakeRollerForwardPower)
+                                        .withTimeout(4.0),
                                 // Stop rollers and leave arm down (ready to stow)
                                 Commands.runOnce(() -> intake.setRollerPower(0.0), intake)),
                         Commands.runOnce(() -> {
