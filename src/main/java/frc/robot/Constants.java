@@ -536,6 +536,9 @@ public final class Constants {
         public static final double MAX_AUTO_AIM_OMEGA_RADPS = Vision.MAX_ROT_CMD;
         // While the target is out of frame, keep sweeping at a controlled rate.
         public static final double SEARCH_OMEGA_RADPS = 0.45; // TUNE ME
+        // After losing a previously seen target, briefly hold still to ride out
+        // camera jitter before resuming sweep-based reacquisition.
+        public static final double TARGET_LOSS_WAIT_BEFORE_RESEEK_SEC = 0.30; // TUNE ME
         // Larger yaw errors are acquisition problems, not impossible shot geometry.
         public static final double ACQUIRE_YAW_MAX_DEG = 30.0; // TUNE ME
 

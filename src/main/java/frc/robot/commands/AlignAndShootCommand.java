@@ -96,6 +96,7 @@ public class AlignAndShootCommand extends Command {
     private final Timer feedGateTimer = new Timer();
     private final Timer continuousLossTimer = new Timer();
     private final Timer alignmentLockTimer = new Timer();
+    private final Timer alignTargetLossTimer = new Timer();
     private double searchRotationSign = 1.0;
     private boolean seenTargetThisRun = false;
     private double filteredYawDeg = Double.NaN;
@@ -149,6 +150,7 @@ public class AlignAndShootCommand extends Command {
         resetFeedGateTimer();
         resetContinuousLossTimer();
         resetAlignmentLockTimer();
+        resetAlignTargetLossTimer();
         searchRotationSign = 1.0;
         seenTargetThisRun = false;
         filteredYawDeg = Double.NaN;
@@ -256,9 +258,15 @@ public class AlignAndShootCommand extends Command {
             resetAlignmentLockTimer();
 
             if (seenTargetThisRun) {
-                workState = "WAIT_TARGET";
-                swerve.drive(0, 0, 0, false);
-                SmartDashboard.putString("AlignShoot/State", "WAIT_TARGET");
+                if (shouldResumeSearchAfterTargetLoss()) {
+                    workState = "RESEEK_TARGET";
+                    SmartDashboard.putString("AlignShoot/State", "RESEEK_TARGET");
+                    driveSearchPattern();
+                } else {
+                    workState = "WAIT_TARGET";
+                    swerve.drive(0, 0, 0, false);
+                    SmartDashboard.putString("AlignShoot/State", "WAIT_TARGET");
+                }
             } else {
                 workState = State.ALIGN.name();
                 driveSearchPattern();
@@ -271,6 +279,7 @@ public class AlignAndShootCommand extends Command {
         }
 
         seenTargetThisRun = true;
+        resetAlignTargetLossTimer();
         workState = State.ALIGN.name();
         SmartDashboard.putString("AlignShoot/State", "ALIGN");
 
@@ -666,6 +675,20 @@ public class AlignAndShootCommand extends Command {
     private void resetAlignmentLockTimer() {
         alignmentLockTimer.stop();
         alignmentLockTimer.reset();
+    }
+
+    private void resetAlignTargetLossTimer() {
+        alignTargetLossTimer.stop();
+        alignTargetLossTimer.reset();
+    }
+
+    private boolean shouldResumeSearchAfterTargetLoss() {
+        if (!alignTargetLossTimer.isRunning()) {
+            alignTargetLossTimer.restart();
+            return false;
+        }
+        return alignTargetLossTimer.hasElapsed(
+                Constants.AlignShoot.TARGET_LOSS_WAIT_BEFORE_RESEEK_SEC);
     }
 
     private void stopFeedPath() {
