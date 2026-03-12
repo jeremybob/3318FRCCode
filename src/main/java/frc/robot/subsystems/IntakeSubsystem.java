@@ -292,8 +292,8 @@ public class IntakeSubsystem extends SubsystemBase {
         if (isHomed) {
             double clamped = Math.max(Constants.Intake.TILT_MIN_DEG,
                     Math.min(Constants.Intake.TILT_MAX_DEG, targetDegrees));
-            // MAXMotionPositionControl applies trapezoidal profiling on setpoint moves.
-            tiltPID.setSetpoint(clamped, ControlType.kMAXMotionPositionControl);
+            // Position control is broadly reliable across firmware versions.
+            tiltPID.setSetpoint(clamped, ControlType.kPosition);
         } else {
             // Safety: refuse to move if we haven't homed yet.
             // Log a warning so the student knows why it's not moving.

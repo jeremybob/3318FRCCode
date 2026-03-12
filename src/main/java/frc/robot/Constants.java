@@ -198,7 +198,7 @@ public final class Constants {
         public static final double FL_CANCODER_OFFSET_ROT = -0.358642578125;
         public static final double FR_CANCODER_OFFSET_ROT =  0.199462890625;
         public static final double BL_CANCODER_OFFSET_ROT = -0.026611328125;
-        public static final double BR_CANCODER_OFFSET_ROT =  0.365234375    ;
+        public static final double BR_CANCODER_OFFSET_ROT =  0.365234375;
 
         //public static final double FL_CANCODER_OFFSET_ROT = -0.368408;
         //public static final double FR_CANCODER_OFFSET_ROT =  0.198730;
@@ -390,6 +390,12 @@ public final class Constants {
         // Enter movement above ENGAGE; return to idle below RELEASE.
         public static final double MANUAL_TILT_ENGAGE_DEADBAND = 0.12;
         public static final double MANUAL_TILT_RELEASE_DEADBAND = 0.08;
+        // Override threshold for canceling auto tilt toggles (higher than manual
+        // engage deadband to reject small stick drift).
+        public static final double MANUAL_TILT_TOGGLE_CANCEL_DEADBAND = 0.25;
+        // Y-toggle completion criteria.
+        public static final double TILT_TOGGLE_AT_TARGET_TOLERANCE_DEG = 2.0;
+        public static final double TILT_TOGGLE_SAFETY_TIMEOUT_SEC = 5.0;
         // Manual tilt output caps (as motor percent output).
         // Positive = tilt up/toward home, negative = tilt down/away from home.
         public static final double MANUAL_TILT_MAX_POWER_UP = 1.00;
