@@ -416,7 +416,7 @@ public final class Constants {
         public static final double ROLLER_FREE_SPEED_RPS = 100.0;
         // Operator intake speed matching: keep a low floor at slow/stopped speed,
         // then ramp toward speed-matched roller surface speed as robot drives forward.
-        public static final double ROLLER_MATCH_MIN_POWER = 0.12;
+        public static final double ROLLER_MATCH_MIN_POWER = 0.25;
         public static final double ROLLER_MATCH_FORWARD_DEADBAND_MPS = 0.10;
         public static final double ROLLER_MATCH_RATIO = 1.0;
         public static final double ROLLER_MATCH_MAX_POWER = 0.60;
