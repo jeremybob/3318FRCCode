@@ -216,8 +216,9 @@ Controller ports (`Constants.OI`):
 - Right Bumper (hold): fallback shoot (no vision alignment)
 - Left Trigger (hold): intake roller in
 - Left Bumper (hold): intake roller reverse/eject
+- B (press): intake tilt down/deploy (pickup position)
 - X (press): intake re-home
-- Y (press): intake tilt toggle (deploy/stow)
+- Y (press): intake tilt up/stow (home angle)
 
 ### 10.3 Climber status
 

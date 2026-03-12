@@ -27,8 +27,9 @@ Controller ports (`Constants.OI`):
 - Right Bumper (hold): fallback shoot routine (no vision alignment)
 - Left Trigger (hold): intake roller forward with stall protection
 - Left Bumper (hold): intake roller reverse/eject
+- B (press): intake tilt down/deploy (pickup position)
 - X (press): intake home command
-- Y (press): intake tilt toggle (stow/deploy PID target, manual stick override allowed)
+- Y (press): intake tilt up/stow (home angle)
 
 ## Disabled controls
 

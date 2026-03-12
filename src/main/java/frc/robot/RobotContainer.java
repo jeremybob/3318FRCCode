@@ -473,7 +473,8 @@ public class RobotContainer implements RobotRuntimeContainer {
     //    Right Bumper ......... Fallback shoot (no vision)
     //    Left Trigger (hold) .. Intake roller forward (stall-protected)
     //    Left Bumper (hold) ... Intake roller reverse / eject
-    //    Y button ............. Toggle intake tilt (deploy/stow)
+    //    Y button ............. Intake tilt up/stow (home angle)
+    //    B button ............. Intake tilt down/deploy (pickup angle)
     //    X button ............. Re-home intake
     //    A button ............. Align-only (vision yaw test, no shot)
     //
@@ -628,11 +629,21 @@ public class RobotContainer implements RobotRuntimeContainer {
                         Commands.runOnce(() -> logControlEvent("Operator:X", "IntakeHome requested")),
                         buildIntakeHomeCommand()));
 
-        // Y button: Toggle intake tilt between down (deployed) and up (stowed)
+        // Y button: Intake tilt up/stow (home angle)
         operatorController.y().onTrue(
                 Commands.sequence(
-                        Commands.runOnce(() -> logControlEvent("Operator:Y", "Intake tilt toggle requested")),
-                        buildIntakeTiltToggleCommand()));
+                        Commands.runOnce(() -> logControlEvent("Operator:Y", "Intake tilt stow requested")),
+                        buildIntakeTiltMoveCommand(
+                                Constants.Intake.INTAKE_STOW_DEG,
+                                "IntakeTiltStow")));
+
+        // B button: Intake tilt down/deploy (pickup angle)
+        operatorController.b().onTrue(
+                Commands.sequence(
+                        Commands.runOnce(() -> logControlEvent("Operator:B", "Intake tilt deploy requested")),
+                        buildIntakeTiltMoveCommand(
+                                Constants.Intake.INTAKE_DOWN_DEG,
+                                "IntakeTiltDeploy")));
     }
 
     // =========================================================================
@@ -954,41 +965,35 @@ public class RobotContainer implements RobotRuntimeContainer {
                 Constants.Intake.ROLLER_MATCH_MAX_POWER);
     }
 
-    private Command buildIntakeTiltToggleCommand() {
-        final double[] toggleTargetDeg = {Constants.Intake.INTAKE_STOW_DEG};
-        Command toggleWhenHomed = Commands.sequence(
-                Commands.runOnce(() -> {
-                    double positionDeg = intake.getTiltPositionDeg();
-                    boolean shouldDeploy =
-                            Math.abs(positionDeg - Constants.Intake.INTAKE_STOW_DEG)
-                                    < Math.abs(positionDeg - Constants.Intake.INTAKE_DOWN_DEG);
-                    toggleTargetDeg[0] = shouldDeploy
-                            ? Constants.Intake.INTAKE_DOWN_DEG
-                            : Constants.Intake.INTAKE_STOW_DEG;
-                    intake.setTiltPosition(toggleTargetDeg[0]);
-                }, intake),
-                // Hold the subsystem so the manual default command cannot override
-                // the position loop until we're at target or manually canceled.
+    private Command buildIntakeTiltMoveCommand(double targetDegrees, String commandName) {
+        final double clampedTargetDeg = Math.max(
+                Constants.Intake.TILT_MIN_DEG,
+                Math.min(Constants.Intake.TILT_MAX_DEG, targetDegrees));
+        Command moveWhenHomed = Commands.sequence(
+                Commands.runOnce(() -> intake.setTiltPosition(clampedTargetDeg), intake),
+                // Hold subsystem ownership so manual default command cannot
+                // override position control until complete/override/timeout.
                 Commands.run(() -> { }, intake)
                         .until(() -> {
                             boolean manualOverride =
                                     Math.abs(operatorController.getRightY())
                                             > Constants.Intake.MANUAL_TILT_TOGGLE_CANCEL_DEADBAND;
                             boolean atTarget =
-                                    Math.abs(intake.getTiltPositionDeg() - toggleTargetDeg[0])
+                                    Math.abs(intake.getTiltPositionDeg() - clampedTargetDeg)
                                             <= Constants.Intake.TILT_TOGGLE_AT_TARGET_TOLERANCE_DEG;
                             return manualOverride || atTarget;
                         })
                         .withTimeout(Constants.Intake.TILT_TOGGLE_SAFETY_TIMEOUT_SEC)
-        ).withName("IntakeTiltToggleActive");
+        ).withName(commandName + "Active");
 
-        Command notHomed = Commands.runOnce(() ->
-                System.out.println("[RobotContainer] Intake tilt toggle ignored: intake is not homed."),
-                intake).withName("IntakeTiltToggleNotHomed");
+        Command notHomed = Commands.runOnce(
+                () -> System.out.println("[RobotContainer] " + commandName
+                        + " ignored: intake is not homed."),
+                intake).withName(commandName + "NotHomed");
 
         // IMPORTANT: Evaluate homed state at button press time, not startup.
-        return Commands.either(toggleWhenHomed, notHomed, intake::isHomed)
-                .withName("IntakeTiltToggle");
+        return Commands.either(moveWhenHomed, notHomed, intake::isHomed)
+                .withName(commandName);
     }
 
     private Command buildIntakeHomeCommand() {
