@@ -346,6 +346,15 @@ public class RobotContainer implements RobotRuntimeContainer {
         NamedCommands.registerCommand(RobotAutoCatalog.NAMED_INTAKE_FUEL, buildIntakeGamePieceCommand());
         // Keep old name registered for backwards compatibility with existing .auto files
         NamedCommands.registerCommand(RobotAutoCatalog.NAMED_INTAKE_GAME_PIECE, buildIntakeGamePieceCommand());
+        // Split variants for path-level control:
+        //  - IntakeDeployOnly: home-if-needed then move tilt to pickup angle.
+        //  - IntakeBalls: run intake rollers only (stall-protected, timed).
+        NamedCommands.registerCommand(
+                RobotAutoCatalog.NAMED_INTAKE_DEPLOY_ONLY,
+                buildAutoIntakeDeployOnlyCommand());
+        NamedCommands.registerCommand(
+                RobotAutoCatalog.NAMED_INTAKE_BALLS,
+                buildAutoIntakeBallsCommand());
 
         // AutoShoot: align to HUB via vision, then keep feeding/reacquiring
         // continuously until timeout (bounded by Constants.Auto).
@@ -1004,6 +1013,31 @@ public class RobotContainer implements RobotRuntimeContainer {
     private Command buildSwerveValidationCommand(SwerveCorner corner, SwerveValidationMode mode) {
         return new ValidateSwerveModuleCommand(swerve, corner, mode)
                 .withName("ValidateSwerve" + corner.token() + mode.token());
+    }
+
+    private Command buildAutoIntakeDeployOnlyCommand() {
+        return Commands.sequence(
+                // Only home if needed.
+                Commands.either(
+                        buildIntakeHomeCommand(),
+                        Commands.none(),
+                        () -> !intake.isHomed()),
+                // Deploy only if homing succeeded; otherwise report and skip.
+                Commands.either(
+                        Commands.runOnce(() -> intake.setTiltPosition(Constants.Intake.INTAKE_DOWN_DEG), intake),
+                        Commands.runOnce(
+                                () -> System.out.println(
+                                        "[RobotContainer] AutoIntakeDeployOnly aborted: intake not homed after homing attempt."),
+                                intake),
+                        intake::isHomed))
+                .withName("AutoIntakeDeployOnly");
+    }
+
+    private Command buildAutoIntakeBallsCommand() {
+        // 4-second timeout allows time to drive over fuel and intake it.
+        return new IntakeRollerCommand(intake, this::getSpeedMatchedIntakeRollerForwardPower)
+                .withTimeout(4.0)
+                .withName("AutoIntakeBalls");
     }
 
     private Command buildIntakeGamePieceCommand() {

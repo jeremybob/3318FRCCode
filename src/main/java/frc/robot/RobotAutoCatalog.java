@@ -6,6 +6,8 @@ final class RobotAutoCatalog {
     static final String NAMED_HOME_INTAKE = "HomeIntake";
     static final String NAMED_INTAKE_FUEL = "IntakeFuel";
     static final String NAMED_INTAKE_GAME_PIECE = "IntakeGamePiece";
+    static final String NAMED_INTAKE_DEPLOY_ONLY = "IntakeDeployOnly";
+    static final String NAMED_INTAKE_BALLS = "IntakeBalls";
     static final String NAMED_AUTO_SHOOT = "AutoShoot";
 
     private RobotAutoCatalog() {}

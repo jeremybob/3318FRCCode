@@ -62,12 +62,16 @@ class RobotContainerAutoSelectionStateTest {
                     RobotAutoCatalog.NAMED_HOME_INTAKE,
                     RobotAutoCatalog.NAMED_INTAKE_FUEL,
                     RobotAutoCatalog.NAMED_INTAKE_GAME_PIECE,
+                    RobotAutoCatalog.NAMED_INTAKE_DEPLOY_ONLY,
+                    RobotAutoCatalog.NAMED_INTAKE_BALLS,
                     RobotAutoCatalog.NAMED_AUTO_SHOOT
                 },
                 new String[] {
                     "HomeIntake",
                     "IntakeFuel",
                     "IntakeGamePiece",
+                    "IntakeDeployOnly",
+                    "IntakeBalls",
                     "AutoShoot"
                 });
     }
