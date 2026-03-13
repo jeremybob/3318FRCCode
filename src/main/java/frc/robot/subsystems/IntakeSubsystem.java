@@ -22,6 +22,7 @@ package frc.robot.subsystems;
 
 import com.ctre.phoenix6.CANBus;
 import com.ctre.phoenix6.StatusCode;
+import com.ctre.phoenix6.StatusSignal;
 import com.ctre.phoenix6.configs.TalonFXConfiguration;
 import com.ctre.phoenix6.hardware.TalonFX;
 import com.ctre.phoenix6.signals.InvertedValue;
@@ -63,6 +64,8 @@ public class IntakeSubsystem extends SubsystemBase {
     // ---- Roller motor (TalonFX / Kraken X60) ----
     private final TalonFX rollerMotor =
             new TalonFX(Constants.CAN.INTAKE_ROLLER, new CANBus(Constants.CAN.CTRE_CAN_BUS));
+    @SuppressWarnings("rawtypes")
+    private final StatusSignal rollerStatorCurrent = rollerMotor.getStatorCurrent();
 
     // ---- State tracking ----
     // isHomed is false at startup until IntakeHomeCommand confirms the arm
@@ -129,11 +132,13 @@ public class IntakeSubsystem extends SubsystemBase {
         rollerCfg.CurrentLimits.SupplyCurrentLimit       = 40;
         rollerCfg.CurrentLimits.SupplyCurrentLimitEnable = true;
 
-        rollerMotor.getConfigurator().apply(rollerCfg);
+        applyWithRetry(
+                () -> rollerMotor.getConfigurator().apply(rollerCfg),
+                "Intake roller config (id=" + Constants.CAN.INTAKE_ROLLER + ")");
 
         // Reduce CAN status frame rates — intake roller is low-priority.
         // Stator current at 20 Hz for reliable 300ms stall detection window.
-        rollerMotor.getStatorCurrent().setUpdateFrequency(20);
+        rollerStatorCurrent.setUpdateFrequency(20);
         rollerMotor.getVelocity().setUpdateFrequency(4);
         rollerMotor.getPosition().setUpdateFrequency(4);
         rollerMotor.getDeviceTemp().setUpdateFrequency(1);
@@ -186,8 +191,17 @@ public class IntakeSubsystem extends SubsystemBase {
         return tiltEncoder.getPosition();
     }
 
+    public record RollerCurrentSample(double amps, boolean signalOk) {}
+
+    public RollerCurrentSample sampleRollerCurrent() {
+        var refreshed = rollerStatorCurrent.refresh();
+        return new RollerCurrentSample(
+                refreshed.getValueAsDouble(),
+                refreshed.getStatus().isOK());
+    }
+
     public double getRollerCurrentAmps() {
-        return rollerMotor.getStatorCurrent().getValueAsDouble();
+        return sampleRollerCurrent().amps();
     }
 
     // --------------------------------------------------------------------------

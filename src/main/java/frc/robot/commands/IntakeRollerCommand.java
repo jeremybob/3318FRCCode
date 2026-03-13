@@ -85,11 +85,13 @@ public class IntakeRollerCommand extends Command {
 
     @Override
     public void execute() {
-        double current = intake.getRollerCurrentAmps();
+        IntakeSubsystem.RollerCurrentSample rollerCurrent = intake.sampleRollerCurrent();
+        double current = rollerCurrent.amps();
+        boolean currentSignalOk = rollerCurrent.signalOk();
         IntakeRollerProtection.Update update = protection.update(
-                current,
+                currentSignalOk ? current : 0.0,
                 Constants.Intake.STALL_CURRENT_THRESHOLD_A,
-                stallTimer.hasElapsed(Constants.Intake.STALL_TIME_SEC),
+                currentSignalOk && stallTimer.hasElapsed(Constants.Intake.STALL_TIME_SEC),
                 reverseTimer.hasElapsed(Constants.Intake.STALL_REVERSE_TIME_SEC),
                 Constants.Intake.STALL_MAX_RETRIES);
 
@@ -125,6 +127,7 @@ public class IntakeRollerCommand extends Command {
         SmartDashboard.putString("Intake/RollerState", protection.state().name());
         SmartDashboard.putNumber("Intake/StallRetries", protection.retryCount());
         SmartDashboard.putNumber("Intake/RollerForwardCommand", forwardPowerCommand);
+        SmartDashboard.putBoolean("Intake/RollerCurrentSignalOk", currentSignalOk);
     }
 
     @Override
