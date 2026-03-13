@@ -609,7 +609,7 @@ public class RobotContainer implements RobotRuntimeContainer {
 
         // Left Trigger: Manual intake roller — speed-match to robot forward motion
         // with a low-speed floor, plus stall detection/recovery.
-        operatorController.leftTrigger().whileTrue(
+        operatorController.leftTrigger(TRIGGER_ACTIVE_THRESHOLD).whileTrue(
                 new IntakeRollerCommand(intake, this::getSpeedMatchedIntakeRollerForwardPower)
                         .beforeStarting(() -> logControlEvent("Operator:LT", "IntakeRollerCommand start"))
                         .finallyDo(() -> logControlEvent("Operator:LT", "IntakeRollerCommand end")));
@@ -914,7 +914,7 @@ public class RobotContainer implements RobotRuntimeContainer {
     }
 
     private boolean isDriverPrecisionMode() {
-        return driverController.rightTrigger().getAsBoolean();
+        return driverController.rightTrigger(TRIGGER_ACTIVE_THRESHOLD).getAsBoolean();
     }
 
     private boolean isDriverFieldRelative() {
