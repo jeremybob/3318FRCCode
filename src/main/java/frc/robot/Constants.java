@@ -370,7 +370,7 @@ public final class Constants {
         //   stow/home is near 0 deg, deployed intake is negative degrees.
         // Therefore positive power moves toward home (limit switch).
         public static final double HOME_POWER       = 0.20;
-        public static final double HOME_TIMEOUT_SEC =  4.0;
+        public static final double HOME_TIMEOUT_SEC =  3.0;
         public static final double HOME_SWITCH_DEBOUNCE_SEC = 0.04;
 
         // Target angle for the intake to be "down" and collecting game pieces
