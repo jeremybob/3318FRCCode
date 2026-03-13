@@ -21,12 +21,6 @@
           "data": {
             "pathName": "ShootFromBlueOutpost"
           }
-        },
-        {
-          "type": "named",
-          "data": {
-            "name": "AutoShoot"
-          }
         }
       ]
     }

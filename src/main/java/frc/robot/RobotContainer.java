@@ -347,9 +347,10 @@ public class RobotContainer implements RobotRuntimeContainer {
         // Keep old name registered for backwards compatibility with existing .auto files
         NamedCommands.registerCommand(RobotAutoCatalog.NAMED_INTAKE_GAME_PIECE, buildIntakeGamePieceCommand());
 
-        // AutoShoot: align to HUB via vision and shoot FUEL (timeout in Constants.Auto)
+        // AutoShoot: align to HUB via vision, then keep feeding/reacquiring
+        // continuously until timeout (bounded by Constants.Auto).
         NamedCommands.registerCommand(RobotAutoCatalog.NAMED_AUTO_SHOOT,
-                buildAlignAndShootCommand(false).withTimeout(Constants.Auto.AUTO_SHOOT_TIMEOUT_SEC));
+                buildAlignAndShootCommand(true).withTimeout(Constants.Auto.AUTO_SHOOT_TIMEOUT_SEC));
 
         // --- CLIMBER DISABLED ---
         // Level1Climb: automatically extends climber to Level 1 height.

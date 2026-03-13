@@ -374,7 +374,7 @@ public final class Constants {
         public static final double HOME_SWITCH_DEBOUNCE_SEC = 0.04;
 
         // Target angle for the intake to be "down" and collecting game pieces
-        public static final double INTAKE_DOWN_DEG = -45.0;  // TUNE ME
+        public static final double INTAKE_DOWN_DEG = -80.0;  // TUNE ME
 
         // Target angle for the intake to be stowed (up / home position)
         public static final double INTAKE_STOW_DEG = 0.0;
