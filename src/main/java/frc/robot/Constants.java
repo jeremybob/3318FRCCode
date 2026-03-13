@@ -359,7 +359,7 @@ public final class Constants {
         public static final double TILT_kD = 0.004; // TUNE ME on robot
         // Closed-loop output caps for position mode (Y-toggle/autonomous setpoints).
         // Positive = tilt up/toward home, negative = tilt down/away from home.
-        public static final double TILT_PID_MAX_OUTPUT_UP = 0.85;
+        public static final double TILT_PID_MAX_OUTPUT_UP = 0.45;
         public static final double TILT_PID_MAX_OUTPUT_DOWN = 0.35;
         // MAXMotion profile targets ~90 deg in ~1 second for large setpoint steps.
         public static final double TILT_MAX_MOTION_CRUISE_VEL_DEG_PER_SEC = 110.0;
@@ -398,7 +398,7 @@ public final class Constants {
         public static final double TILT_TOGGLE_SAFETY_TIMEOUT_SEC = 5.0;
         // Manual tilt output caps (as motor percent output).
         // Positive = tilt up/toward home, negative = tilt down/away from home.
-        public static final double MANUAL_TILT_MAX_POWER_UP = 1.00;
+        public static final double MANUAL_TILT_MAX_POWER_UP = 0.45;
         public static final double MANUAL_TILT_MAX_POWER_DOWN = 0.25;
 
         // Current limit to protect the NEO and gearbox during homing stalls

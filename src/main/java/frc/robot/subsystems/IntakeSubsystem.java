@@ -21,6 +21,7 @@
 package frc.robot.subsystems;
 
 import com.ctre.phoenix6.CANBus;
+import com.ctre.phoenix6.StatusCode;
 import com.ctre.phoenix6.configs.TalonFXConfiguration;
 import com.ctre.phoenix6.hardware.TalonFX;
 import com.ctre.phoenix6.signals.InvertedValue;
@@ -44,6 +45,7 @@ import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import frc.robot.Constants;
 
 public class IntakeSubsystem extends SubsystemBase {
+    private static final int CTRE_CONFIG_RETRIES = 5;
 
     // ---- Tilt motor (SparkMax + NEO) ----
     private final SparkMax      tiltMotor   = new SparkMax(Constants.CAN.INTAKE_TILT_NEO, MotorType.kBrushless);
@@ -135,6 +137,9 @@ public class IntakeSubsystem extends SubsystemBase {
         rollerMotor.getVelocity().setUpdateFrequency(4);
         rollerMotor.getPosition().setUpdateFrequency(4);
         rollerMotor.getDeviceTemp().setUpdateFrequency(1);
+        applyWithRetry(
+                rollerMotor::optimizeBusUtilization,
+                "Intake roller bus optimization (id=" + Constants.CAN.INTAKE_ROLLER + ")");
 
         updateHomeLimitSwitchState();
     }
@@ -310,6 +315,28 @@ public class IntakeSubsystem extends SubsystemBase {
     public void stop() {
         tiltMotor.stopMotor();
         rollerMotor.stopMotor();
+    }
+
+    @FunctionalInterface
+    private interface ConfigApplier {
+        StatusCode apply();
+    }
+
+    private static void applyWithRetry(ConfigApplier applier, String action) {
+        StatusCode lastCode = StatusCode.StatusCodeNotInitialized;
+        for (int i = 0; i < CTRE_CONFIG_RETRIES; i++) {
+            lastCode = applier.apply();
+            if (lastCode.isOK()) {
+                if (i > 0) {
+                    System.out.println("[IntakeSubsystem] " + action + " succeeded on attempt " + (i + 1));
+                }
+                return;
+            }
+            System.out.println("[IntakeSubsystem] " + action + " attempt " + (i + 1)
+                    + " failed: " + lastCode.getName());
+        }
+        System.err.println("[IntakeSubsystem] ERROR: " + action + " failed after "
+                + CTRE_CONFIG_RETRIES + " attempts. Last status: " + lastCode.getName());
     }
 
     private void updateHomeLimitSwitchState() {

@@ -90,6 +90,12 @@ public class ShooterSubsystem extends SubsystemBase {
         rightShooter.getVelocity().setUpdateFrequency(10);
         rightShooter.getPosition().setUpdateFrequency(4);
         rightShooter.getDeviceTemp().setUpdateFrequency(1);
+        applyWithRetry(
+                leftShooter::optimizeBusUtilization,
+                "Left shooter bus optimization (id=" + Constants.CAN.SHOOTER_LEFT + ")");
+        applyWithRetry(
+                rightShooter::optimizeBusUtilization,
+                "Right shooter bus optimization (id=" + Constants.CAN.SHOOTER_RIGHT + ")");
     }
 
     // --------------------------------------------------------------------------

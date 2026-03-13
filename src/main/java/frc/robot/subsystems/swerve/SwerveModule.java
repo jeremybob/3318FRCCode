@@ -46,6 +46,8 @@ import frc.robot.Constants;
 public class SwerveModule {
     // Max retries when applying device configuration over CAN
     private static final int CONFIG_APPLY_RETRIES = 5;
+    private static final int CONTROL_SIGNAL_HZ = 50;
+    private static final int CANCODER_TELEMETRY_HZ = 2;
 
     // Re-sync threshold: if internal encoder and CANcoder diverge by more than
     // this many rotations (~5.4°), re-seed the internal encoder.
@@ -216,21 +218,41 @@ public class SwerveModule {
         }
 
         // ---- Optimize CAN frame rates for swerve-critical signals -----------
-        BaseStatusSignal.setUpdateFrequencyForAll(100, driveVelocity, drivePosition, driveAppliedVoltage);
+        BaseStatusSignal.setUpdateFrequencyForAll(
+                CONTROL_SIGNAL_HZ,
+                driveVelocity,
+                drivePosition,
+                driveAppliedVoltage);
         BaseStatusSignal.setUpdateFrequencyForAll(1, driveTemp);
 
         if (Constants.Swerve.USE_PHOENIX_PRO_FEATURES) {
-            // FusedCANcoder: CANcoder stays at 100 Hz for continuous fusion
-            BaseStatusSignal.setUpdateFrequencyForAll(100, cancoderPosition, cancoderAbsolutePosition);
-            steerPosition.setUpdateFrequency(100);
+            // FusedCANcoder: keep control-critical feedback at drivetrain rate.
+            BaseStatusSignal.setUpdateFrequencyForAll(
+                    CONTROL_SIGNAL_HZ,
+                    cancoderPosition,
+                    cancoderAbsolutePosition);
+            steerPosition.setUpdateFrequency(CONTROL_SIGNAL_HZ);
         } else {
             // Seed-once: CANcoder only needed for diagnostics + periodic re-sync (~1 Hz)
-            BaseStatusSignal.setUpdateFrequencyForAll(4, cancoderPosition, cancoderAbsolutePosition);
+            BaseStatusSignal.setUpdateFrequencyForAll(
+                    CANCODER_TELEMETRY_HZ,
+                    cancoderPosition,
+                    cancoderAbsolutePosition);
             // Steer motor position IS the feedback now — needs full update rate
-            steerPosition.setUpdateFrequency(100);
+            steerPosition.setUpdateFrequency(CONTROL_SIGNAL_HZ);
         }
-        steerMotor.getVelocity().setUpdateFrequency(10);
+        steerMotor.getVelocity().setUpdateFrequency(8);
         steerMotor.getDeviceTemp().setUpdateFrequency(1);
+
+        applyWithRetry(
+                cancoder::optimizeBusUtilization,
+                "CANcoder bus optimization (id=" + cancoderId + ")");
+        applyWithRetry(
+                driveMotor::optimizeBusUtilization,
+                "Drive TalonFX bus optimization (id=" + driveId + ")");
+        applyWithRetry(
+                steerMotor::optimizeBusUtilization,
+                "Steer TalonFX bus optimization (id=" + steerId + ")");
 
         refreshSteerAngle();
         lastAngle = getSteerAngle();

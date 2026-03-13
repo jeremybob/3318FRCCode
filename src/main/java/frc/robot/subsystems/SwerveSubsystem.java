@@ -18,6 +18,7 @@ package frc.robot.subsystems;
 import java.util.concurrent.atomic.AtomicReference;
 
 import com.ctre.phoenix6.CANBus;
+import com.ctre.phoenix6.StatusCode;
 import com.ctre.phoenix6.hardware.Pigeon2;
 
 import edu.wpi.first.math.estimator.SwerveDrivePoseEstimator;
@@ -40,6 +41,7 @@ import frc.robot.subsystems.swerve.SwerveValidationMode;
 import frc.robot.vision.VisionSupport;
 
 public class SwerveSubsystem extends SubsystemBase {
+    private static final int CTRE_CONFIG_RETRIES = 5;
 
     // ---- Four swerve modules, one per corner ----
     private final SwerveModule frontLeft = new SwerveModule(
@@ -156,9 +158,12 @@ public class SwerveSubsystem extends SubsystemBase {
 
         // Optimize Pigeon 2 CAN frame rates — yaw is critical for field-relative
         // driving, but pitch/roll are only used for telemetry.
-        pigeon.getYaw().setUpdateFrequency(100);
-        pigeon.getPitch().setUpdateFrequency(4);
-        pigeon.getRoll().setUpdateFrequency(4);
+        pigeon.getYaw().setUpdateFrequency(50);
+        pigeon.getPitch().setUpdateFrequency(2);
+        pigeon.getRoll().setUpdateFrequency(2);
+        applyWithRetry(
+                pigeon::optimizeBusUtilization,
+                "Pigeon2 bus optimization (id=" + Constants.CAN.PIGEON + ")");
 
         // Initialize odometry.
         // We start at the origin (0, 0) facing 0 degrees.
@@ -486,5 +491,27 @@ public class SwerveSubsystem extends SubsystemBase {
             case BL -> backLeft;
             case BR -> backRight;
         };
+    }
+
+    @FunctionalInterface
+    private interface ConfigApplier {
+        StatusCode apply();
+    }
+
+    private static void applyWithRetry(ConfigApplier applier, String action) {
+        StatusCode lastCode = StatusCode.StatusCodeNotInitialized;
+        for (int i = 0; i < CTRE_CONFIG_RETRIES; i++) {
+            lastCode = applier.apply();
+            if (lastCode.isOK()) {
+                if (i > 0) {
+                    System.out.println("[SwerveSubsystem] " + action + " succeeded on attempt " + (i + 1));
+                }
+                return;
+            }
+            System.out.println("[SwerveSubsystem] " + action + " attempt " + (i + 1)
+                    + " failed: " + lastCode.getName());
+        }
+        System.err.println("[SwerveSubsystem] ERROR: " + action + " failed after "
+                + CTRE_CONFIG_RETRIES + " attempts. Last status: " + lastCode.getName());
     }
 }
