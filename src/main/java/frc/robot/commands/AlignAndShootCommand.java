@@ -97,6 +97,7 @@ public class AlignAndShootCommand extends Command {
     private final Timer feedGateTimer = new Timer();
     private final Timer continuousLossTimer = new Timer();
     private final Timer alignmentLockTimer = new Timer();
+    private final Timer alignmentBreakTimer = new Timer();
     private final Timer alignTargetLossTimer = new Timer();
     private double searchRotationSign = 1.0;
     private boolean seenTargetThisRun = false;
@@ -151,6 +152,7 @@ public class AlignAndShootCommand extends Command {
         resetFeedGateTimer();
         resetContinuousLossTimer();
         resetAlignmentLockTimer();
+        resetAlignmentBreakTimer();
         resetAlignTargetLossTimer();
         searchRotationSign = 1.0;
         seenTargetThisRun = false;
@@ -229,6 +231,7 @@ public class AlignAndShootCommand extends Command {
         workTimeOfFlightSec = Double.NaN;
         alignmentLocked = false;
         resetAlignmentLockTimer();
+        resetAlignmentBreakTimer();
         updateTelemetry();
         publishTelemetry();
     }
@@ -463,6 +466,7 @@ public class AlignAndShootCommand extends Command {
         if (newState == State.ALIGN || newState == State.DONE) {
             alignmentLocked = false;
             resetAlignmentLockTimer();
+            resetAlignmentBreakTimer();
         }
         if (newState != State.ALIGN) {
             resetFeedGateTimer();
@@ -681,6 +685,11 @@ public class AlignAndShootCommand extends Command {
         alignmentLockTimer.reset();
     }
 
+    private void resetAlignmentBreakTimer() {
+        alignmentBreakTimer.stop();
+        alignmentBreakTimer.reset();
+    }
+
     private void resetAlignTargetLossTimer() {
         alignTargetLossTimer.stop();
         alignTargetLossTimer.reset();
@@ -705,15 +714,18 @@ public class AlignAndShootCommand extends Command {
         if (!Double.isFinite(filteredYawDeg)) {
             alignmentLocked = false;
             resetAlignmentLockTimer();
+            resetAlignmentBreakTimer();
             return;
         }
         if (alignmentLocked) {
-            if (Math.abs(filteredYawDeg) > Constants.AlignShoot.YAW_BREAK_TOLERANCE_DEG) {
+            if (shouldBreakAlignmentLock(filteredYawDeg)) {
                 alignmentLocked = false;
                 resetAlignmentLockTimer();
+                resetAlignmentBreakTimer();
             }
             return;
         }
+        resetAlignmentBreakTimer();
         if (shouldHoldAlignment(filteredYawDeg)) {
             if (!alignmentLockTimer.isRunning()) {
                 alignmentLockTimer.restart();
@@ -730,13 +742,29 @@ public class AlignAndShootCommand extends Command {
         if (!alignmentLocked) {
             return false;
         }
-        if (Double.isFinite(filteredYawDeg)
-                && Math.abs(filteredYawDeg) <= Constants.AlignShoot.YAW_BREAK_TOLERANCE_DEG) {
+        if (!shouldBreakAlignmentLock(filteredYawDeg)) {
             return true;
         }
         alignmentLocked = false;
         resetAlignmentLockTimer();
+        resetAlignmentBreakTimer();
         return false;
+    }
+
+    private boolean shouldBreakAlignmentLock(double filteredYawDeg) {
+        if (!Double.isFinite(filteredYawDeg)) {
+            resetAlignmentBreakTimer();
+            return true;
+        }
+        if (Math.abs(filteredYawDeg) <= Constants.AlignShoot.YAW_BREAK_TOLERANCE_DEG) {
+            resetAlignmentBreakTimer();
+            return false;
+        }
+        if (!alignmentBreakTimer.isRunning()) {
+            alignmentBreakTimer.restart();
+            return false;
+        }
+        return alignmentBreakTimer.hasElapsed(Constants.AlignShoot.LOCK_BREAK_DEBOUNCE_SEC);
     }
 
     private boolean shouldHoldAlignment(double filteredYawDeg) {

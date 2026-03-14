@@ -585,6 +585,8 @@ public final class Constants {
         // Slightly wider hold window prevents unlock/relock chatter near center.
         public static final double YAW_TOLERANCE_DEG = 3.5; // TUNE ME
         public static final double YAW_BREAK_TOLERANCE_DEG = 6.0; // TUNE ME
+        // Require break-threshold error to persist briefly before unlocking.
+        public static final double LOCK_BREAK_DEBOUNCE_SEC = 0.18; // TUNE ME
         public static final double RPS_TOLERANCE_RPS = 1.5; // TUNE ME
         public static final double SETTLE_TIME_SEC = 0.20; // TUNE ME
         // During continuous hold-to-shoot, tolerate brief target/yaw dropouts
