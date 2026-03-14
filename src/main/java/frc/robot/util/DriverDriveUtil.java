@@ -28,7 +28,7 @@ public final class DriverDriveUtil {
             boolean fieldRelative) {
         double filteredX = MathUtil.applyDeadband(rawForward, Constants.Swerve.JOYSTICK_DEADBAND);
         double filteredY = MathUtil.applyDeadband(rawLeft, Constants.Swerve.JOYSTICK_DEADBAND);
-        double filteredOmega = MathUtil.applyDeadband(rawTurn, Constants.Swerve.JOYSTICK_DEADBAND);
+        double filteredOmega = MathUtil.applyDeadband(rawTurn, Constants.Swerve.ROTATION_JOYSTICK_DEADBAND);
 
         double speedScale = precisionMode
                 ? Constants.Swerve.PRECISION_SPEED_SCALE

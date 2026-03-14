@@ -1298,21 +1298,22 @@ public class RobotContainer implements RobotRuntimeContainer {
             pressed.add("POV " + pov + "deg");
         }
 
-        final double axisThreshold = 0.15;
+        final double translationAxisThreshold = Constants.Swerve.JOYSTICK_DEADBAND;
+        final double rotationAxisThreshold = Constants.Swerve.ROTATION_JOYSTICK_DEADBAND;
         double leftX = hid.getLeftX();
-        if (Math.abs(leftX) > axisThreshold) {
+        if (Math.abs(leftX) > translationAxisThreshold) {
             pressed.add("LX " + formatSigned(leftX));
         }
         double leftY = hid.getLeftY();
-        if (Math.abs(leftY) > axisThreshold) {
+        if (Math.abs(leftY) > translationAxisThreshold) {
             pressed.add("LY " + formatSigned(leftY));
         }
         double rightX = hid.getRightX();
-        if (Math.abs(rightX) > axisThreshold) {
+        if (Math.abs(rightX) > rotationAxisThreshold) {
             pressed.add("RX " + formatSigned(rightX));
         }
         double rightY = hid.getRightY();
-        if (Math.abs(rightY) > axisThreshold) {
+        if (Math.abs(rightY) > translationAxisThreshold) {
             pressed.add("RY " + formatSigned(rightY));
         }
 

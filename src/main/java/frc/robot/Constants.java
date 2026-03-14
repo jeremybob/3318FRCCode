@@ -261,10 +261,12 @@ public final class Constants {
         public static final double VALIDATION_DRIVE_DUTY_CYCLE = 0.08;
         public static final double VALIDATION_STEER_DUTY_CYCLE = 0.05;
 
-        // ---- Joystick deadband ----
-        // Joystick axes within this range of zero are treated as zero.
-        // This prevents the robot from creeping when the stick isn't centered.
+        // ---- Joystick deadbands ----
+        // Translation can tolerate a slightly smaller deadband than rotation.
+        // A larger yaw deadband rejects right-stick drift that would otherwise
+        // make the robot slowly spin while the driver thinks the stick is idle.
         public static final double JOYSTICK_DEADBAND = 0.1;
+        public static final double ROTATION_JOYSTICK_DEADBAND = 0.15;
 
         // ---- Precision mode ----
         // Hold driver right trigger to scale max speed down for fine positioning.
