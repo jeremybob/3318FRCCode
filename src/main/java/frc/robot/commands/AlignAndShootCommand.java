@@ -295,10 +295,19 @@ public class AlignAndShootCommand extends Command {
             return;
         }
 
+        // Pre-spin the shooter as soon as we have a valid target so spin-up
+        // happens in parallel with yaw alignment instead of after it.
+        double preSpinDistanceM = estimateDistanceM(result);
+        ShooterSubsystem.ShotSolution preSpinSolution =
+                ShooterSubsystem.calculateMovingShotSolution(preSpinDistanceM, 0.0, 0.0);
+        if (preSpinSolution.feasible()) {
+            shooter.setShooterVelocity(preSpinSolution.targetRps());
+            workTargetRps = preSpinSolution.targetRps();
+        }
+
         if (!isWithinTrackingYaw(filteredYawDeg)) {
             alignmentLocked = false;
             resetAlignmentLockTimer();
-            shooter.stop();
             workGeometryFeasible = false;
             workHasShootableTarget = false;
             workAimErrorDeg = filteredYawDeg;
