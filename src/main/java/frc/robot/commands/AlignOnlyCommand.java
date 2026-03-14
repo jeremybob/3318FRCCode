@@ -185,7 +185,7 @@ public class AlignOnlyCommand extends Command {
         if (!Double.isFinite(distanceM) || distanceM <= 0.0) {
             return 0.0;
         }
-        return Math.toDegrees(Math.atan2(-Constants.Vision.CAMERA_LATERAL_OFFSET_M, distanceM));
+        return Math.toDegrees(Math.atan2(Constants.Vision.CAMERA_LATERAL_OFFSET_M, distanceM));
     }
 
     private double estimateDistanceM(VisionResult result) {

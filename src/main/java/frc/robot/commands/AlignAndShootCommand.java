@@ -842,7 +842,7 @@ public class AlignAndShootCommand extends Command {
         }
         // Camera is mounted laterally from robot center; yaw to this setpoint so
         // the shooter centerline, not camera centerline, points at the hub center.
-        return Math.toDegrees(Math.atan2(-Constants.Vision.CAMERA_LATERAL_OFFSET_M, distanceM));
+        return Math.toDegrees(Math.atan2(Constants.Vision.CAMERA_LATERAL_OFFSET_M, distanceM));
     }
 
     private double filterYaw(double rawYawDeg) {
