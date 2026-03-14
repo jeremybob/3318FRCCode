@@ -5,6 +5,18 @@
     "data": {
       "commands": [
         {
+          "type": "named",
+          "data": {
+            "name": "HomeIntake"
+          }
+        },
+        {
+          "type": "named",
+          "data": {
+            "name": "IntakeDeployOnly"
+          }
+        },
+        {
           "type": "path",
           "data": {
             "pathName": "OnlyShoot"
