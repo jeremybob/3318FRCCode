@@ -484,9 +484,10 @@ public final class Constants {
         public static final int CAMERA_OVERLAY_STREAM_PORT = 1182;
 
         // ---- C920 camera intrinsics (640x480, 4:3 crop) ----
-        // Horizontal FOV from Logitech C920 spec sheet (native 16:9 is 70.42°,
-        // but 4:3 crop narrows it slightly — measure and adjust if needed).
-        public static final double HORIZONTAL_FOV_DEG = 70.42;  // TUNE ME
+        // Horizontal FOV derived from C920 native 16:9 FOV (70.42°) adjusted
+        // for 4:3 crop: sensor crops 1920→1440 wide, so
+        // HFOV = 2 * atan((1440/1920) * tan(70.42°/2)) ≈ 55.8°.
+        public static final double HORIZONTAL_FOV_DEG = 55.8;
         public static final double VERTICAL_FOV_DEG   = 43.3;   // TUNE ME
         // Focal length in pixels — calibrate once per camera:
         //   Place robot at known distance d from a tag, measure tag pixel height px,
