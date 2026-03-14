@@ -304,7 +304,7 @@ public final class Constants {
 
         // RPS clamps — keep within motor/mechanism limits.
         // Kraken free speed ≈ 100 RPS at 12V; leave headroom for voltage droop.
-        public static final double MIN_SHOT_RPS = 20.0;
+        public static final double MIN_SHOT_RPS = 60.0;
         public static final double MAX_SHOT_RPS = 90.0;
 
         // Default warmup speed used during initial spinup before distance is known.

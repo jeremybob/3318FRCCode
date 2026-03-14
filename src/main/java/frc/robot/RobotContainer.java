@@ -613,17 +613,19 @@ public class RobotContainer implements RobotRuntimeContainer {
         // Right Trigger: Vision-required auto-align, then feed continuously while held.
         // Threshold matches TRIGGER_ACTIVE_THRESHOLD so dashboard and actual trigger agree.
         operatorController.rightTrigger(TRIGGER_ACTIVE_THRESHOLD).whileTrue(
-                buildAlignAndShootCommand(true)
-                        .beforeStarting(() -> logControlEvent("Operator:RT", "AlignAndShoot requested")));
+                withTeleopShotPriority(
+                        buildAlignAndShootCommand(true)
+                                .beforeStarting(() -> logControlEvent("Operator:RT", "AlignAndShoot requested"))));
 
         // Right Bumper: OVERRIDE shot at fallback speed (no alignment/vision required).
         // Spins up once, clears once, then keeps feeding continuously until release.
         operatorController.rightBumper().whileTrue(
-                buildContinuousFallbackShootCommand()
-                        .beforeStarting(() -> logControlEvent("Operator:RB", "Fallback shot requested")));
+                withTeleopShotPriority(
+                        buildContinuousFallbackShootCommand()
+                                .beforeStarting(() -> logControlEvent("Operator:RB", "Fallback shot requested"))));
 
         // Y button: Manual shoot with vision-calculated speed (no alignment turn).
-        operatorController.y().whileTrue(buildManualDistanceShootCommand());
+        operatorController.y().whileTrue(withTeleopShotPriority(buildManualDistanceShootCommand()));
 
         // Left Trigger: Manual intake roller — speed-match to robot forward motion
         // with a low-speed floor, plus stall detection/recovery.
@@ -933,6 +935,10 @@ public class RobotContainer implements RobotRuntimeContainer {
         }, Set.of(shooter, feeder, hopper, intake))
                 .withTimeout(Constants.Auto.AUTO_SHOOT_TIMEOUT_SEC)
                 .withName("AutoManualDistanceShoot");
+    }
+
+    private Command withTeleopShotPriority(Command command) {
+        return command.withInterruptBehavior(Command.InterruptionBehavior.kCancelIncoming);
     }
 
     private DriverDriveUtil.DriveRequest getDriverDriveRequest() {

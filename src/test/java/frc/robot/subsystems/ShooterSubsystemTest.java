@@ -38,4 +38,11 @@ class ShooterSubsystemTest {
                 solution.targetRps(),
                 1e-9);
     }
+
+    @Test
+    void closeShotNeverDropsBelowGlobalMinimum() {
+        double targetRps = ShooterSubsystem.calculateTargetRPS(0.5);
+
+        assertEquals(Constants.Shooter.MIN_SHOT_RPS, targetRps, 1e-9);
+    }
 }
