@@ -523,7 +523,7 @@ public final class Constants {
 
         // Alignment is "good enough" once yaw error is within this many degrees.
         // Wider than PhotonVision because pixel-based yaw is noisier.
-        public static final double YAW_TOLERANCE_DEG = 3.0;
+        public static final double YAW_TOLERANCE_DEG = 3.5;
         // After entering the alignment window, allow a slightly wider band
         // before resuming turn corrections so camera jitter does not cause
         // left-right hunting around center.
@@ -545,7 +545,7 @@ public final class Constants {
         // noisy derivative term. Keep authority high, then smooth the input.
         public static final double TURN_kP     = 0.14;   // TUNE ME
         public static final double TURN_kD     = 0.0;    // TUNE ME
-        public static final double MAX_ROT_CMD = 1.15;   // rad/s cap during alignment
+        public static final double MAX_ROT_CMD = 0.75;   // rad/s cap during alignment
 
         // ---- Camera mount position ----
         // Used for pitch-based distance estimation.
