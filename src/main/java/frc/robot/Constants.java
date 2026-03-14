@@ -353,6 +353,9 @@ public final class Constants {
         // Feed: all three mechanisms push the game piece into the shooter
         public static final double FEED_POWER    = 0.80;
         public static final double FEED_TIME_SEC = 0.75;
+        // Manual left-stick shooter should also advance the hopper so balls are
+        // presented to the feeder without requiring a full auto/vision shot.
+        public static final double MANUAL_HOPPER_POWER = 0.80;
     }
 
     // =========================================================================
