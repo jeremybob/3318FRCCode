@@ -184,7 +184,9 @@ public class AlignAndShootCommand extends Command {
             SmartDashboard.putBoolean("AlignShoot/HubInactiveWarning", false);
         }
 
-        shooter.stop();
+        // Don't stop the shooter here — the driver may have pre-spun the
+        // wheels before triggering align, and killing that momentum wastes
+        // spin-up time we'd have to pay again once a target is acquired.
         SmartDashboard.putString("AlignShoot/State", "ALIGN");
         updateTelemetry();
         publishTelemetry();
@@ -238,7 +240,8 @@ public class AlignAndShootCommand extends Command {
         workHasTarget = hasFreshTarget;
 
         if (!hasFreshTarget) {
-            shooter.stop();
+            // Keep the shooter spinning during brief target loss — the heavy
+            // flywheels barely slow in 0.3s, and stopping/restarting wastes time.
             workGeometryFeasible = false;
             workHasShootableTarget = false;
             workYawDeg = Double.NaN;

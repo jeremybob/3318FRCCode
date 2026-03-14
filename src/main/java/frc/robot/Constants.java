@@ -529,7 +529,7 @@ public final class Constants {
 
         // Filter raw camera yaw before feeding it into the turn controller.
         // 0 = no filtering, closer to 1 = heavier smoothing.
-        public static final double YAW_FILTER_ALPHA = 0.65; // TUNE ME
+        public static final double YAW_FILTER_ALPHA = 0.50; // TUNE ME
         // P-only turn control works better on this low-rate vision signal than a
         // noisy derivative term. Keep authority high, then smooth the input.
         public static final double TURN_kP     = 0.14;   // TUNE ME
