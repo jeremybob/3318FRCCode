@@ -6,8 +6,9 @@
 //
 // SEQUENCE:
 //   1. ALIGN    - Spin shooter and rotate in place until yaw + RPM are ready
-//   2. CLEAR    - Keep aiming in place while the feeder clears the note
-//   3. FEED     - Continue aiming in place while feeding until interrupted
+//   2. CLEAR    - Optional short clear pulse before feed (non-continuous mode)
+//   3. FEED     - Continue aiming in place while feeding (or skip CLEAR in
+//                 continuous hold-to-shoot mode)
 //   4. DONE     - Command finishes, everything stops
 // ============================================================================
 package frc.robot.commands;
@@ -279,7 +280,7 @@ public class AlignAndShootCommand extends Command {
                 driveSearchPattern();
             }
 
-            if (alignOverallTimer.hasElapsed(ALIGN_CONVERGENCE_TIMEOUT_SEC)) {
+            if (hasAlignConvergenceTimedOut()) {
                 abort("No alliance HUB tag found");
             }
             return;
@@ -326,7 +327,7 @@ public class AlignAndShootCommand extends Command {
             resetFeedGateTimer();
             updateSearchDirectionFromYaw(filteredYawDeg);
             driveAcquireTarget(filteredYawDeg);
-            if (alignOverallTimer.hasElapsed(ALIGN_CONVERGENCE_TIMEOUT_SEC)) {
+            if (hasAlignConvergenceTimedOut()) {
                 abort("Target yaw acquisition timeout");
             }
             return;
@@ -347,8 +348,8 @@ public class AlignAndShootCommand extends Command {
         driveTracking(tracking);
 
         if (tracking.feedGateReady()) {
-            transitionTo(State.CLEAR);
-        } else if (alignOverallTimer.hasElapsed(ALIGN_CONVERGENCE_TIMEOUT_SEC)) {
+            transitionTo(continuousFeedUntilInterrupted ? State.FEED : State.CLEAR);
+        } else if (hasAlignConvergenceTimedOut()) {
             abort("Alignment convergence timeout");
         }
     }
@@ -795,6 +796,11 @@ public class AlignAndShootCommand extends Command {
             continuousLossTimer.restart();
         }
         return !continuousLossTimer.hasElapsed(Constants.AlignShoot.CONTINUOUS_FEED_REACQUIRE_SEC);
+    }
+
+    private boolean hasAlignConvergenceTimedOut() {
+        return !continuousFeedUntilInterrupted
+                && alignOverallTimer.hasElapsed(ALIGN_CONVERGENCE_TIMEOUT_SEC);
     }
 
     private void holdStationaryWhileReacquiring() {
