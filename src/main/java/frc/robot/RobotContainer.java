@@ -342,10 +342,7 @@ public class RobotContainer implements RobotRuntimeContainer {
         NamedCommands.registerCommand(RobotAutoCatalog.NAMED_HOME_INTAKE, buildIntakeHomeCommand());
 
         // IntakeFuel: deploy intake, spin rollers to pick up FUEL from the ground.
-        // Replaces the old "IntakeGamePiece" name to match REBUILT terminology.
         NamedCommands.registerCommand(RobotAutoCatalog.NAMED_INTAKE_FUEL, buildIntakeGamePieceCommand());
-        // Keep old name registered for backwards compatibility with existing .auto files
-        NamedCommands.registerCommand(RobotAutoCatalog.NAMED_INTAKE_GAME_PIECE, buildIntakeGamePieceCommand());
         // Split variants for path-level control:
         //  - IntakeDeployOnly: home-if-needed then move tilt to pickup angle.
         //  - IntakeBalls: run intake rollers only (stall-protected, timed).
