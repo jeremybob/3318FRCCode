@@ -11,7 +11,7 @@
 //   1. Added teleop drive default command (robot was undrivable before!)
 //   2. Added AutoBuilder.configure() so PathPlanner autos work
 //   3. Added an auto selector on SmartDashboard (multiple auto options)
-//   4. Added operator controller with manual climber and hopper bindings
+//   4. Added operator controller with manual subsystem bindings
 //   5. Added gyro zero button for the driver
 //   6. Camera is created here and shared — no longer re-created per command
 //   7. Joystick deadband is applied HERE on raw axis values (0-1 range),
@@ -121,7 +121,7 @@ public class RobotContainer implements RobotRuntimeContainer {
     private String operatorCommandSummary = "operator idle";
     // --- CLIMBER DISABLED ---
     // private double lastClimberPower = 0.0;
-    private double lastHopperPower = 0.0;
+    private double lastManualShooterTargetRps = 0.0;
     private double lastIntakeTiltPower = 0.0;
     private boolean intakeTiltManualAxisActive = false;
     // private boolean lastClimbArmed = false;
@@ -481,7 +481,7 @@ public class RobotContainer implements RobotRuntimeContainer {
     //    X button (hold) ...... X-Lock (resist pushing)
     //
     //  OPERATOR (Port 1):
-    //    Left Stick Y ......... Manual hopper control
+    //    Left Stick Y ......... Manual shooter wheel speed
     //    Right Stick Y ........ Manual intake tilt (was climber — changed when climber disabled)
     //    Right Trigger ........ Vision align-and-shoot
     //    Right Bumper ......... Fallback shoot (no vision)
@@ -565,17 +565,25 @@ public class RobotContainer implements RobotRuntimeContainer {
         //             refreshOperatorCommandSummary();
         //         }, climber).withName("OperatorClimberManualDefault"));
 
-        // Left stick Y: Manual hopper control
-        // Lets the operator nudge game pieces if they get stuck
-        hopper.setDefaultCommand(
+        // Left stick Y: Manual shooter wheel speed.
+        // Push forward to command shooter RPS; release or pull back to stop.
+        shooter.setDefaultCommand(
                 Commands.run(() -> {
-                    double hopperPower = MathUtil.applyDeadband(
-                            -operatorController.getLeftY(), 0.1);
-                    hopper.setPower(hopperPower);
+                    double manualShooterTargetRps = ShooterSubsystem.manualStickToTargetRps(
+                            -operatorController.getLeftY());
+                    if (manualShooterTargetRps > 0.0) {
+                        shooter.setShooterVelocity(manualShooterTargetRps);
+                    } else {
+                        shooter.stop();
+                    }
 
-                    lastHopperPower = hopperPower;
+                    lastManualShooterTargetRps = manualShooterTargetRps;
                     refreshOperatorCommandSummary();
-                }, hopper).withName("OperatorHopperManualDefault"));
+                }, shooter).withName("OperatorShooterManualDefault"));
+
+        // Hopper stays idle unless an auto/shot command explicitly owns it.
+        hopper.setDefaultCommand(
+                Commands.run(hopper::stop, hopper).withName("OperatorHopperIdleDefault"));
 
         // Right stick Y: Manual intake tilt control with deadband to prevent jitter.
         intake.setDefaultCommand(
@@ -1246,10 +1254,10 @@ public class RobotContainer implements RobotRuntimeContainer {
 
     private void refreshOperatorCommandSummary() {
         // --- CLIMBER DISABLED: removed climber fields from summary ---
-        operatorCommandSummary = "hopperPower=" + formatSigned(lastHopperPower)
+        operatorCommandSummary = "manualShooterRps=" + formatSigned(lastManualShooterTargetRps)
                 + " tiltPower=" + formatSigned(lastIntakeTiltPower);
         // operatorCommandSummary = "climberPower=" + formatSigned(lastClimberPower)
-        //         + " hopperPower=" + formatSigned(lastHopperPower)
+        //         + " manualShooterRps=" + formatSigned(lastManualShooterTargetRps)
         //         + " climbArmed=" + yesNo(lastClimbArmed);
     }
 

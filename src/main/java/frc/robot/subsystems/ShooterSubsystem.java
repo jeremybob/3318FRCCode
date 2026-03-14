@@ -124,6 +124,13 @@ public class ShooterSubsystem extends SubsystemBase {
         rightShooter.setControl(velocityRequest.withVelocity(-targetRPS));
     }
 
+    public static double manualStickToTargetRps(double rawStickInput) {
+        double filteredInput = MathUtil.applyDeadband(
+                rawStickInput,
+                Constants.Shooter.MANUAL_SPEED_DEADBAND);
+        return Math.max(0.0, filteredInput) * Constants.Shooter.MANUAL_MAX_RPS;
+    }
+
     // --------------------------------------------------------------------------
     // isAtSpeed()
     //
@@ -214,7 +221,7 @@ public class ShooterSubsystem extends SubsystemBase {
     // Stops both shooter motors (they will coast to a stop).
     // --------------------------------------------------------------------------
     public void stop() {
-        currentTargetRPS = Constants.Shooter.TARGET_RPS;
+        currentTargetRPS = 0.0;
         leftShooter.stopMotor();
         rightShooter.stopMotor();
     }

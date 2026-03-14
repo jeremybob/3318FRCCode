@@ -53,4 +53,21 @@ class ShooterSubsystemTest {
 
         assertTrue(farRps >= closeRps);
     }
+
+    @Test
+    void manualStickDeadbandStopsShooter() {
+        double targetRps = ShooterSubsystem.manualStickToTargetRps(
+                Constants.Shooter.MANUAL_SPEED_DEADBAND - 0.01);
+
+        assertEquals(0.0, targetRps, 1e-9);
+    }
+
+    @Test
+    void manualStickOnlyCommandsForwardShooterSpeed() {
+        double reverseTargetRps = ShooterSubsystem.manualStickToTargetRps(-1.0);
+        double forwardTargetRps = ShooterSubsystem.manualStickToTargetRps(1.0);
+
+        assertEquals(0.0, reverseTargetRps, 1e-9);
+        assertEquals(Constants.Shooter.MANUAL_MAX_RPS, forwardTargetRps, 1e-9);
+    }
 }
