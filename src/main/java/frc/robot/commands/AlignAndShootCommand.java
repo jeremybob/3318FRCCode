@@ -29,6 +29,7 @@ import frc.robot.subsystems.IntakeSubsystem;
 import frc.robot.subsystems.ShooterSubsystem;
 import frc.robot.subsystems.SwerveSubsystem;
 import frc.robot.vision.VisionResult;
+import frc.robot.vision.VisionSupport;
 
 public class AlignAndShootCommand extends Command {
 
@@ -626,7 +627,7 @@ public class AlignAndShootCommand extends Command {
             distanceM = pitchFallbackM;
         }
         if (Double.isFinite(distanceM)) {
-            distanceM = Math.max(0.1, distanceM + Constants.Vision.DISTANCE_CALIBRATION_OFFSET_M);
+            distanceM = VisionSupport.calibrateDistanceM(distanceM);
         }
         return distanceM;
     }

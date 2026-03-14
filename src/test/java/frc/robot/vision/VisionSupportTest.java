@@ -16,6 +16,8 @@ import org.opencv.core.CvType;
 import org.opencv.core.Mat;
 import org.opencv.core.Scalar;
 
+import frc.robot.Constants;
+
 class VisionSupportTest {
 
     @BeforeAll
@@ -96,5 +98,17 @@ class VisionSupportTest {
         assertEquals(24.0, estimate.centerOffsetFromBestPx(), 1e-9);
         assertEquals(1, estimate.hubTagCount());
         assertEquals(1, estimate.hubFaceCount());
+    }
+
+    @Test
+    void calibrateDistanceAppliesScaleOffsetAndClamp() {
+        double rawDistanceM = 3.0;
+        double expected = Math.max(
+                0.1,
+                rawDistanceM * Constants.Vision.DISTANCE_CALIBRATION_SCALE
+                        + Constants.Vision.DISTANCE_CALIBRATION_OFFSET_M);
+        assertEquals(expected, VisionSupport.calibrateDistanceM(rawDistanceM), 1e-9);
+        assertEquals(0.1, VisionSupport.calibrateDistanceM(-1.0), 1e-9);
+        assertTrue(Double.isNaN(VisionSupport.calibrateDistanceM(Double.NaN)));
     }
 }

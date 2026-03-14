@@ -7,6 +7,8 @@ import java.util.Map;
 import org.opencv.core.Mat;
 import org.opencv.imgproc.Imgproc;
 
+import frc.robot.Constants;
+
 public final class VisionSupport {
 
     private VisionSupport() {}
@@ -54,6 +56,15 @@ public final class VisionSupport {
         return lastFrameTimestampSec != null
                 && Double.isFinite(lastFrameTimestampSec)
                 && nowSec - lastFrameTimestampSec <= heartbeatTimeoutSec;
+    }
+
+    public static double calibrateDistanceM(double rawDistanceM) {
+        if (!Double.isFinite(rawDistanceM)) {
+            return Double.NaN;
+        }
+        double calibrated = rawDistanceM * Constants.Vision.DISTANCE_CALIBRATION_SCALE
+                + Constants.Vision.DISTANCE_CALIBRATION_OFFSET_M;
+        return Math.max(0.1, calibrated);
     }
 
     public static HubCenterEstimate estimateHubCenter(Collection<HubTagObservation> observations) {
