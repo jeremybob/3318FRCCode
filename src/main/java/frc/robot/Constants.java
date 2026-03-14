@@ -360,10 +360,10 @@ public final class Constants {
         // Closed-loop output caps for position mode (Y-toggle/autonomous setpoints).
         // Positive = tilt up/toward home, negative = tilt down/away from home.
         public static final double TILT_PID_MAX_OUTPUT_UP = 0.30;
-        public static final double TILT_PID_MAX_OUTPUT_DOWN = 0.18;
-        // Gentler profile to reduce gearbox shock during operator stow/deploy moves.
-        public static final double TILT_MAX_MOTION_CRUISE_VEL_DEG_PER_SEC = 65.0;
-        public static final double TILT_MAX_MOTION_ACCEL_DEG_PER_SEC2 = 180.0;
+        public static final double TILT_PID_MAX_OUTPUT_DOWN = 0.10;
+        // Extra-soft profile to slow B-button deploy and reduce arm slam.
+        public static final double TILT_MAX_MOTION_CRUISE_VEL_DEG_PER_SEC = 50.0;
+        public static final double TILT_MAX_MOTION_ACCEL_DEG_PER_SEC2 = 100.0;
         public static final double TILT_MAX_MOTION_ALLOWED_ERROR_DEG = 1.5;
 
         // Sign convention for this robot:
@@ -374,7 +374,7 @@ public final class Constants {
         public static final double HOME_SWITCH_DEBOUNCE_SEC = 0.04;
 
         // Target angle for the intake to be "down" and collecting game pieces
-        public static final double INTAKE_DOWN_DEG = -80.0;  // TUNE ME
+        public static final double INTAKE_DOWN_DEG = -76.0;  // TUNE ME
 
         // Target angle for the intake to be stowed (up / home position)
         public static final double INTAKE_STOW_DEG = 0.0;
