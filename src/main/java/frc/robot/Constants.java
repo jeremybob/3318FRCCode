@@ -311,7 +311,7 @@ public final class Constants {
         // Also used as fallback if the distance calculation fails.
         public static final double TARGET_RPS = 60.0;  // TUNE ME
         // Driver override speed when shooting without alignment/vision checks.
-        public static final double FALLBACK_RPS = 52.0; // TUNE ME
+        public static final double FALLBACK_RPS = 60.0; // TUNE ME
         public static final double MEASURED_CLOSE_SHOT_DISTANCE_M = Units.feetToMeters(4.5);
         public static final double MIDRANGE_REFERENCE_DISTANCE_M = 2.4;
         public static final double EMPIRICAL_SHOT_SLOPE_RPS_PER_M =
