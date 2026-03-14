@@ -13,8 +13,9 @@ final class RobotAutoCatalog {
 
     static List<PathPlannerAutoSpec> competitionPathPlannerAutos() {
         return List.of(
-                new PathPlannerAutoSpec("Blue Depot", "BlueDepot"),
-                new PathPlannerAutoSpec("Blue Outpost", "BlueOutpost"));
+                new PathPlannerAutoSpec("Depot", "Depot"),
+                new PathPlannerAutoSpec("Only Shoot", "OnlyShoot"),
+                new PathPlannerAutoSpec("Outpost", "Outpost"));
     }
 
     record PathPlannerAutoSpec(String chooserName, String autoFileName) {}
