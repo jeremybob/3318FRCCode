@@ -511,6 +511,10 @@ public final class Constants {
 
         // Standard FRC AprilTag size (6.5 inches outer, 36h11 family)
         public static final double TAG_HEIGHT_M = 0.1651;
+        // When only one HUB tag is visible, bias the aim point away from the
+        // single tag center toward the likely HUB center (toward image center).
+        // Units: pixels of center shift per pixel of detected tag height.
+        public static final double SINGLE_TAG_CENTER_BIAS_PX_PER_TAG_HEIGHT = 0.60; // TUNE ME
 
         // Alignment is "good enough" once yaw error is within this many degrees.
         // Wider than PhotonVision because pixel-based yaw is noisier.

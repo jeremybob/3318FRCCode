@@ -83,4 +83,18 @@ class VisionSupportTest {
 
         assertNull(estimate);
     }
+
+    @Test
+    void estimateHubCenterSingleTagCanBiasTowardImageCenter() {
+        VisionSupport.HubCenterEstimate estimate = VisionSupport.estimateHubCenter(
+                List.of(new VisionSupport.HubTagObservation(18, 0, 100.0, 200.0, 40.0)),
+                320.0,
+                0.60);
+
+        assertEquals(124.0, estimate.centerX(), 1e-9);
+        assertEquals(200.0, estimate.centerY(), 1e-9);
+        assertEquals(24.0, estimate.centerOffsetFromBestPx(), 1e-9);
+        assertEquals(1, estimate.hubTagCount());
+        assertEquals(1, estimate.hubFaceCount());
+    }
 }
