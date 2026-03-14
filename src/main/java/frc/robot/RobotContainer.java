@@ -726,7 +726,11 @@ public class RobotContainer implements RobotRuntimeContainer {
                 ? latestVision.estimateDistanceM(
                         Constants.Vision.TAG_HEIGHT_M,
                         Constants.Vision.FOCAL_LENGTH_PIXELS)
+                        + Constants.Vision.DISTANCE_CALIBRATION_OFFSET_M
                 : Double.NaN;
+        if (Double.isFinite(visionDistanceM)) {
+            visionDistanceM = Math.max(0.1, visionDistanceM);
+        }
         double visionTagPixelHeightPx = latestVision != null ? latestVision.tagPixelHeight() : Double.NaN;
         int visionHubTagCount = latestVision != null ? latestVision.hubTagCount() : 0;
         int visionHubFaceCount = latestVision != null ? latestVision.hubFaceCount() : 0;

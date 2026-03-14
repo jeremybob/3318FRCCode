@@ -341,7 +341,10 @@ public class RioVisionThread extends Thread {
                     tagCenterY(detection),
                     tagPixelHeight(detection)));
         }
-        return VisionSupport.estimateHubCenter(observations);
+        return VisionSupport.estimateHubCenter(
+                observations,
+                Constants.Vision.CAMERA_WIDTH / 2.0,
+                Constants.Vision.SINGLE_TAG_CENTER_BIAS_PX_PER_TAG_HEIGHT);
     }
 
     private static int[] hubTagIdsForTag(int fiducialId) {

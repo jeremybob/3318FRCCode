@@ -57,6 +57,13 @@ public final class VisionSupport {
     }
 
     public static HubCenterEstimate estimateHubCenter(Collection<HubTagObservation> observations) {
+        return estimateHubCenter(observations, Double.NaN, 0.0);
+    }
+
+    public static HubCenterEstimate estimateHubCenter(
+            Collection<HubTagObservation> observations,
+            double imageCenterX,
+            double singleTagCenterBiasPxPerTagHeight) {
         if (observations == null || observations.isEmpty()) {
             return null;
         }
@@ -101,6 +108,19 @@ public final class VisionSupport {
 
         double hubCenterX = summedFaceCenterX / faces.size();
         double hubCenterY = summedFaceCenterY / faces.size();
+        if (faces.size() == 1
+                && tagCount == 1
+                && Double.isFinite(imageCenterX)
+                && Double.isFinite(singleTagCenterBiasPxPerTagHeight)
+                && singleTagCenterBiasPxPerTagHeight > 0.0) {
+            double towardImageCenter = Math.signum(imageCenterX - hubCenterX);
+            if (towardImageCenter != 0.0) {
+                double maxBiasPx = Math.abs(imageCenterX - hubCenterX);
+                double requestedBiasPx = bestObservation.pixelHeight() * singleTagCenterBiasPxPerTagHeight;
+                double appliedBiasPx = Math.min(maxBiasPx, Math.max(0.0, requestedBiasPx));
+                hubCenterX += towardImageCenter * appliedBiasPx;
+            }
+        }
         double hubSpanPx = tagCount >= 2 ? maxX - minX : 0.0;
 
         return new HubCenterEstimate(

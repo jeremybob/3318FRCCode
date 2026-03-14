@@ -360,10 +360,10 @@ public final class Constants {
         // Closed-loop output caps for position mode (Y-toggle/autonomous setpoints).
         // Positive = tilt up/toward home, negative = tilt down/away from home.
         public static final double TILT_PID_MAX_OUTPUT_UP = 0.30;
-        public static final double TILT_PID_MAX_OUTPUT_DOWN = 0.18;
-        // Gentler profile to reduce gearbox shock during operator stow/deploy moves.
-        public static final double TILT_MAX_MOTION_CRUISE_VEL_DEG_PER_SEC = 65.0;
-        public static final double TILT_MAX_MOTION_ACCEL_DEG_PER_SEC2 = 180.0;
+        public static final double TILT_PID_MAX_OUTPUT_DOWN = 0.10;
+        // Extra-soft profile to slow B-button deploy and reduce arm slam.
+        public static final double TILT_MAX_MOTION_CRUISE_VEL_DEG_PER_SEC = 50.0;
+        public static final double TILT_MAX_MOTION_ACCEL_DEG_PER_SEC2 = 100.0;
         public static final double TILT_MAX_MOTION_ALLOWED_ERROR_DEG = 1.5;
 
         // Sign convention for this robot:
@@ -374,7 +374,7 @@ public final class Constants {
         public static final double HOME_SWITCH_DEBOUNCE_SEC = 0.04;
 
         // Target angle for the intake to be "down" and collecting game pieces
-        public static final double INTAKE_DOWN_DEG = -80.0;  // TUNE ME
+        public static final double INTAKE_DOWN_DEG = -76.0;  // TUNE ME
 
         // Target angle for the intake to be stowed (up / home position)
         public static final double INTAKE_STOW_DEG = 0.0;
@@ -416,7 +416,7 @@ public final class Constants {
         public static final double ROLLER_FREE_SPEED_RPS = 100.0;
         // Operator intake speed matching: keep a low floor at slow/stopped speed,
         // then ramp toward speed-matched roller surface speed as robot drives forward.
-        public static final double ROLLER_MATCH_MIN_POWER = 0.25;
+        public static final double ROLLER_MATCH_MIN_POWER = 0.35;
         public static final double ROLLER_MATCH_FORWARD_DEADBAND_MPS = 0.10;
         public static final double ROLLER_MATCH_RATIO = 1.0;
         public static final double ROLLER_MATCH_MAX_POWER = 0.60;
@@ -493,6 +493,9 @@ public final class Constants {
         //   Place robot at known distance d from a tag, measure tag pixel height px,
         //   then f = px * d / TAG_HEIGHT_M
         public static final double FOCAL_LENGTH_PIXELS = 600.0;  // CALIBRATE ME
+        // Range calibration offset applied after pinhole distance estimation.
+        // Negative means "actual is closer than camera math says."
+        public static final double DISTANCE_CALIBRATION_OFFSET_M = -Units.feetToMeters(1.0);
 
         // AprilTag detector tuning. WPILib's defaults are tuned for speed, not
         // long-range detection on a low-res stream. These values keep more detail.
@@ -509,6 +512,10 @@ public final class Constants {
 
         // Standard FRC AprilTag size (6.5 inches outer, 36h11 family)
         public static final double TAG_HEIGHT_M = 0.1651;
+        // When only one HUB tag is visible, bias the aim point away from the
+        // single tag center toward the likely HUB center (toward image center).
+        // Units: pixels of center shift per pixel of detected tag height.
+        public static final double SINGLE_TAG_CENTER_BIAS_PX_PER_TAG_HEIGHT = 0.60; // TUNE ME
 
         // Alignment is "good enough" once yaw error is within this many degrees.
         // Wider than PhotonVision because pixel-based yaw is noisier.
@@ -558,8 +565,12 @@ public final class Constants {
     // ALIGN-AND-SHOOT (stationary auto-align then shoot)
     // =========================================================================
     public static final class AlignShoot {
-        // Match AlignOnly so both commands feel identical while turning to target.
-        public static final double MAX_AUTO_AIM_OMEGA_RADPS = Vision.MAX_ROT_CMD;
+        // AlignAndShoot runs with shooter/feeder spin-up noise present, so use a
+        // slightly more damped turn loop than AlignOnly to avoid center hunting.
+        public static final double TURN_kP = 0.09; // TUNE ME
+        public static final double TURN_kD = 0.0;  // TUNE ME
+        public static final double YAW_FILTER_ALPHA = 0.78; // stronger smoothing
+        public static final double MAX_AUTO_AIM_OMEGA_RADPS = 0.75;
         // While the target is out of frame, keep sweeping at a controlled rate.
         public static final double SEARCH_OMEGA_RADPS = Math.toRadians(60.0); // TUNE ME
         // After losing a previously seen target, briefly hold still to ride out
@@ -568,10 +579,11 @@ public final class Constants {
         // Larger yaw errors are acquisition problems, not impossible shot geometry.
         public static final double ACQUIRE_YAW_MAX_DEG = 30.0; // TUNE ME
 
-        // Match AlignOnly tolerance and stable-hold timing before feeding.
-        public static final double YAW_TOLERANCE_DEG = Vision.YAW_TOLERANCE_DEG;
+        // Slightly wider hold window prevents unlock/relock chatter near center.
+        public static final double YAW_TOLERANCE_DEG = 3.5; // TUNE ME
+        public static final double YAW_BREAK_TOLERANCE_DEG = 6.0; // TUNE ME
         public static final double RPS_TOLERANCE_RPS = 1.5; // TUNE ME
-        public static final double SETTLE_TIME_SEC = 0.30; // TUNE ME
+        public static final double SETTLE_TIME_SEC = 0.20; // TUNE ME
         // During continuous hold-to-shoot, tolerate brief target/yaw dropouts
         // before stopping feed and forcing a full re-align.
         public static final double CONTINUOUS_FEED_REACQUIRE_SEC = 0.25; // TUNE ME

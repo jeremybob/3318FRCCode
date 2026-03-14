@@ -19,14 +19,14 @@ import frc.robot.vision.VisionResult;
 public class AlignOnlyCommand extends Command {
     private static final double NO_TARGET_TIMEOUT_SEC = 3.0;
     private static final double ALIGN_CONVERGENCE_TIMEOUT_SEC = 5.0;
-    private static final double STABLE_ALIGNMENT_TIME_SEC = 0.20;
+    private static final double STABLE_ALIGNMENT_TIME_SEC = Constants.AlignShoot.SETTLE_TIME_SEC;
 
     private final SwerveSubsystem swerve;
     private final AtomicReference<VisionResult> visionRef;
     private final PIDController turnPID = new PIDController(
-            Constants.Vision.TURN_kP,
+            Constants.AlignShoot.TURN_kP,
             0.0,
-            Constants.Vision.TURN_kD);
+            Constants.AlignShoot.TURN_kD);
 
     private final Timer noTargetTimer = new Timer();
     private final Timer alignTimer = new Timer();
@@ -41,7 +41,7 @@ public class AlignOnlyCommand extends Command {
         this.visionRef = visionRef;
 
         addRequirements(swerve);
-        turnPID.setTolerance(Constants.Vision.YAW_TOLERANCE_DEG);
+        turnPID.setTolerance(Constants.AlignShoot.YAW_TOLERANCE_DEG);
     }
 
     @Override
@@ -110,8 +110,8 @@ public class AlignOnlyCommand extends Command {
         alignedHoldTimer.reset();
         double rotCmd = MathUtil.clamp(
                 turnPID.calculate(filteredYawDeg, 0.0),
-                -Constants.Vision.MAX_ROT_CMD,
-                Constants.Vision.MAX_ROT_CMD);
+                -Constants.AlignShoot.MAX_AUTO_AIM_OMEGA_RADPS,
+                Constants.AlignShoot.MAX_AUTO_AIM_OMEGA_RADPS);
         swerve.drive(0, 0, rotCmd, false);
         SmartDashboard.putString("AlignOnly/State", "ALIGNING");
         SmartDashboard.putNumber("AlignOnly/RotCmd", rotCmd);
@@ -157,8 +157,8 @@ public class AlignOnlyCommand extends Command {
         if (!Double.isFinite(filteredYawDeg)) {
             filteredYawDeg = rawYawDeg;
         } else {
-            filteredYawDeg = Constants.Vision.YAW_FILTER_ALPHA * filteredYawDeg
-                    + (1.0 - Constants.Vision.YAW_FILTER_ALPHA) * rawYawDeg;
+            filteredYawDeg = Constants.AlignShoot.YAW_FILTER_ALPHA * filteredYawDeg
+                    + (1.0 - Constants.AlignShoot.YAW_FILTER_ALPHA) * rawYawDeg;
         }
         return filteredYawDeg;
     }
@@ -168,8 +168,8 @@ public class AlignOnlyCommand extends Command {
             return false;
         }
         double absYawDeg = Math.abs(filteredYawDeg);
-        return absYawDeg <= Constants.Vision.YAW_TOLERANCE_DEG
+        return absYawDeg <= Constants.AlignShoot.YAW_TOLERANCE_DEG
                 || (alignedHoldTimer.isRunning()
-                        && absYawDeg <= Constants.Vision.YAW_BREAK_TOLERANCE_DEG);
+                        && absYawDeg <= Constants.AlignShoot.YAW_BREAK_TOLERANCE_DEG);
     }
 }
