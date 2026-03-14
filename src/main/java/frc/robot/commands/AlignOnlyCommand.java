@@ -10,6 +10,7 @@ import edu.wpi.first.wpilibj2.command.Command;
 
 import frc.robot.Constants;
 import frc.robot.subsystems.SwerveSubsystem;
+import frc.robot.util.AlignmentCaptureUtil;
 import frc.robot.vision.VisionResult;
 import frc.robot.vision.VisionSupport;
 
@@ -33,6 +34,7 @@ public class AlignOnlyCommand extends Command {
     private final Timer alignTimer = new Timer();
     private final Timer alignedHoldTimer = new Timer();
     private double filteredYawDeg = Double.NaN;
+    private double previousAimErrorDeg = Double.NaN;
 
     private boolean finished;
     private String finishReason = "";
@@ -55,6 +57,7 @@ public class AlignOnlyCommand extends Command {
         alignedHoldTimer.stop();
         alignedHoldTimer.reset();
         filteredYawDeg = Double.NaN;
+        previousAimErrorDeg = Double.NaN;
 
         SmartDashboard.putString("AlignOnly/State", "ALIGN");
         SmartDashboard.putString("AlignOnly/FinishReason", "");
@@ -72,6 +75,7 @@ public class AlignOnlyCommand extends Command {
             alignedHoldTimer.stop();
             alignedHoldTimer.reset();
             filteredYawDeg = Double.NaN;
+            previousAimErrorDeg = Double.NaN;
 
             SmartDashboard.putString("AlignOnly/State", "NO_TARGET");
             SmartDashboard.putNumber("AlignOnly/YawError", Double.NaN);
@@ -99,6 +103,20 @@ public class AlignOnlyCommand extends Command {
         SmartDashboard.putNumber("AlignOnly/YawSetpointDeg", yawSetpointDeg);
         SmartDashboard.putNumber("AlignOnly/YawError", aimErrorDeg);
         SmartDashboard.putNumber("AlignOnly/FilteredYawError", aimErrorDeg);
+        if (AlignmentCaptureUtil.shouldCaptureOnEntryOrCrossing(
+                previousAimErrorDeg,
+                aimErrorDeg,
+                Constants.AlignShoot.YAW_TOLERANCE_DEG,
+                Constants.AlignShoot.YAW_BREAK_TOLERANCE_DEG,
+                Constants.AlignShoot.CAPTURE_OVERSHOOT_DEG)) {
+            swerve.drive(0, 0, 0, false);
+            SmartDashboard.putString("AlignOnly/State", "ALIGNED");
+            SmartDashboard.putNumber("AlignOnly/RotCmd", 0.0);
+            finishReason = "Aligned";
+            finished = true;
+            previousAimErrorDeg = aimErrorDeg;
+            return;
+        }
         if (shouldHoldAlignment(aimErrorDeg)) {
             swerve.drive(0, 0, 0, false);
             SmartDashboard.putString("AlignOnly/State", "ALIGNED");
@@ -111,6 +129,7 @@ public class AlignOnlyCommand extends Command {
                 finishReason = "Aligned";
                 finished = true;
             }
+            previousAimErrorDeg = aimErrorDeg;
             return;
         }
 
@@ -123,6 +142,7 @@ public class AlignOnlyCommand extends Command {
         swerve.drive(0, 0, rotCmd, false);
         SmartDashboard.putString("AlignOnly/State", "ALIGNING");
         SmartDashboard.putNumber("AlignOnly/RotCmd", rotCmd);
+        previousAimErrorDeg = aimErrorDeg;
 
         if (alignTimer.hasElapsed(ALIGN_CONVERGENCE_TIMEOUT_SEC)) {
             finishReason = "Alignment convergence timeout";
