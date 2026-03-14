@@ -359,6 +359,11 @@ public class RobotContainer implements RobotRuntimeContainer {
         // continuously until timeout (bounded by Constants.Auto).
         NamedCommands.registerCommand(RobotAutoCatalog.NAMED_AUTO_SHOOT,
                 buildAlignAndShootCommand(true).withTimeout(Constants.Auto.AUTO_SHOOT_TIMEOUT_SEC));
+        // AutoManualDistanceShoot: no-align shot for PathPlanner that uses the
+        // same distance-to-RPS calculation as operator manual distance shooting.
+        NamedCommands.registerCommand(
+                RobotAutoCatalog.NAMED_AUTO_MANUAL_DISTANCE_SHOOT,
+                buildAutoManualDistanceShootCommand());
 
         // --- CLIMBER DISABLED ---
         // Level1Climb: automatically extends climber to Level 1 height.
@@ -917,6 +922,17 @@ public class RobotContainer implements RobotRuntimeContainer {
                             "Manual distance shoot requested targetRps=" + formatSigned(targetRps)))
                     .withName("ManualDistanceShootActive");
         }, Set.of(shooter, feeder, hopper, intake)).withName("ManualDistanceShoot");
+    }
+
+    private Command buildAutoManualDistanceShootCommand() {
+        return Commands.defer(() -> {
+            double targetRps = getManualDistanceShotTargetRps();
+            System.out.println("[AutoManualDistanceShoot] targetRps=" + formatSigned(targetRps));
+            return shooter.buildShootRoutine(feeder, hopper, intake, targetRps)
+                    .withName("AutoManualDistanceShootActive");
+        }, Set.of(shooter, feeder, hopper, intake))
+                .withTimeout(Constants.Auto.AUTO_SHOOT_TIMEOUT_SEC)
+                .withName("AutoManualDistanceShoot");
     }
 
     private DriverDriveUtil.DriveRequest getDriverDriveRequest() {

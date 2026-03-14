@@ -416,7 +416,7 @@ public final class Constants {
         public static final double ROLLER_FREE_SPEED_RPS = 100.0;
         // Operator intake speed matching: keep a low floor at slow/stopped speed,
         // then ramp toward speed-matched roller surface speed as robot drives forward.
-        public static final double ROLLER_MATCH_MIN_POWER = 0.35;
+        public static final double ROLLER_MATCH_MIN_POWER = 0.38;
         public static final double ROLLER_MATCH_FORWARD_DEADBAND_MPS = 0.10;
         public static final double ROLLER_MATCH_RATIO = 1.0;
         public static final double ROLLER_MATCH_MAX_POWER = 0.60;
@@ -529,8 +529,8 @@ public final class Constants {
         // left-right hunting around center.
         public static final double YAW_BREAK_TOLERANCE_DEG = 5.0; // TUNE ME
         // Tolerate brief vision dropouts instead of immediately canceling a shot.
-        // Bumped from 0.35 s to account for lower frame rate (~10-15 fps).
-        public static final double TARGET_LOSS_TOLERANCE_SEC = 0.5; // TUNE ME
+        // Slightly longer to reduce false "target lost" transitions on noisy frames.
+        public static final double TARGET_LOSS_TOLERANCE_SEC = 0.75; // TUNE ME
         // Camera health should track frame heartbeat, not whether a tag is visible.
         public static final double CAMERA_HEARTBEAT_TIMEOUT_SEC = 2.0;
         // Feasible vertical angle band for a valid shot solution from the camera.
@@ -550,10 +550,11 @@ public final class Constants {
         // ---- Camera mount position ----
         // Used for pitch-based distance estimation.
         // Robot frame convention is +X forward, +Y left, +Z up.
-        // Measured mount: 16.5 in high and 9 in offset from center toward back-left.
-        // Only height is used today; split the 9 in offset into X/Y components if a
-        // full robot-to-camera transform is added later.
+        // Measured mount: 16.5 in high and 9 in to the RIGHT of robot center
+        // when facing forward. Robot frame uses +Y to the LEFT, so this is negative.
+        // Used to compensate yaw aim so shooter center, not camera center, is aimed.
         public static final double CAMERA_UP_M       = Units.inchesToMeters(16.5);
+        public static final double CAMERA_LATERAL_OFFSET_M = -Units.inchesToMeters(9.0);
         public static final double CAMERA_PITCH_RAD  = Math.toRadians(10.5); // tilted up, approximate
 
         // ---- Alliance-specific HUB tag IDs for targeting ----
@@ -576,10 +577,10 @@ public final class Constants {
         public static final double YAW_FILTER_ALPHA = 0.78; // stronger smoothing
         public static final double MAX_AUTO_AIM_OMEGA_RADPS = 0.75;
         // While the target is out of frame, keep sweeping at a controlled rate.
-        public static final double SEARCH_OMEGA_RADPS = Math.toRadians(60.0); // TUNE ME
+        public static final double SEARCH_OMEGA_RADPS = Math.toRadians(35.0); // TUNE ME
         // After losing a previously seen target, briefly hold still to ride out
         // camera jitter before resuming sweep-based reacquisition.
-        public static final double TARGET_LOSS_WAIT_BEFORE_RESEEK_SEC = 0.30; // TUNE ME
+        public static final double TARGET_LOSS_WAIT_BEFORE_RESEEK_SEC = 0.75; // TUNE ME
         // Larger yaw errors are acquisition problems, not impossible shot geometry.
         public static final double ACQUIRE_YAW_MAX_DEG = 30.0; // TUNE ME
 

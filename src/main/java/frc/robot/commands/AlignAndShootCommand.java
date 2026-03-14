@@ -104,6 +104,7 @@ public class AlignAndShootCommand extends Command {
     private boolean seenTargetThisRun = false;
     private double filteredYawDeg = Double.NaN;
     private boolean alignmentLocked = false;
+    private boolean hadAlignmentLockThisRun = false;
 
     private String workState = "IDLE";
     private boolean workCommandActive = false;
@@ -159,6 +160,7 @@ public class AlignAndShootCommand extends Command {
         seenTargetThisRun = false;
         filteredYawDeg = Double.NaN;
         alignmentLocked = false;
+        hadAlignmentLockThisRun = false;
 
         workState = State.ALIGN.name();
         workCommandActive = true;
@@ -233,6 +235,7 @@ public class AlignAndShootCommand extends Command {
         workTargetRps = Double.NaN;
         workTimeOfFlightSec = Double.NaN;
         alignmentLocked = false;
+        hadAlignmentLockThisRun = false;
         resetAlignmentLockTimer();
         resetAlignmentBreakTimer();
         updateTelemetry();
@@ -245,8 +248,8 @@ public class AlignAndShootCommand extends Command {
         workHasTarget = hasFreshTarget;
 
         if (!hasFreshTarget) {
-            // Keep the shooter spinning during brief target loss — the heavy
-            // flywheels barely slow in 0.3s, and stopping/restarting wastes time.
+            // Keep the shooter spinning during brief target loss; stopping and
+            // restarting the flywheels here wastes time and increases oscillation.
             workGeometryFeasible = false;
             workHasShootableTarget = false;
             workYawDeg = Double.NaN;
@@ -266,7 +269,8 @@ public class AlignAndShootCommand extends Command {
             resetAlignmentLockTimer();
 
             if (seenTargetThisRun) {
-                if (shouldResumeSearchAfterTargetLoss()) {
+                boolean holdHeadingDuringLoss = hadAlignmentLockThisRun || continuousFeedUntilInterrupted;
+                if (!holdHeadingDuringLoss && shouldResumeSearchAfterTargetLoss()) {
                     workState = "RESEEK_TARGET";
                     SmartDashboard.putString("AlignShoot/State", "RESEEK_TARGET");
                     driveSearchPattern();
@@ -294,6 +298,9 @@ public class AlignAndShootCommand extends Command {
         workPitchDeg = result.pitchDeg();
         workYawDeg = result.yawDeg();
         double filteredYawDeg = filterYaw(result.yawDeg());
+        double distanceM = estimateDistanceM(result);
+        double yawSetpointDeg = calculateCameraYawSetpointDeg(distanceM);
+        double aimErrorDeg = filteredYawDeg - yawSetpointDeg;
         if (!isShotPitchFeasible(result.pitchDeg())) {
             shooter.stop();
             workHasShootableTarget = false;
@@ -305,36 +312,35 @@ public class AlignAndShootCommand extends Command {
 
         // Pre-spin the shooter as soon as we have a valid target so spin-up
         // happens in parallel with yaw alignment instead of after it.
-        double preSpinDistanceM = estimateDistanceM(result);
         ShooterSubsystem.ShotSolution preSpinSolution =
-                ShooterSubsystem.calculateMovingShotSolution(preSpinDistanceM, 0.0, 0.0);
+                ShooterSubsystem.calculateMovingShotSolution(distanceM, 0.0, 0.0);
         if (preSpinSolution.feasible()) {
             shooter.setShooterVelocity(preSpinSolution.targetRps());
             workTargetRps = preSpinSolution.targetRps();
         }
 
-        if (!isWithinTrackingYaw(filteredYawDeg)) {
+        if (!isWithinTrackingYaw(aimErrorDeg)) {
             alignmentLocked = false;
             resetAlignmentLockTimer();
             workGeometryFeasible = false;
             workHasShootableTarget = false;
-            workAimErrorDeg = filteredYawDeg;
-            workLeadYawDeg = 0.0;
+            workAimErrorDeg = aimErrorDeg;
+            workLeadYawDeg = yawSetpointDeg;
             workRadialVelocityMps = 0.0;
             workLateralVelocityMps = 0.0;
             workTimeOfFlightSec = Double.NaN;
             workFeedGateReady = false;
             resetFeedGateTimer();
-            updateSearchDirectionFromYaw(filteredYawDeg);
-            driveAcquireTarget(filteredYawDeg);
+            updateSearchDirectionFromYaw(aimErrorDeg);
+            driveAcquireTarget(filteredYawDeg, yawSetpointDeg);
             if (hasAlignConvergenceTimedOut()) {
                 abort("Target yaw acquisition timeout");
             }
             return;
         }
 
-        updateAlignmentLock(filteredYawDeg);
-        ShotTracking tracking = buildStationaryTracking(result, filteredYawDeg);
+        updateAlignmentLock(aimErrorDeg);
+        ShotTracking tracking = buildStationaryTracking(result, filteredYawDeg, distanceM);
         if (!tracking.solution().feasible()) {
             shooter.stop();
             workHasShootableTarget = false;
@@ -372,7 +378,10 @@ public class AlignAndShootCommand extends Command {
         }
 
         double filteredYawDeg = filterYaw(result.yawDeg());
-        if (!maintainLockedAlignment(filteredYawDeg)) {
+        double distanceM = estimateDistanceM(result);
+        double yawSetpointDeg = calculateCameraYawSetpointDeg(distanceM);
+        double aimErrorDeg = filteredYawDeg - yawSetpointDeg;
+        if (!maintainLockedAlignment(aimErrorDeg)) {
             if (continuousFeedUntilInterrupted) {
                 if (shouldHoldContinuousFeed()) {
                     holdStationaryWhileReacquiring();
@@ -387,7 +396,7 @@ public class AlignAndShootCommand extends Command {
             return;
         }
 
-        ShotTracking tracking = buildStationaryTracking(result, filteredYawDeg);
+        ShotTracking tracking = buildStationaryTracking(result, filteredYawDeg, distanceM);
         if (!tracking.solution().feasible()) {
             if (continuousFeedUntilInterrupted) {
                 stopFeedPath();
@@ -430,7 +439,10 @@ public class AlignAndShootCommand extends Command {
         }
 
         double filteredYawDeg = filterYaw(result.yawDeg());
-        if (!maintainLockedAlignment(filteredYawDeg)) {
+        double distanceM = estimateDistanceM(result);
+        double yawSetpointDeg = calculateCameraYawSetpointDeg(distanceM);
+        double aimErrorDeg = filteredYawDeg - yawSetpointDeg;
+        if (!maintainLockedAlignment(aimErrorDeg)) {
             if (continuousFeedUntilInterrupted) {
                 if (shouldHoldContinuousFeed()) {
                     holdStationaryWhileReacquiring();
@@ -445,7 +457,7 @@ public class AlignAndShootCommand extends Command {
             return;
         }
 
-        ShotTracking tracking = buildStationaryTracking(result, filteredYawDeg);
+        ShotTracking tracking = buildStationaryTracking(result, filteredYawDeg, distanceM);
         if (!tracking.solution().feasible()) {
             if (continuousFeedUntilInterrupted) {
                 stopFeedPath();
@@ -531,16 +543,20 @@ public class AlignAndShootCommand extends Command {
         SmartDashboard.putBoolean("AlignShoot/FeedGateReady", workFeedGateReady);
     }
 
-    private ShotTracking buildStationaryTracking(VisionResult result, double filteredYawDeg) {
+    private ShotTracking buildStationaryTracking(
+            VisionResult result,
+            double filteredYawDeg,
+            double distanceM) {
         double rawYawDeg = result.yawDeg();
-        double distanceM = estimateDistanceM(result);
         double pitchDeg = result.pitchDeg();
+        double yawSetpointDeg = calculateCameraYawSetpointDeg(distanceM);
+        double aimErrorDeg = filteredYawDeg - yawSetpointDeg;
         ShooterSubsystem.ShotSolution solution = ShooterSubsystem.calculateMovingShotSolution(distanceM, 0.0, 0.0);
 
-        boolean holdingAlignment = shouldHoldAlignment(filteredYawDeg);
+        boolean holdingAlignment = shouldHoldAlignment(aimErrorDeg);
         double rotCmd = 0.0;
         if (!holdingAlignment) {
-            double pidOutput = turnPID.calculate(filteredYawDeg, 0.0);
+            double pidOutput = turnPID.calculate(filteredYawDeg, yawSetpointDeg);
             rotCmd = MathUtil.clamp(
                     pidOutput,
                     -Constants.AlignShoot.MAX_AUTO_AIM_OMEGA_RADPS,
@@ -553,8 +569,8 @@ public class AlignAndShootCommand extends Command {
 
         return new ShotTracking(
                 rawYawDeg,
-                filteredYawDeg,
-                0.0,
+                aimErrorDeg,
+                yawSetpointDeg,
                 pitchDeg,
                 distanceM,
                 0.0,
@@ -604,8 +620,8 @@ public class AlignAndShootCommand extends Command {
                 searchRotationSign * Constants.AlignShoot.SEARCH_OMEGA_RADPS));
     }
 
-    private void driveAcquireTarget(double yawDeg) {
-        double pidOutput = turnPID.calculate(yawDeg, 0.0);
+    private void driveAcquireTarget(double measuredYawDeg, double yawSetpointDeg) {
+        double pidOutput = turnPID.calculate(measuredYawDeg, yawSetpointDeg);
         double rotCmd = turnPID.atSetpoint()
                 ? 0.0
                 : MathUtil.clamp(
@@ -668,12 +684,16 @@ public class AlignAndShootCommand extends Command {
     private boolean isShotGeometryFeasible(VisionResult result) {
         double pitchDeg = result.pitchDeg();
         double yawDeg = result.yawDeg();
+        double distanceM = estimateDistanceM(result);
+        double yawSetpointDeg = calculateCameraYawSetpointDeg(distanceM);
+        double aimErrorDeg = yawDeg - yawSetpointDeg;
         workPitchDeg = pitchDeg;
 
         SmartDashboard.putNumber("AlignShoot/TargetTagId", result.tagId());
         SmartDashboard.putNumber("AlignShoot/YawGeometryCheck", yawDeg);
+        SmartDashboard.putNumber("AlignShoot/YawSetpointDeg", yawSetpointDeg);
 
-        return isShotPitchFeasible(pitchDeg) && isWithinTrackingYaw(yawDeg);
+        return isShotPitchFeasible(pitchDeg) && isWithinTrackingYaw(aimErrorDeg);
     }
 
     private boolean isShooterReady(double targetRps) {
@@ -745,6 +765,7 @@ public class AlignAndShootCommand extends Command {
             }
             if (alignmentLockTimer.hasElapsed(Constants.AlignShoot.SETTLE_TIME_SEC)) {
                 alignmentLocked = true;
+                hadAlignmentLockThisRun = true;
             }
         } else {
             resetAlignmentLockTimer();
@@ -813,6 +834,15 @@ public class AlignAndShootCommand extends Command {
             intake.setRollerPower(Constants.Shooter.FEED_POWER);
         }
         swerve.driveRobotRelative(new ChassisSpeeds(0.0, 0.0, 0.0));
+    }
+
+    private double calculateCameraYawSetpointDeg(double distanceM) {
+        if (!Double.isFinite(distanceM) || distanceM <= 0.0) {
+            return 0.0;
+        }
+        // Camera is mounted laterally from robot center; yaw to this setpoint so
+        // the shooter centerline, not camera centerline, points at the hub center.
+        return Math.toDegrees(Math.atan2(-Constants.Vision.CAMERA_LATERAL_OFFSET_M, distanceM));
     }
 
     private double filterYaw(double rawYawDeg) {
