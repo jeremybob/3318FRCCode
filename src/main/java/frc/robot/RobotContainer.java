@@ -122,6 +122,7 @@ public class RobotContainer implements RobotRuntimeContainer {
     // --- CLIMBER DISABLED ---
     // private double lastClimberPower = 0.0;
     private double lastManualShooterTargetRps = 0.0;
+    private double lastManualHopperPower = 0.0;
     private double lastIntakeTiltPower = 0.0;
     private boolean intakeTiltManualAxisActive = false;
     // private boolean lastClimbArmed = false;
@@ -569,8 +570,7 @@ public class RobotContainer implements RobotRuntimeContainer {
         // Push forward to command shooter RPS; release or pull back to stop.
         shooter.setDefaultCommand(
                 Commands.run(() -> {
-                    double manualShooterTargetRps = ShooterSubsystem.manualStickToTargetRps(
-                            -operatorController.getLeftY());
+                    double manualShooterTargetRps = getOperatorManualShooterTargetRps();
                     if (manualShooterTargetRps > 0.0) {
                         shooter.setShooterVelocity(manualShooterTargetRps);
                     } else {
@@ -581,9 +581,20 @@ public class RobotContainer implements RobotRuntimeContainer {
                     refreshOperatorCommandSummary();
                 }, shooter).withName("OperatorShooterManualDefault"));
 
-        // Hopper stays idle unless an auto/shot command explicitly owns it.
+        // Mirror the manual left-stick shooter state so the hopper advances balls
+        // during manual shooting, but yields immediately to real shot commands.
         hopper.setDefaultCommand(
-                Commands.run(hopper::stop, hopper).withName("OperatorHopperIdleDefault"));
+                Commands.run(() -> {
+                    double manualHopperPower = getManualShooterHopperPower();
+                    if (manualHopperPower > 0.0) {
+                        hopper.setPower(manualHopperPower);
+                    } else {
+                        hopper.stop();
+                    }
+
+                    lastManualHopperPower = manualHopperPower;
+                    refreshOperatorCommandSummary();
+                }, hopper).withName("OperatorHopperManualShooterDefault"));
 
         // Right stick Y: Manual intake tilt control with deadband to prevent jitter.
         intake.setDefaultCommand(
@@ -1023,6 +1034,16 @@ public class RobotContainer implements RobotRuntimeContainer {
                 Constants.Intake.ROLLER_MATCH_MAX_POWER);
     }
 
+    private double getOperatorManualShooterTargetRps() {
+        return ShooterSubsystem.manualStickToTargetRps(-operatorController.getLeftY());
+    }
+
+    private double getManualShooterHopperPower() {
+        return getOperatorManualShooterTargetRps() > 0.0
+                ? Constants.Shooter.MANUAL_HOPPER_POWER
+                : 0.0;
+    }
+
     private double getManualDistanceShotTargetRps() {
         VisionResult latestVision = visionResult.get();
         if (latestVision == null) {
@@ -1253,6 +1274,7 @@ public class RobotContainer implements RobotRuntimeContainer {
     private void refreshOperatorCommandSummary() {
         // --- CLIMBER DISABLED: removed climber fields from summary ---
         operatorCommandSummary = "manualShooterRps=" + formatSigned(lastManualShooterTargetRps)
+                + " hopperPower=" + formatSigned(lastManualHopperPower)
                 + " tiltPower=" + formatSigned(lastIntakeTiltPower);
         // operatorCommandSummary = "climberPower=" + formatSigned(lastClimberPower)
         //         + " manualShooterRps=" + formatSigned(lastManualShooterTargetRps)

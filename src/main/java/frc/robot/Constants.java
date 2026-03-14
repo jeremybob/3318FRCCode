@@ -353,6 +353,9 @@ public final class Constants {
         // Feed: all three mechanisms push the game piece into the shooter
         public static final double FEED_POWER    = 0.80;
         public static final double FEED_TIME_SEC = 0.75;
+        // Manual left-stick shooter should also advance the hopper so balls are
+        // presented to the feeder without requiring a full auto/vision shot.
+        public static final double MANUAL_HOPPER_POWER = 0.80;
     }
 
     // =========================================================================
@@ -426,10 +429,10 @@ public final class Constants {
         public static final double ROLLER_FREE_SPEED_RPS = 100.0;
         // Operator intake speed matching: keep a low floor at slow/stopped speed,
         // then ramp toward speed-matched roller surface speed as robot drives forward.
-        public static final double ROLLER_MATCH_MIN_POWER = 0.38;
+        public static final double ROLLER_MATCH_MIN_POWER = 0.50;
         public static final double ROLLER_MATCH_FORWARD_DEADBAND_MPS = 0.10;
         public static final double ROLLER_MATCH_RATIO = 1.0;
-        public static final double ROLLER_MATCH_MAX_POWER = 0.60;
+        public static final double ROLLER_MATCH_MAX_POWER = 0.75;
 
         // ---- Stall detection (roller motor) ----
         // If roller current stays above STALL_CURRENT_THRESHOLD_A for STALL_TIME_SEC,
@@ -597,6 +600,9 @@ public final class Constants {
         // Slightly wider hold window prevents unlock/relock chatter near center.
         public static final double YAW_TOLERANCE_DEG = 3.5; // TUNE ME
         public static final double YAW_BREAK_TOLERANCE_DEG = 6.0; // TUNE ME
+        // If we just cross the target, accept a small overshoot instead of
+        // waiting to sit inside the tolerance band and risking more hunting.
+        public static final double CAPTURE_OVERSHOOT_DEG = 1.5; // TUNE ME
         // Require break-threshold error to persist briefly before unlocking.
         public static final double LOCK_BREAK_DEBOUNCE_SEC = 0.18; // TUNE ME
         public static final double RPS_TOLERANCE_RPS = 2.0; // TUNE ME
