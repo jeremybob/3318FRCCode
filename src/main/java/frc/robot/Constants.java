@@ -314,6 +314,10 @@ public final class Constants {
         public static final double TARGET_RPS = 53.0;  // TUNE ME
         // Driver override speed when shooting without alignment/vision checks.
         public static final double FALLBACK_RPS = 53.0; // TUNE ME
+        // Manual operator stick control uses a forward-only target with a deadband
+        // so the shooter stays stopped when the stick is near center or pulled back.
+        public static final double MANUAL_SPEED_DEADBAND = 0.10;
+        public static final double MANUAL_MAX_RPS = MAX_SHOT_RPS;
         public static final double MEASURED_CLOSE_SHOT_DISTANCE_M = Units.feetToMeters(4.5);
         public static final double MIDRANGE_REFERENCE_DISTANCE_M = 2.4;
         public static final double MIDRANGE_REFERENCE_RPS = 68.0;
