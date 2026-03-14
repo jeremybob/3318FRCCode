@@ -304,7 +304,7 @@ public final class Constants {
 
         // RPS clamps — keep within motor/mechanism limits.
         // Kraken free speed ≈ 100 RPS at 12V; leave headroom for voltage droop.
-        public static final double MIN_SHOT_RPS = 20.0;
+        public static final double MIN_SHOT_RPS = 60.0;
         public static final double MAX_SHOT_RPS = 90.0;
 
         // Default warmup speed used during initial spinup before distance is known.
@@ -314,8 +314,9 @@ public final class Constants {
         public static final double FALLBACK_RPS = 60.0; // TUNE ME
         public static final double MEASURED_CLOSE_SHOT_DISTANCE_M = Units.feetToMeters(4.5);
         public static final double MIDRANGE_REFERENCE_DISTANCE_M = 2.4;
+        public static final double MIDRANGE_REFERENCE_RPS = 68.0;
         public static final double EMPIRICAL_SHOT_SLOPE_RPS_PER_M =
-                (TARGET_RPS - FALLBACK_RPS)
+                (MIDRANGE_REFERENCE_RPS - FALLBACK_RPS)
                         / (MIDRANGE_REFERENCE_DISTANCE_M - MEASURED_CLOSE_SHOT_DISTANCE_M);
 
         // Shooter wheel PID (VelocityVoltage)
