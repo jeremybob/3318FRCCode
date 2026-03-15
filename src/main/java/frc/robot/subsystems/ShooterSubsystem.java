@@ -118,8 +118,8 @@ public class ShooterSubsystem extends SubsystemBase {
     public void periodic() {
         // Cache velocity once per loop — avoids redundant CAN reads in
         // isAtSpeed(), getLeftRPS(), getRightRPS() later this cycle.
-        cachedLeftRPS = leftVelocitySignal.getValueAsDouble();
-        cachedRightRPS = rightVelocitySignal.getValueAsDouble();
+        cachedLeftRPS = leftVelocitySignal.refresh().getValueAsDouble();
+        cachedRightRPS = rightVelocitySignal.refresh().getValueAsDouble();
         cachedLeftTempC = leftTempSignal.getValueAsDouble();
         cachedRightTempC = rightTempSignal.getValueAsDouble();
 
