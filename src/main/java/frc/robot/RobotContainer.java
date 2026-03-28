@@ -94,6 +94,7 @@ public class RobotContainer implements RobotRuntimeContainer {
     private final HopperSubsystem  hopper  = new HopperSubsystem();
     private final FeederSubsystem  feeder  = new FeederSubsystem();
     private final ShooterSubsystem shooter = new ShooterSubsystem();
+    private final HoodSubsystem    hood    = new HoodSubsystem();
     // --- CLIMBER DISABLED: no climber hardware installed ---
     // private final ClimberSubsystem climber = new ClimberSubsystem();
 
@@ -672,6 +673,11 @@ public class RobotContainer implements RobotRuntimeContainer {
                     refreshOperatorCommandSummary();
                 }, feeder).withName("OperatorFeederManualShooterDefault"));
 
+        // Hood default: return to default angle when no shooting command is active.
+        hood.setDefaultCommand(
+                Commands.run(() -> hood.setDefault(), hood)
+                        .withName("HoodDefaultPosition"));
+
         // Right stick Y: Manual intake tilt control with deadband to prevent jitter.
         intake.setDefaultCommand(
                 Commands.run(() -> {
@@ -963,6 +969,7 @@ public class RobotContainer implements RobotRuntimeContainer {
         return new AlignAndShootCommand(
                 swerve,
                 shooter,
+                hood,
                 feeder,
                 hopper,
                 intake,
@@ -979,24 +986,28 @@ public class RobotContainer implements RobotRuntimeContainer {
     }
 
     private Command buildFallbackShootCommand() {
-        return shooter.buildShootRoutine(feeder, hopper, intake, Constants.Shooter.FALLBACK_RPS)
+        return shooter.buildShootRoutine(feeder, hopper, intake, hood,
+                        Constants.Shooter.FALLBACK_RPS, Constants.Hood.DEFAULT_ANGLE_DEG)
                 .withName("FallbackShootRoutine");
     }
 
     private Command buildContinuousFallbackShootCommand() {
-        return shooter.buildContinuousShootRoutine(feeder, hopper, intake, Constants.Shooter.FALLBACK_RPS)
+        return shooter.buildContinuousShootRoutine(feeder, hopper, intake, hood,
+                        Constants.Shooter.FALLBACK_RPS, Constants.Hood.DEFAULT_ANGLE_DEG)
                 .withName("FallbackShootContinuous");
     }
 
     private Command buildManualDistanceShootCommand() {
         return Commands.defer(() -> {
             double targetRps = getManualDistanceShotTargetRps();
-            return shooter.buildContinuousShootRoutine(feeder, hopper, intake, targetRps)
+            double hoodAngle = getManualDistanceShotHoodAngle();
+            return shooter.buildContinuousShootRoutine(feeder, hopper, intake, hood,
+                            targetRps, hoodAngle)
                     .beforeStarting(() -> logControlEvent(
                             "Operator:Y",
                             "Manual distance shoot requested targetRps=" + formatSigned(targetRps)))
                     .withName("ManualDistanceShootActive");
-        }, Set.of(shooter, feeder, hopper, intake)).withName("ManualDistanceShoot");
+        }, Set.of(shooter, feeder, hopper, intake, hood)).withName("ManualDistanceShoot");
     }
 
     private Command buildAutoManualDistanceShootCommand() {
@@ -1004,9 +1015,10 @@ public class RobotContainer implements RobotRuntimeContainer {
             double targetRps = 52.0;
             //double targetRps = getManualDistanceShotTargetRps();
             System.out.println("[AutoManualDistanceShoot] targetRps=" + formatSigned(targetRps));
-            return shooter.buildContinuousShootRoutine(feeder, hopper, intake, targetRps)
+            return shooter.buildContinuousShootRoutine(feeder, hopper, intake, hood,
+                            targetRps, Constants.Hood.DEFAULT_ANGLE_DEG)
                     .withName("AutoManualDistanceShootActive");
-        }, Set.of(shooter, feeder, hopper, intake))
+        }, Set.of(shooter, feeder, hopper, intake, hood))
                 .withTimeout(Constants.Auto.AUTO_SHOOT_TIMEOUT_SEC)
                 .withName("AutoManualDistanceShoot");
     }
@@ -1136,6 +1148,12 @@ public class RobotContainer implements RobotRuntimeContainer {
 
     private double getManualDistanceShotTargetRps() {
         return getAlignAndShootTargetRps();
+    }
+
+    private double getManualDistanceShotHoodAngle() {
+        Translation2d hubCenter = getAllianceHubCenter();
+        double distanceM = swerve.getDistanceTo(hubCenter);
+        return HoodSubsystem.calculateTargetAngle(distanceM);
     }
 
     private double getAlignAndShootTargetRps() {

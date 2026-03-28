@@ -322,10 +322,15 @@ public class ShooterSubsystem extends SubsystemBase {
     public Command buildShootRoutine(FeederSubsystem feeder,
                                      HopperSubsystem hopper,
                                      IntakeSubsystem intake,
-                                     double targetRPS) {
+                                     HoodSubsystem hood,
+                                     double targetRPS,
+                                     double hoodAngleDeg) {
         return Commands.sequence(
-                // Step 1: Start spinning wheels immediately
-                Commands.runOnce(() -> setShooterVelocity(targetRPS), this),
+                // Step 1: Start spinning wheels and set hood angle immediately
+                Commands.runOnce(() -> {
+                    setShooterVelocity(targetRPS);
+                    hood.setAngle(hoodAngleDeg);
+                }, this, hood),
 
                 // Step 2: Clear any double-fed game piece with a brief reverse pulse
                 Commands.run(() -> feeder.setPower(Constants.Shooter.CLEAR_POWER), feeder)
@@ -363,15 +368,21 @@ public class ShooterSubsystem extends SubsystemBase {
             feeder.stop();
             hopper.stop();
             intake.setRollerPower(0);
+            hood.setDefault();
         });
     }
 
     public Command buildContinuousShootRoutine(FeederSubsystem feeder,
                                                HopperSubsystem hopper,
                                                IntakeSubsystem intake,
-                                               double targetRPS) {
+                                               HoodSubsystem hood,
+                                               double targetRPS,
+                                               double hoodAngleDeg) {
         return Commands.sequence(
-                Commands.runOnce(() -> setShooterVelocity(targetRPS), this),
+                Commands.runOnce(() -> {
+                    setShooterVelocity(targetRPS);
+                    hood.setAngle(hoodAngleDeg);
+                }, this, hood),
 
                 Commands.run(() -> feeder.setPower(Constants.Shooter.CLEAR_POWER), feeder)
                         .withTimeout(Constants.Shooter.CLEAR_TIME_SEC),
@@ -402,6 +413,7 @@ public class ShooterSubsystem extends SubsystemBase {
             feeder.stop();
             hopper.stop();
             intake.setRollerPower(0);
+            hood.setDefault();
         });
     }
 }

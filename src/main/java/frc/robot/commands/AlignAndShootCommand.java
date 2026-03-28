@@ -27,6 +27,7 @@ import frc.robot.Constants;
 import frc.robot.HubActivityTracker;
 import frc.robot.RobotContainer;
 import frc.robot.subsystems.FeederSubsystem;
+import frc.robot.subsystems.HoodSubsystem;
 import frc.robot.subsystems.HopperSubsystem;
 import frc.robot.subsystems.IntakeSubsystem;
 import frc.robot.subsystems.ShooterSubsystem;
@@ -66,6 +67,7 @@ public class AlignAndShootCommand extends Command {
 
     private final SwerveSubsystem swerve;
     private final ShooterSubsystem shooter;
+    private final HoodSubsystem hood;
     private final FeederSubsystem feeder;
     private final HopperSubsystem hopper;
     private final IntakeSubsystem intake;
@@ -109,18 +111,20 @@ public class AlignAndShootCommand extends Command {
     public AlignAndShootCommand(
             SwerveSubsystem swerve,
             ShooterSubsystem shooter,
+            HoodSubsystem hood,
             FeederSubsystem feeder,
             HopperSubsystem hopper,
             IntakeSubsystem intake,
             boolean continuousFeedUntilInterrupted) {
         this.swerve = swerve;
         this.shooter = shooter;
+        this.hood = hood;
         this.feeder = feeder;
         this.hopper = hopper;
         this.intake = intake;
         this.continuousFeedUntilInterrupted = continuousFeedUntilInterrupted;
 
-        addRequirements(swerve, shooter, feeder, hopper, intake);
+        addRequirements(swerve, shooter, hood, feeder, hopper, intake);
         turnPID.setTolerance(Constants.AlignShoot.YAW_TOLERANCE_DEG);
     }
 
@@ -276,11 +280,13 @@ public class AlignAndShootCommand extends Command {
             return;
         }
 
-        // Pre-spin the shooter as soon as we have a valid target so spin-up
-        // happens in parallel with heading alignment instead of after it.
+        // Pre-spin the shooter and set hood angle as soon as we have a valid
+        // target so spin-up and hood travel happen in parallel with heading
+        // alignment instead of after it.
         double targetRps = ShooterSubsystem.calculateTargetRPS(distanceM);
         if (Double.isFinite(targetRps) && targetRps > 0.0) {
             shooter.setShooterVelocity(targetRps);
+            hood.setAngle(HoodSubsystem.calculateTargetAngle(distanceM));
             workTargetRps = targetRps;
         }
 
@@ -522,6 +528,7 @@ public class AlignAndShootCommand extends Command {
         workFeedGateReady = tracking.feedGateReady();
         workTargetRps = tracking.targetRps();
         shooter.setShooterVelocity(workTargetRps);
+        hood.setAngle(HoodSubsystem.calculateTargetAngle(tracking.distanceM()));
 
         SmartDashboard.putNumber("AlignShoot/EstDistanceM", tracking.distanceM());
     }

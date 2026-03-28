@@ -111,6 +111,14 @@ public final class Constants {
     }
 
     // =========================================================================
+    // PWM PORTS (on the roboRIO)
+    // =========================================================================
+    public static final class PWM {
+        // Hood linear servo — plugs into PWM port 0
+        public static final int HOOD_SERVO = 0;
+    }
+
+    // =========================================================================
     // DIGITAL I/O PORTS (on the roboRIO)
     // =========================================================================
     public static final class DIO {
@@ -371,6 +379,44 @@ public final class Constants {
         // Manual left-stick shooter uses separate feed path values.
         public static final double MANUAL_HOPPER_POWER = 0.80;
         public static final double MANUAL_FEEDER_POWER = 0.80;
+    }
+
+    // =========================================================================
+    // HOOD CONSTANTS
+    //
+    // Hardware: Linear servo on PWM, controls shooter exit angle.
+    // The servo position (0.0–1.0) maps linearly to the hood angle range.
+    // =========================================================================
+    public static final class Hood {
+        // ---- Angle range (degrees) ----
+        // Minimum angle = low/flat trajectory (close shots)
+        // Maximum angle = high/steep trajectory (far shots)
+        public static final double MIN_ANGLE_DEG = 30.0;  // TUNE ME
+        public static final double MAX_ANGLE_DEG = 60.0;  // TUNE ME
+
+        // Default hood position used during warmup / when distance is unknown.
+        public static final double DEFAULT_ANGLE_DEG = 45.0;  // TUNE ME
+
+        // ---- Distance-to-angle model ----
+        // Linear interpolation anchors (same distance points as shooter RPS curve).
+        // Close shot → low angle, far shot → high angle.
+        public static final double CLOSE_SHOT_ANGLE_DEG = 35.0;   // TUNE ME
+        public static final double MIDRANGE_ANGLE_DEG   = 50.0;   // TUNE ME
+        // Slope: degrees per meter of additional distance
+        public static final double EMPIRICAL_ANGLE_SLOPE_DEG_PER_M =
+                (MIDRANGE_ANGLE_DEG - CLOSE_SHOT_ANGLE_DEG)
+                        / (Shooter.MIDRANGE_REFERENCE_DISTANCE_M
+                                - Shooter.MEASURED_CLOSE_SHOT_DISTANCE_M);
+
+        // ---- Servo timing ----
+        // Linear servos are slow; allow time for the servo to reach position.
+        public static final double SETTLE_TIME_SEC = 0.3;  // TUNE ME
+
+        // How close to target angle counts as "at position" (degrees).
+        public static final double TOLERANCE_DEG = 2.0;
+
+        // ---- Manual operator control ----
+        public static final double MANUAL_DEADBAND = 0.15;
     }
 
     // =========================================================================
