@@ -738,6 +738,7 @@ public class RobotContainer implements RobotRuntimeContainer {
 
         // Left Bumper: Manual intake roller — reverse / eject
         operatorController.leftBumper().whileTrue(
+                // -0.4 = gentle reverse to eject jammed game pieces without launching them
                 Commands.run(() -> intake.setRollerPower(-0.4), intake)
                         .beforeStarting(() -> logControlEvent("Operator:LB", "Manual reverse start"))
                         .finallyDo(() -> {
@@ -1214,7 +1215,8 @@ public class RobotContainer implements RobotRuntimeContainer {
     }
 
     private Command buildAutoIntakeBallsCommand() {
-        // 4-second timeout allows time to drive over fuel and intake it.
+        // 4-second timeout: enough time for the robot to drive over fuel at auto
+        // speed and intake it, but short enough to not block the next path segment.
         return new IntakeRollerCommand(intake, this::getSpeedMatchedIntakeRollerForwardPower)
                 .withTimeout(4.0)
                 .withName("AutoIntakeBalls");

@@ -1,3 +1,6 @@
+// Identifies which corner of the swerve drivetrain a module belongs to.
+// Used by SwerveSubsystem to address individual modules for validation,
+// calibration, and diagnostics.
 package frc.robot.subsystems.swerve;
 
 public enum SwerveCorner {

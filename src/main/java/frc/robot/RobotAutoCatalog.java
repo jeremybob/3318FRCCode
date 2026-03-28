@@ -1,3 +1,15 @@
+// ============================================================================
+// FILE: src/main/java/frc/robot/RobotAutoCatalog.java
+//
+// PURPOSE: Central registry of autonomous routines and PathPlanner named
+//   commands. All auto-related constants live here so students can see
+//   every available auto option in one place.
+//
+//   - Named command strings (e.g., "IntakeFuel") must match what is used
+//     in PathPlanner path event markers.
+//   - competitionPathPlannerAutos() returns the list of autos shown in the
+//     SmartDashboard chooser dropdown.
+// ============================================================================
 package frc.robot;
 
 import java.util.List;
@@ -21,5 +33,6 @@ final class RobotAutoCatalog {
                 new PathPlannerAutoSpec("Outpost", "Outpost"));
     }
 
+    /** chooserName = human-readable label in SmartDashboard; autoFileName = .auto file in deploy/pathplanner/autos/ */
     record PathPlannerAutoSpec(String chooserName, String autoFileName) {}
 }

@@ -80,6 +80,8 @@ public class AlignAndShootCommand extends Command {
 
     private enum State { ALIGN, CLEAR, FEED, DONE }
 
+    // 5 seconds is enough time for the robot to rotate ~180° and settle.
+    // If alignment hasn't converged by then, the target is likely obstructed.
     private static final double ALIGN_CONVERGENCE_TIMEOUT_SEC = 5.0;
 
     private State state;
@@ -97,6 +99,9 @@ public class AlignAndShootCommand extends Command {
     private boolean alignmentLocked = false;
     private boolean hadAlignmentLockThisRun = false;
 
+    // "work*" fields are mutable scratch values updated each execute() cycle.
+    // They are published atomically as a TelemetrySnapshot at end-of-loop so
+    // the dashboard always sees a consistent set of values, never a half-updated mix.
     private String workState = "IDLE";
     private boolean workCommandActive = false;
     private boolean workHasTarget = false;

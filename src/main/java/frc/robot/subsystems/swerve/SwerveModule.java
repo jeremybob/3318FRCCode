@@ -325,14 +325,6 @@ public class SwerveModule {
         steerMotor.setControl(steerDutyCycleRequest.withOutput(clampDutyCycle(steerPercent)));
     }
 
-    // --------------------------------------------------------------------------
-    // getSteerAngle()
-    //
-    // Returns the current wheel angle from the steer motor's internal encoder.
-    // With seed-once mode, this is the primary feedback source (seeded from
-    // CANcoder at boot, periodically re-synced).
-    // With FusedCANcoder (Pro), this returns the fused position.
-    // --------------------------------------------------------------------------
     /**
      * Copies the latest fast-loop status values from Phoenix's cached signals.
      * Force-refresh these signals so drivetrain control/odometry always works
@@ -356,6 +348,14 @@ public class SwerveModule {
         cachedDriveTempC = driveTemp.getValueAsDouble();
     }
 
+    // --------------------------------------------------------------------------
+    // getSteerAngle()
+    //
+    // Returns the current wheel angle from the steer motor's internal encoder.
+    // With seed-once mode, this is the primary feedback source (seeded from
+    // CANcoder at boot, periodically re-synced).
+    // With FusedCANcoder (Pro), this returns the fused position.
+    // --------------------------------------------------------------------------
     /** Returns the cached steer angle (updated by refreshFastSignals). */
     public Rotation2d getSteerAngle() {
         return cachedSteerAngle;

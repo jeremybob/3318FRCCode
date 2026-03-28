@@ -1,3 +1,17 @@
+// ============================================================================
+// FILE: src/main/java/frc/robot/dashboard/ReadyToScoreEvaluator.java
+//
+// PURPOSE: Single source of truth for the dashboard's READY TO SCORE
+//   indicator. Evaluates a checklist of conditions (intake homed, shooter
+//   at speed, alignment locked, heading within tolerance, feed gate ready)
+//   and returns a boolean result plus a human-readable reason string.
+//
+//   The reason string is displayed on the dashboard so the driver/operator
+//   can see exactly which condition is not yet met.
+//
+//   This is a pure-function utility (no subsystem references) so it can be
+//   unit-tested without a full robot.
+// ============================================================================
 package frc.robot.dashboard;
 
 public final class ReadyToScoreEvaluator {
