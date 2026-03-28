@@ -141,7 +141,7 @@ class VisionStreamPanel extends JPanel {
         connection.setRequestProperty("Connection", "Keep-Alive");
 
         try (BufferedInputStream input = new BufferedInputStream(connection.getInputStream())) {
-            ByteArrayOutputStream jpegBytes = new ByteArrayOutputStream(64 * 1024);
+            ByteArrayOutputStream jpegBytes = new ByteArrayOutputStream(64 * 1024); // 64 KB initial buffer
             boolean collecting = false;
             int previous = -1;
             while (!Thread.currentThread().isInterrupted()) {
@@ -150,6 +150,7 @@ class VisionStreamPanel extends JPanel {
                     throw new IOException("Stream closed");
                 }
                 if (!collecting) {
+                    // 0xFF 0xD8 = JPEG "Start of Image" marker
                     if (previous == 0xFF && current == 0xD8) {
                         jpegBytes.reset();
                         jpegBytes.write(0xFF);
@@ -158,6 +159,7 @@ class VisionStreamPanel extends JPanel {
                     }
                 } else {
                     jpegBytes.write(current);
+                    // 0xFF 0xD9 = JPEG "End of Image" marker — we have a complete frame
                     if (previous == 0xFF && current == 0xD9) {
                         BufferedImage decoded = ImageIO.read(new ByteArrayInputStream(jpegBytes.toByteArray()));
                         if (decoded != null) {

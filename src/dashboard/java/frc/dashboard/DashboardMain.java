@@ -24,22 +24,26 @@ public final class DashboardMain {
     public static void main(String[] args) {
         ConnectionArgs connectionArgs = parseArgs(args);
 
+        // Append a timestamp to make the client name unique if multiple dashboards connect
         DashboardNtClient client = new DashboardNtClient(
                 "3318Dashboard-" + System.currentTimeMillis(),
                 connectionArgs.teamNumber(),
                 connectionArgs.hostOverride());
 
+        // Clean up the NetworkTables connection when the program closes
         Runtime.getRuntime().addShutdownHook(new Thread(client::close));
 
+        // Swing UI must be created on the Event Dispatch Thread (required by Java's UI system)
         SwingUtilities.invokeLater(() -> {
             DashboardFrame frame = new DashboardFrame(client);
             frame.setVisible(true);
         });
     }
 
+    /** Parses command-line arguments for robot connection settings. */
     static ConnectionArgs parseArgs(String[] args) {
-        int teamNumber = 3318;
-        String hostOverride = "10.33.18.2";
+        int teamNumber = 3318;                  // Default team number
+        String hostOverride = "10.33.18.2";     // Default roboRIO IP (10.TE.AM.2 for team 3318)
 
         for (int i = 0; i < args.length; i++) {
             if ("--team".equals(args[i])) {
@@ -69,5 +73,6 @@ public final class DashboardMain {
         return new ConnectionArgs(teamNumber, hostOverride);
     }
 
+    /** Parsed command-line arguments for robot connection. */
     record ConnectionArgs(int teamNumber, String hostOverride) {}
 }

@@ -68,7 +68,10 @@ public final class MatchCsvLogger implements AutoCloseable {
         }
     }
 
-    /** Append one data snapshot as a CSV row. */
+    /**
+     * Append one data snapshot as a CSV row.
+     * IMPORTANT: The field order here MUST match the HEADER array above.
+     */
     public void log(DashboardData data) throws IOException {
         if (writer == null) return;
         StringBuilder sb = new StringBuilder();

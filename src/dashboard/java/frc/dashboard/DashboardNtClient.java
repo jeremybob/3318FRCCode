@@ -10,6 +10,12 @@ import edu.wpi.first.networktables.StringPublisher;
 import edu.wpi.first.networktables.StringArraySubscriber;
 import edu.wpi.first.networktables.StringSubscriber;
 
+/**
+ * Manages the NetworkTables 4 connection to the robot. Provides typed
+ * subscribers for every telemetry topic the dashboard displays, plus
+ * publishers for sending commands (zero heading, intake home, etc.) back
+ * to the robot.
+ */
 public class DashboardNtClient implements AutoCloseable {
 
     public enum DashboardCommand {
@@ -263,6 +269,9 @@ public class DashboardNtClient implements AutoCloseable {
     private final StringPublisher selectAutoNamePub = table.getStringTopic("cmd/select_auto_name").publish();
     private final IntegerPublisher selectAutoPub = table.getIntegerTopic("cmd/select_auto_seq").publish();
 
+    // Command sequence numbers for deduplication. Each command is sent with an
+    // incrementing sequence number so the robot can detect new commands vs. stale
+    // values that are still sitting in NetworkTables from a previous press.
     private long zeroHeadingSeq = 0;
     private long stopDriveSeq = 0;
     private long intakeHomeSeq = 0;
@@ -434,6 +443,10 @@ public class DashboardNtClient implements AutoCloseable {
                 ackTimestampSub.get());
     }
 
+    /**
+     * Converts a team number into the standard FRC roboRIO IP address.
+     * FRC convention: team 3318 → 10.33.18.2 (10.<first two digits>.<last two digits>.2)
+     */
     private static String resolveRobotHost(int teamNumber, String hostOverride) {
         if (hostOverride != null && !hostOverride.isBlank()) {
             return hostOverride;
@@ -446,6 +459,7 @@ public class DashboardNtClient implements AutoCloseable {
         return "10." + first + "." + second + ".2";
     }
 
+    /** Returns the primary value if it is a real number; otherwise falls back to the secondary value. */
     private static double preferFinite(double primary, double fallback) {
         if (Double.isFinite(primary)) {
             return primary;
