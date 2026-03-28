@@ -1,3 +1,17 @@
+// ============================================================================
+// FILE: src/main/java/frc/robot/dashboard/RobotDashboardService.java
+//
+// PURPOSE: Bridge between the robot's subsystem state and the custom Swing
+//   dashboard. Every 100 ms, this service publishes a DashboardSnapshot to
+//   NetworkTables so the dashboard can display telemetry, and it reads back
+//   operator commands (e.g., "run swerve validation", "select auto", "zero
+//   heading") that the dashboard sends as NT string values.
+//
+//   CONTRACT_VERSION is a string that must match between this file and
+//   DashboardNtClient on the dashboard side. If they mismatch, the dashboard
+//   shows a warning so students know the robot code and dashboard are out of
+//   sync.
+// ============================================================================
 package frc.robot.dashboard;
 
 import edu.wpi.first.networktables.BooleanPublisher;
@@ -14,6 +28,8 @@ import frc.robot.subsystems.swerve.SwerveCorner;
 import frc.robot.subsystems.swerve.SwerveValidationMode;
 
 public class RobotDashboardService {
+    // Publish telemetry at 10 Hz (every 0.1 s). Fast enough for smooth dashboard
+    // updates, slow enough to avoid flooding NetworkTables traffic.
     private static final double SNAPSHOT_PUBLISH_PERIOD_SEC = 0.1;
 
     public interface Actions {
@@ -64,7 +80,7 @@ public class RobotDashboardService {
 
     private final BooleanPublisher intakeHomedPub;
     private final BooleanPublisher intakeLimitPub;
-    private final DoublePublisher intakeTiltPub;
+    private final DoublePublisher intakeSlidePub;
     private final DoublePublisher intakeRollerCurrentPub;
 
     private final DoublePublisher feederCurrentPub;
@@ -250,7 +266,7 @@ public class RobotDashboardService {
 
         intakeHomedPub = table.getBooleanTopic("intake/homed").publish();
         intakeLimitPub = table.getBooleanTopic("intake/limit_switch_pressed").publish();
-        intakeTiltPub = table.getDoubleTopic("intake/tilt_deg").publish();
+        intakeSlidePub = table.getDoubleTopic("intake/slide_in").publish();
         intakeRollerCurrentPub = table.getDoubleTopic("intake/roller_current_amps").publish();
 
         feederCurrentPub = table.getDoubleTopic("feeder/current_amps").publish();
@@ -437,7 +453,7 @@ public class RobotDashboardService {
 
         intakeHomedPub.set(snapshot.intakeHomed());
         intakeLimitPub.set(snapshot.intakeLimitSwitchPressed());
-        intakeTiltPub.set(snapshot.intakeTiltDeg());
+        intakeSlidePub.set(snapshot.intakeSlideIn());
         intakeRollerCurrentPub.set(snapshot.intakeRollerCurrentAmps());
 
         feederCurrentPub.set(snapshot.feederCurrentAmps());

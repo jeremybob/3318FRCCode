@@ -1,3 +1,14 @@
+// ============================================================================
+// FILE: src/main/java/frc/robot/commands/AlignOnlyCommand.java
+//
+// PURPOSE: Rotates the robot to face the alliance HUB using pose-based heading,
+//   WITHOUT running any shooter, feeder, or intake motors. This is a testing
+//   command for alignment bring-up — use it to verify that the robot can lock
+//   onto a target before trying the full AlignAndShootCommand.
+//
+//   The command finishes when alignment is stable or when the convergence
+//   timeout expires. It does NOT fire.
+// ============================================================================
 package frc.robot.commands;
 
 import edu.wpi.first.math.MathUtil;

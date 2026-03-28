@@ -130,7 +130,7 @@ public class RobotContainer implements RobotRuntimeContainer {
     private double lastManualShooterTargetRps = 0.0;
     private double lastManualHopperPower = 0.0;
     private double lastManualFeederPower = 0.0;
-    private double lastIntakeTiltPower = 0.0;
+    private double lastIntakeSlidePower = 0.0;
     private double lastDriverRawTurnInput = 0.0;
     private double lastDriverCommandedTranslationMps = 0.0;
     private double lastDriverCommandedOmegaRadPerSec = 0.0;
@@ -140,7 +140,7 @@ public class RobotContainer implements RobotRuntimeContainer {
     private double lastHeadingHoldErrorDeg = Double.NaN;
     private double lastHeadingHoldCorrectionOmegaRadPerSec = 0.0;
     private double lastDriverDriveLoopTimestampSec = Double.NaN;
-    private boolean intakeTiltManualAxisActive = false;
+    private boolean intakeSlideManualAxisActive = false;
     // private boolean lastClimbArmed = false;
     private Command currentSwerveValidationCommand;
 
@@ -383,7 +383,7 @@ public class RobotContainer implements RobotRuntimeContainer {
         // IntakeFuel: deploy intake, spin rollers to pick up FUEL from the ground.
         NamedCommands.registerCommand(RobotAutoCatalog.NAMED_INTAKE_FUEL, buildIntakeGamePieceCommand());
         // Split variants for path-level control:
-        //  - IntakeDeployOnly: home-if-needed then move tilt to pickup angle.
+        //  - IntakeDeployOnly: home-if-needed then extend slide to pickup position.
         //  - IntakeBalls: run intake rollers only (stall-protected, timed).
         NamedCommands.registerCommand(
                 RobotAutoCatalog.NAMED_INTAKE_DEPLOY_ONLY,
@@ -519,14 +519,14 @@ public class RobotContainer implements RobotRuntimeContainer {
     //
     //  OPERATOR (Port 1):
     //    Left Stick Y ......... Manual shooter wheel speed
-    //    Right Stick Y ........ Manual intake tilt (was climber — changed when climber disabled)
+    //    Right Stick Y ........ Manual intake slide (was climber — changed when climber disabled)
     //    Right Trigger ........ Vision align-and-shoot
     //    Right Bumper ......... Fallback shoot (no vision)
     //    Y button (hold) ...... Manual distance-based shoot (no alignment)
     //    Left Trigger (hold) .. Intake roller forward (stall-protected)
     //    Left Bumper (hold) ... Intake roller reverse / eject
-    //    D-pad Up ............. Intake tilt up/stow (home angle)
-    //    B button ............. Intake tilt down/deploy (pickup angle)
+    //    D-pad Up ............. Intake slide retract/stow (home position)
+    //    B button ............. Intake slide extend/deploy (pickup position)
     //    X button ............. Re-home intake
     //    A button ............. Align-only (vision yaw test, no shot)
     //
@@ -685,7 +685,7 @@ public class RobotContainer implements RobotRuntimeContainer {
                     double slidePower = getOperatorIntakeSlideManualPower();
                     intake.setSlidePowerManual(slidePower);
 
-                    lastIntakeTiltPower = slidePower;
+                    lastIntakeSlidePower = slidePower;
                     refreshOperatorCommandSummary();
                 }, intake).withName("OperatorIntakeSlideManualDefault"));
 
@@ -738,6 +738,7 @@ public class RobotContainer implements RobotRuntimeContainer {
 
         // Left Bumper: Manual intake roller — reverse / eject
         operatorController.leftBumper().whileTrue(
+                // -0.4 = gentle reverse to eject jammed game pieces without launching them
                 Commands.run(() -> intake.setRollerPower(-0.4), intake)
                         .beforeStarting(() -> logControlEvent("Operator:LB", "Manual reverse start"))
                         .finallyDo(() -> {
@@ -875,7 +876,7 @@ public class RobotContainer implements RobotRuntimeContainer {
                 shooterAtTargetSpeed,
                 intake.isHomed(),
                 intake.getLimitSwitchPressed(),
-                intake.getTiltPositionDeg(),
+                intake.getSlidePositionIn(),
                 intake.getRollerCurrentAmps(),
                 feeder.getCurrentAmps(),
                 hopper.getCurrentAmps(),
@@ -1084,15 +1085,15 @@ public class RobotContainer implements RobotRuntimeContainer {
         double absSlideInput = Math.abs(rawSlideInput);
 
         // Hysteresis avoids run/stop chatter when the stick hovers near deadband.
-        if (intakeTiltManualAxisActive) {
+        if (intakeSlideManualAxisActive) {
             if (absSlideInput < Constants.Intake.MANUAL_SLIDE_RELEASE_DEADBAND) {
-                intakeTiltManualAxisActive = false;
+                intakeSlideManualAxisActive = false;
             }
         } else if (absSlideInput > Constants.Intake.MANUAL_SLIDE_ENGAGE_DEADBAND) {
-            intakeTiltManualAxisActive = true;
+            intakeSlideManualAxisActive = true;
         }
 
-        if (!intakeTiltManualAxisActive) {
+        if (!intakeSlideManualAxisActive) {
             return 0.0;
         }
         double manualPower = MathUtil.applyDeadband(rawSlideInput, Constants.Intake.MANUAL_SLIDE_RELEASE_DEADBAND);
@@ -1214,7 +1215,8 @@ public class RobotContainer implements RobotRuntimeContainer {
     }
 
     private Command buildAutoIntakeBallsCommand() {
-        // 4-second timeout allows time to drive over fuel and intake it.
+        // 4-second timeout: enough time for the robot to drive over fuel at auto
+        // speed and intake it, but short enough to not block the next path segment.
         return new IntakeRollerCommand(intake, this::getSpeedMatchedIntakeRollerForwardPower)
                 .withTimeout(4.0)
                 .withName("AutoIntakeBalls");
@@ -1366,7 +1368,7 @@ public class RobotContainer implements RobotRuntimeContainer {
         operatorCommandSummary = "manualShooterRps=" + formatSigned(lastManualShooterTargetRps)
                 + " hopperPower=" + formatSigned(lastManualHopperPower)
                 + " feederPower=" + formatSigned(lastManualFeederPower)
-                + " tiltPower=" + formatSigned(lastIntakeTiltPower);
+                + " slidePower=" + formatSigned(lastIntakeSlidePower);
         // operatorCommandSummary = "climberPower=" + formatSigned(lastClimberPower)
         //         + " manualShooterRps=" + formatSigned(lastManualShooterTargetRps)
         //         + " climbArmed=" + yesNo(lastClimbArmed);

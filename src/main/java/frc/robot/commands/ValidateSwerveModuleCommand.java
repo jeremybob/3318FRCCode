@@ -1,3 +1,17 @@
+// ============================================================================
+// FILE: src/main/java/frc/robot/commands/ValidateSwerveModuleCommand.java
+//
+// PURPOSE: Runs a single swerve module in a specific test mode (drive forward,
+//   drive reverse, steer positive, steer negative) for bring-up validation.
+//
+// WHEN TO USE:
+//   During pit setup, use the dashboard's swerve validation panel to select
+//   a corner (FL/FR/BL/BR) and a mode, then observe that the wheel moves
+//   as expected. This helps catch wiring issues, inverted motors, or bad
+//   CANcoder offsets before driving the robot.
+//
+//   The command has a 30-second safety timeout to prevent unattended spinning.
+// ============================================================================
 package frc.robot.commands;
 
 import edu.wpi.first.wpilibj.Timer;

@@ -36,7 +36,7 @@ public final class MatchCsvLogger implements AutoCloseable {
             "shooter_right_rps",
             "shooter_at_speed",
             "intake_homed",
-            "intake_tilt_deg",
+            "intake_slide_in",
             "ready_to_score",
             "ready_reason",
             "align_state",
@@ -68,7 +68,10 @@ public final class MatchCsvLogger implements AutoCloseable {
         }
     }
 
-    /** Append one data snapshot as a CSV row. */
+    /**
+     * Append one data snapshot as a CSV row.
+     * IMPORTANT: The field order here MUST match the HEADER array above.
+     */
     public void log(DashboardData data) throws IOException {
         if (writer == null) return;
         StringBuilder sb = new StringBuilder();
@@ -81,7 +84,7 @@ public final class MatchCsvLogger implements AutoCloseable {
         sb.append(',').append(data.shooterRightRps());
         sb.append(',').append(data.shooterAtSpeed());
         sb.append(',').append(data.intakeHomed());
-        sb.append(',').append(data.intakeTiltDeg());
+        sb.append(',').append(data.intakeSlideIn());
         sb.append(',').append(data.readyToScore());
         sb.append(',').append(csvSafe(data.readyReason()));
         sb.append(',').append(csvSafe(data.alignState()));
@@ -128,7 +131,7 @@ public final class MatchCsvLogger implements AutoCloseable {
             double shooterRightRps,
             boolean shooterAtSpeed,
             boolean intakeHomed,
-            double intakeTiltDeg,
+            double intakeSlideIn,
             boolean readyToScore,
             String readyReason,
             String alignState,

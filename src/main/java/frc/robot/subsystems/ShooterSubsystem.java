@@ -46,6 +46,10 @@ public class ShooterSubsystem extends SubsystemBase {
     private final VelocityVoltage velocityRequest = new VelocityVoltage(0)
             .withEnableFOC(Constants.Swerve.USE_PHOENIX_PRO_FEATURES);
 
+    // @SuppressWarnings("rawtypes") — Phoenix 6 StatusSignal is generic
+    // (e.g., StatusSignal<AngularVelocity>), but we only call getValueAsDouble()
+    // which doesn't need the type parameter. Using raw types avoids importing
+    // the WPILib Units measure types that change between releases.
     @SuppressWarnings("rawtypes")
     private final StatusSignal leftVelocitySignal = leftShooter.getVelocity();
     @SuppressWarnings("rawtypes")
@@ -377,6 +381,14 @@ public class ShooterSubsystem extends SubsystemBase {
         });
     }
 
+    // --------------------------------------------------------------------------
+    // buildContinuousShootRoutine()
+    //
+    // Like buildShootRoutine(), but the feed step runs INDEFINITELY instead of
+    // using a fixed timeout. The command keeps feeding until interrupted (e.g.,
+    // when the operator releases the shoot button). Use this for hold-to-shoot
+    // controls where the driver decides when to stop feeding.
+    // --------------------------------------------------------------------------
     public Command buildContinuousShootRoutine(FeederSubsystem feeder,
                                                HopperSubsystem hopper,
                                                IntakeSubsystem intake,

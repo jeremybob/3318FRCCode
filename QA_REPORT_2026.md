@@ -29,15 +29,15 @@ The climber subsystem is fully disabled (CAN IDs 20/21 commented out, all bindin
 **Impact:** Loss of 15+ points per match from climbing alone.
 **Action:** If climber hardware is installed, uncomment and wire up the subsystem before competition.
 
-### C2. Only 2 Autonomous Routines — Both Blue Alliance Only
-**Files:** `src/main/deploy/pathplanner/autos/`, `RobotContainer.java:374-375`
+### C2. Limited Autonomous Routines — ~~Both Blue Alliance Only~~ PARTIALLY ADDRESSED
+**Files:** `src/main/deploy/pathplanner/autos/`, `RobotAutoCatalog.java`
 
-Only `BlueDepot.auto` and `BlueOutpost.auto` are defined. There are **no Red-side autonomous routines**. While PathPlanner can flip Blue paths for Red alliance, this depends on `DriverStation.getAlliance()` returning correctly — which can fail in practice mode or if FMS data is delayed.
+~~Only `BlueDepot.auto` and `BlueOutpost.auto` are defined.~~ **Update:** Now 5 autos are defined: `Depot`, `Outpost`, `OnlyShootLeft`, `OnlyShootMiddle`, `OnlyShootRight`. The "Blue" prefix has been removed. PathPlanner's `shouldFlipPath` lambda handles Red alliance path mirroring automatically.
 
-Additionally, only 2 strategies (depot/outpost) is thin for a competitive event. Teams typically need 3-5 autos to adapt to alliance partners and opponents.
+While 5 strategies is better than 2, teams may still want additional autos for specific alliance partner combinations.
 
-**Impact:** If alliance detection fails on Red, the robot drives the wrong path. Limited strategic flexibility.
-**Action:** Test Red-side path flipping thoroughly. Consider adding more auto variants (e.g., multi-fuel pickup, preload-only-shoot, do-nothing-but-climb).
+**Impact:** Path flipping depends on `DriverStation.getAlliance()` returning correctly — test thoroughly in practice mode.
+**Action:** Test Red-side path flipping thoroughly. Consider adding more auto variants if needed.
 
 ### C3. Shooter Physics Constants Are Unverified — Shots May Miss
 **Files:** `Constants.java:298-302`

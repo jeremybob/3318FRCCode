@@ -21,7 +21,7 @@ The older setup guide in `docs/FRC_Robot_Setup_Guide.docx` had drift from curren
 - Shooter controls moved to operator controller
 - Climber bindings removed (climber hardware currently disabled)
 - Driver is now drive-focused only (no shoot/intake binds)
-- Intake tilt conversion reflects current code default (`360.0 / 10.0`)
+- Intake linear slide conversion reflects current code (rack-and-pinion math)
 
 ## 3. Required software setup (programming laptop)
 
@@ -53,7 +53,7 @@ Then confirm vendor JSONs exist in `vendordeps/`:
 | Back Left Drive / Steer / CANcoder | 7 / 8 / 12 |
 | Shooter Left / Right | 16 / 17 |
 | Back Right Drive / Steer / CANcoder | 5 / 6 / 11 |
-| Intake Tilt (SparkMax) / Roller (TalonFX) | 14 / 15 |
+| Intake Slide (SparkMax) / Roller Leader (TalonFX) / Roller Follower (TalonFX) | 14 / 15 / 22 |
 | Hopper Floor (SparkMax) | 19 |
 | Feeder (SparkMax) | 18 |
 
@@ -73,7 +73,7 @@ You must configure SparkMax devices in REV Hardware Client (one-time persistent 
 - Motor type (`Brushless` for NEO)
 - Idle mode (`Brake` where expected)
 - Current limits
-- Intake tilt position conversion factor
+- Intake slide position conversion factor (set via REV Hardware Client)
 
 ## 5. Required constants to measure/configure before competition
 
@@ -85,8 +85,8 @@ Update these in `src/main/java/frc/robot/Constants.java` based on your real robo
 - `Swerve.FR_CANCODER_OFFSET_ROT`
 - `Swerve.BL_CANCODER_OFFSET_ROT`
 - `Swerve.BR_CANCODER_OFFSET_ROT`
-- `Intake.TILT_POS_CONV_DEG` (code default is `360.0 / 10.0`; verify your actual ratio)
-- `Intake.INTAKE_DOWN_DEG`
+- `Intake.SLIDE_PINION_DIAMETER_IN` (default `2.5`; verify your actual gear)
+- `Intake.SLIDE_EXTEND_IN` (default `10.0`; maximum slide extension in inches)
 - `Vision.CAMERA_NAME`
 - Shooter/drive/steer PID values marked `TUNE ME`
 
@@ -107,22 +107,28 @@ If missing, teleop still works, but PathPlanner autos are disabled.
 
 ### 7.2 Auto chooser entries in code
 
-Current auto options in `RobotContainer`:
+Current auto options (defined in `RobotAutoCatalog.java`):
 
-- `Four Piece Climb Auto` -> `FourPieceClimbAuto`
-- `Two Piece Auto` -> `TwoPieceAuto`
-- `Taxi Only` -> `TaxiOnly`
+- `Depot` -> `Depot`
+- `Only Shoot Left` -> `OnlyShootLeft`
+- `Only Shoot Middle` -> `OnlyShootMiddle`
+- `Only Shoot Right` -> `OnlyShootRight`
+- `Outpost` -> `Outpost`
 - Default: `Do Nothing`
+- Utility: `Calibrate CANcoders` (not a match auto — used for swerve calibration only)
 
 `.auto` files must exist in `src/main/deploy/pathplanner/autos/`.
 
 ### 7.3 Named commands for path events
 
-Current named events available in paths:
+Current named events available in paths (defined in `RobotAutoCatalog.java`):
 
-- `HomeIntake`
-- `IntakeGamePiece`
-- `AutoShoot`
+- `HomeIntake` — homes the intake linear slide
+- `IntakeFuel` — deploys intake and runs rollers to pick up game pieces
+- `IntakeDeployOnly` — deploys intake without running rollers
+- `IntakeBalls` — runs intake rollers only (no deploy)
+- `AutoShoot` — vision-align and shoot at the HUB
+- `AutoManualDistanceShoot` — shoot using a fixed distance (no vision alignment)
 
 ## 8. PhotonVision configuration
 
@@ -209,16 +215,17 @@ Controller ports (`Constants.OI`):
 
 ### 10.2 Operator (mechanisms)
 
-- Right Stick Y: manual intake tilt
-- Left Stick Y: manual hopper jog
+- Right Stick Y: manual intake slide (extend/retract)
+- Left Stick Y: manual shooter speed jog
 - A (press): align-only test (no feed/shoot)
 - Right Trigger (>= 0.20, hold): vision align + shoot
 - Right Bumper (hold): fallback shoot (no vision alignment)
-- Left Trigger (hold): intake roller in
+- Y (hold): manual distance shoot (vision-calculated speed, no alignment turn)
+- Left Trigger (hold): intake roller in (speed-matched to robot speed)
 - Left Bumper (hold): intake roller reverse/eject
-- B (press): intake tilt down/deploy (pickup position)
+- B (press): intake slide extend/deploy (pickup position)
 - X (press): intake re-home
-- Y (press): intake tilt up/stow (home angle)
+- D-pad Up: intake slide retract/stow (home position)
 
 ### 10.3 Climber status
 

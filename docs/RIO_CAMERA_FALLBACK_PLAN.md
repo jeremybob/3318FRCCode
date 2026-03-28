@@ -260,7 +260,7 @@ Without vision pose correction, autonomous accuracy depends entirely on:
 3. **Predictable shooter speeds** — consider pre-computed RPS values for known
    auto shooting positions instead of calculating from vision distance
 
-The `EightFuelClimbAuto` path would still work. The `AutoShoot` named command
+The existing auto paths (e.g., `Depot`, `Outpost`) would still work. The `AutoShoot` named command
 uses `AlignAndShootCommand`, which still gets yaw alignment from the camera. The
 main risk is that odometry-based position might place the robot slightly off from
 the ideal shooting spot, but the alignment step corrects for angular error and the

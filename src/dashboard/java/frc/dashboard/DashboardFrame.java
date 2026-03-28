@@ -135,7 +135,7 @@ public class DashboardFrame extends JFrame {
     // Operator tab: subsystem metrics
     private final JLabel shooterLabel = new JLabel("Left -- / Right -- RPS");
     private final JLabel shooterAtSpeedLabel = new JLabel("At speed: NO");
-    private final JLabel intakeLabel = new JLabel("Homed: NO  Limit: NO  Tilt: -- deg");
+    private final JLabel intakeLabel = new JLabel("Homed: NO  Limit: NO  Slide: -- in");
     private final JLabel conveyorLabel = new JLabel("Feeder -- A  Hopper -- A");
     // --- CLIMBER DISABLED ---
     private final JLabel climberLabel = new JLabel("DISABLED — no hardware");
@@ -1115,7 +1115,7 @@ public class DashboardFrame extends JFrame {
         shooterAtSpeedLabel.setText("At speed: " + yesNo(data.shooterAtSpeed()));
         intakeLabel.setText("Homed: " + yesNo(data.intakeHomed())
                 + "  Limit: " + yesNo(data.intakeLimitSwitchPressed())
-                + "  Tilt: " + ONE_DECIMAL.format(data.intakeTiltDeg()) + " deg");
+                + "  Slide: " + ONE_DECIMAL.format(data.intakeSlideIn()) + " in");
         conveyorLabel.setText("Feeder " + ONE_DECIMAL.format(data.feederCurrentAmps())
                 + " A  Hopper " + ONE_DECIMAL.format(data.hopperCurrentAmps()) + " A");
         // --- CLIMBER DISABLED ---
@@ -1744,7 +1744,7 @@ public class DashboardFrame extends JFrame {
                 .append(" atSpeed=").append(data.shooterAtSpeed()).append('\n');
         sb.append("Intake: homed=").append(data.intakeHomed())
                 .append(" limit=").append(data.intakeLimitSwitchPressed())
-                .append(" tiltDeg=").append(data.intakeTiltDeg())
+                .append(" slideIn=").append(data.intakeSlideIn())
                 .append(" rollerA=").append(data.intakeRollerCurrentAmps()).append('\n');
         sb.append("Conveyor: feederA=").append(data.feederCurrentAmps())
                 .append(" hopperA=").append(data.hopperCurrentAmps()).append('\n');
@@ -1951,8 +1951,8 @@ public class DashboardFrame extends JFrame {
         appendDeviceLine(
                 sb,
                 statusFromBoolean(connected, liveTelemetry, data.intakeHomed(), "CHECK"),
-                "Intake Tilt SparkMax (CAN " + Constants.CAN.INTAKE_TILT_NEO + ")",
-                "tiltDeg=" + ONE_DECIMAL.format(data.intakeTiltDeg())
+                "Intake Slide SparkMax (CAN " + Constants.CAN.INTAKE_SLIDE_NEO + ")",
+                "slideIn=" + ONE_DECIMAL.format(data.intakeSlideIn())
                         + " homed=" + data.intakeHomed()
                         + " limitSwitch=" + data.intakeLimitSwitchPressed());
         appendDeviceLine(

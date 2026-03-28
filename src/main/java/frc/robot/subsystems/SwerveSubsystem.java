@@ -40,6 +40,8 @@ import frc.robot.subsystems.swerve.SwerveModule;
 import frc.robot.subsystems.swerve.SwerveValidationMode;
 
 public class SwerveSubsystem extends SubsystemBase {
+    // Retry CTRE device configuration up to 5 times — CAN bus can drop frames
+    // during boot, so a single apply() call is not always reliable.
     private static final int CTRE_CONFIG_RETRIES = 5;
 
     // ---- Four swerve modules, one per corner ----
@@ -264,6 +266,8 @@ public class SwerveSubsystem extends SubsystemBase {
         // Discretize corrects for the fact that the robot is moving while turning.
         // Without this, translating while rotating causes drift perpendicular to
         // the direction of travel (a well-known second-order kinematics issue).
+        // 0.02 = robot loop period in seconds (50 Hz). Discretize corrects for
+        // the fact that the robot translates while rotating within this interval.
         speeds = ChassisSpeeds.discretize(speeds, 0.02);
 
         SwerveModuleState[] states = kinematics.toSwerveModuleStates(speeds);

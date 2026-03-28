@@ -1,3 +1,14 @@
+// ============================================================================
+// FILE: src/main/java/frc/robot/subsystems/swerve/SwerveValidationMode.java
+//
+// PURPOSE: Defines test modes for bring-up validation of individual swerve
+//   modules. During pit testing, you can run each mode one at a time to
+//   verify that a module's drive and steer motors spin in the expected
+//   direction at the expected speed.
+//
+//   Controlled via the dashboard's swerve validation panel or the
+//   ValidateSwerveModuleCommand.
+// ============================================================================
 package frc.robot.subsystems.swerve;
 
 import frc.robot.Constants;

@@ -100,8 +100,8 @@ The codebase is well-structured and extensively documented. The custom Swing das
 
 ### 14. No red alliance auto paths defined — **NO FIX NEEDED**
 **File:** `src/main/java/frc/robot/RobotContainer.java:379-380`
-**Issue:** Auto names say "Blue Depot" and "Blue Outpost".
-**Resolution:** PathPlanner's `shouldFlipPath` lambda automatically flips paths for red alliance. The naming convention is understood by the drive team.
+**Issue:** Auto names previously said "Blue Depot" and "Blue Outpost" (now renamed to just "Depot" and "Outpost").
+**Resolution:** PathPlanner's `shouldFlipPath` lambda automatically flips paths for red alliance. The "Blue" prefix has been removed from auto names.
 
 ### 15. `zeroHeading()` controller button requires swerve subsystem unnecessarily — **FIXED**
 **File:** `src/main/java/frc/robot/RobotContainer.java`

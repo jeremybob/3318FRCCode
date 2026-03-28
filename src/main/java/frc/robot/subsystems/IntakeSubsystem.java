@@ -135,7 +135,7 @@ public class IntakeSubsystem extends SubsystemBase {
         // Without this, the Kraken can burn out or trip a breaker if the intake stalls.
         rollerCfg.CurrentLimits.StatorCurrentLimit       = Constants.Intake.ROLLER_STATOR_LIMIT_A;
         rollerCfg.CurrentLimits.StatorCurrentLimitEnable = true;
-        rollerCfg.CurrentLimits.SupplyCurrentLimit       = 40;
+        rollerCfg.CurrentLimits.SupplyCurrentLimit       = 40;   // amps — protects the 40A breaker slot
         rollerCfg.CurrentLimits.SupplyCurrentLimitEnable = true;
 
         applyWithRetry(
@@ -158,7 +158,7 @@ public class IntakeSubsystem extends SubsystemBase {
         followerCfg.MotorOutput.NeutralMode = NeutralModeValue.Coast;
         followerCfg.CurrentLimits.StatorCurrentLimit       = Constants.Intake.ROLLER_STATOR_LIMIT_A;
         followerCfg.CurrentLimits.StatorCurrentLimitEnable = true;
-        followerCfg.CurrentLimits.SupplyCurrentLimit       = 40;
+        followerCfg.CurrentLimits.SupplyCurrentLimit       = 40;   // amps — match leader limit
         followerCfg.CurrentLimits.SupplyCurrentLimitEnable = true;
 
         applyWithRetry(
@@ -222,12 +222,6 @@ public class IntakeSubsystem extends SubsystemBase {
         return slideEncoder.getPosition();
     }
 
-    /** @deprecated Use {@link #getSlidePositionIn()} — kept for RobotContainer telemetry compatibility. */
-    @Deprecated
-    public double getTiltPositionDeg() {
-        return getSlidePositionIn();
-    }
-
     public record RollerCurrentSample(double amps, boolean signalOk) {}
 
     public RollerCurrentSample sampleRollerCurrent() {
@@ -253,12 +247,6 @@ public class IntakeSubsystem extends SubsystemBase {
         setSlidePowerInternal(power, true);
     }
 
-    /** @deprecated Use {@link #setSlidePower(double)} */
-    @Deprecated
-    public void setTiltPower(double power) {
-        setSlidePower(power);
-    }
-
     // --------------------------------------------------------------------------
     // setSlidePowerHoming()
     //
@@ -270,12 +258,6 @@ public class IntakeSubsystem extends SubsystemBase {
         setSlidePowerInternal(power, false);
     }
 
-    /** @deprecated Use {@link #setSlidePowerHoming(double)} */
-    @Deprecated
-    public void setTiltPowerHoming(double power) {
-        setSlidePowerHoming(power);
-    }
-
     // --------------------------------------------------------------------------
     // setSlidePowerManual()
     //
@@ -284,12 +266,6 @@ public class IntakeSubsystem extends SubsystemBase {
     // --------------------------------------------------------------------------
     public void setSlidePowerManual(double power) {
         setSlidePowerInternal(power, false);
-    }
-
-    /** @deprecated Use {@link #setSlidePowerManual(double)} */
-    @Deprecated
-    public void setTiltPowerManual(double power) {
-        setSlidePowerManual(power);
     }
 
     private void setSlidePowerInternal(double power, boolean enforceSoftLimits) {

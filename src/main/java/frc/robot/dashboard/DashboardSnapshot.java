@@ -1,3 +1,14 @@
+// ============================================================================
+// FILE: src/main/java/frc/robot/dashboard/DashboardSnapshot.java
+//
+// PURPOSE: Immutable snapshot of ALL robot telemetry published to the custom
+//   dashboard each cycle. Because it is a Java record, every field is final
+//   and the snapshot is safe to pass between threads without synchronization.
+//
+// IMPORTANT: Field order matters! The record constructor is positional, so
+//   every call site that creates a DashboardSnapshot must match this exact
+//   field order. If you add or reorder fields, update all constructors.
+// ============================================================================
 package frc.robot.dashboard;
 
 public record DashboardSnapshot(
@@ -28,7 +39,7 @@ public record DashboardSnapshot(
         boolean shooterAtSpeed,
         boolean intakeHomed,
         boolean intakeLimitSwitchPressed,
-        double intakeTiltDeg,
+        double intakeSlideIn,
         double intakeRollerCurrentAmps,
         double feederCurrentAmps,
         double hopperCurrentAmps,
