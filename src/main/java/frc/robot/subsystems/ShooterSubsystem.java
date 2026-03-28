@@ -31,9 +31,9 @@ import frc.robot.util.ShotSolver;
 
 public class ShooterSubsystem extends SubsystemBase {
     private final TalonFX leftShooter =
-            new TalonFX(Constants.CAN.SHOOTER_LEFT, new CANBus(Constants.CAN.CTRE_CAN_BUS));
+            new TalonFX(Constants.CAN.SHOOTER_LEFT, new CANBus(Constants.CAN.RIO_CAN_BUS));
     private final TalonFX rightShooter =
-            new TalonFX(Constants.CAN.SHOOTER_RIGHT, new CANBus(Constants.CAN.CTRE_CAN_BUS));
+            new TalonFX(Constants.CAN.SHOOTER_RIGHT, new CANBus(Constants.CAN.RIO_CAN_BUS));
 
     // VelocityVoltage: tells the motor "spin at exactly X rotations per second"
     // FOC improves efficiency and torque but requires a Phoenix Pro license.

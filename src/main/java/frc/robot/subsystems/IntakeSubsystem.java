@@ -63,7 +63,7 @@ public class IntakeSubsystem extends SubsystemBase {
 
     // ---- Roller motor (TalonFX / Kraken X60) ----
     private final TalonFX rollerMotor =
-            new TalonFX(Constants.CAN.INTAKE_ROLLER, new CANBus(Constants.CAN.CTRE_CAN_BUS));
+            new TalonFX(Constants.CAN.INTAKE_ROLLER, new CANBus(Constants.CAN.RIO_CAN_BUS));
     @SuppressWarnings("rawtypes")
     private final StatusSignal rollerStatorCurrent = rollerMotor.getStatorCurrent();
 

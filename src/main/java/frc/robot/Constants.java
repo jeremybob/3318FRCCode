@@ -31,9 +31,17 @@ public final class Constants {
     // Hardware Client. Change them here to match your actual robot wiring.
     // =========================================================================
     public static final class CAN {
-        // CTRE CAN bus name:
-        //   "rio" for roboRIO CAN, or your CANivore name (e.g. "canivore")
-        public static final String CTRE_CAN_BUS = "rio";
+        // ---- CAN bus names ----
+        // CANivore: dedicated bus for swerve (drive/steer TalonFXs, CANcoders, Pigeon 2).
+        // Separating swerve from other subsystems prevents CAN traffic contention
+        // and allows higher signal update rates for tighter odometry and PID loops.
+        // This name must match what you set in Phoenix Tuner X for the CANivore device.
+        public static final String CANIVORE_BUS = "canivore";
+
+        // roboRIO built-in CAN: shooter TalonFXs, intake roller TalonFX, and all
+        // REV SparkMax motors (feeder, hopper, intake tilt). REV devices MUST stay
+        // on the roboRIO CAN bus — they don't support CANivore.
+        public static final String RIO_CAN_BUS = "rio";
 
         // Pigeon 2 IMU (gyro) — used for field-oriented drive
         public static final int PIGEON = 13;

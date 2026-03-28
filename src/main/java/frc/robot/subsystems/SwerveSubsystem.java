@@ -90,7 +90,7 @@ public class SwerveSubsystem extends SubsystemBase {
     // ---- Gyro (Pigeon 2) ----
     // The Pigeon 2 measures the robot's yaw (rotation angle on the field).
     // We use it to make driving "field-oriented" so joystick up = away from driver.
-    private final Pigeon2 pigeon = new Pigeon2(Constants.CAN.PIGEON, new CANBus(Constants.CAN.CTRE_CAN_BUS));
+    private final Pigeon2 pigeon = new Pigeon2(Constants.CAN.PIGEON, new CANBus(Constants.CAN.CANIVORE_BUS));
 
     // ---- Kinematics ----
     // SwerveDriveKinematics converts a desired chassis speed (x, y, omega)
@@ -152,10 +152,12 @@ public class SwerveSubsystem extends SubsystemBase {
         pigeon.reset();
 
         // Optimize Pigeon 2 CAN frame rates — yaw is critical for field-relative
-        // driving, but pitch/roll are only used for telemetry.
-        pigeon.getYaw().setUpdateFrequency(50);
-        pigeon.getPitch().setUpdateFrequency(2);
-        pigeon.getRoll().setUpdateFrequency(2);
+        // driving, but pitch/roll are only used for telemetry. With the Pigeon on
+        // the dedicated CANivore bus, 100 Hz yaw is sustainable and improves
+        // field-relative drive responsiveness.
+        pigeon.getYaw().setUpdateFrequency(100);
+        pigeon.getPitch().setUpdateFrequency(4);
+        pigeon.getRoll().setUpdateFrequency(4);
         applyWithRetry(
                 pigeon::optimizeBusUtilization,
                 "Pigeon2 bus optimization (id=" + Constants.CAN.PIGEON + ")");
