@@ -881,17 +881,10 @@ public class RobotContainer implements RobotRuntimeContainer {
                 AlignAndShootCommand.telemetryHasTarget(),
                 AlignAndShootCommand.telemetryGeometryFeasible(),
                 AlignAndShootCommand.telemetryHasShootableTarget(),
-                AlignAndShootCommand.getTelemetryYawDeg(),
+                AlignAndShootCommand.getTelemetryHeadingErrorDeg(),
                 AlignAndShootCommand.getTelemetryAimErrorDeg(),
-                AlignAndShootCommand.getTelemetryLeadYawDeg(),
-                AlignAndShootCommand.getTelemetryPitchDeg(),
+                AlignAndShootCommand.getTelemetryDistanceM(),
                 AlignAndShootCommand.getTelemetryTargetRps(),
-                AlignAndShootCommand.getTelemetryRadialVelocityMps(),
-                AlignAndShootCommand.getTelemetryLateralVelocityMps(),
-                AlignAndShootCommand.getTelemetryCommandedXVelocityMps(),
-                AlignAndShootCommand.getTelemetryCommandedYVelocityMps(),
-                AlignAndShootCommand.getTelemetryActiveTranslationCapMps(),
-                AlignAndShootCommand.getTelemetryTimeOfFlightSec(),
                 AlignAndShootCommand.telemetryFeedGateReady(),
                 AlignAndShootCommand.getTelemetryLastAbortReason(),
                 ready.ready(),
@@ -918,25 +911,14 @@ public class RobotContainer implements RobotRuntimeContainer {
                 // Camera (PhotonVision on Pi 4)
                 photonConnected,
                 photonConnected ? "PHOTON_CONNECTED" : "PHOTON_DISCONNECTED",
-                0,                  // no local device ID
                 Constants.Vision.PHOTON_CAMERA_NAME,
-                "",                 // no local path
-                "",                 // no local enumeration
-                "",                 // no local error
-                0,                  // frame count not tracked locally
-                Double.NaN,         // frame timestamp not tracked locally
+                // Vision pose estimation
                 lastVisionTagId,
                 visionActive,
-                visionHeadingErrorDeg,  // yaw = heading error to hub
-                0.0,                    // pitch not used in pose-based alignment
-                visionHeadingErrorDeg,  // bestTagYaw = same
-                0.0,                    // bestTagPitch = same
+                visionHeadingErrorDeg,
                 visionDistanceM,
-                0.0,                    // no pixel height
                 lastVisionTagCount,
-                0,                      // hub face count not tracked
-                0.0,                    // hub span not tracked
-                nowSec,                 // timestamp
+                nowSec,
                 // CAN health
                 canStatus.percentBusUtilization,
                 canStatus.receiveErrorCount,

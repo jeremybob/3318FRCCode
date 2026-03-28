@@ -79,17 +79,10 @@ public class RobotDashboardService {
     private final BooleanPublisher alignHasTargetPub;
     private final BooleanPublisher alignGeometryFeasiblePub;
     private final BooleanPublisher alignHasShootableTargetPub;
-    private final DoublePublisher alignYawPub;
+    private final DoublePublisher alignHeadingErrorPub;
     private final DoublePublisher alignAimErrorPub;
-    private final DoublePublisher alignLeadYawPub;
-    private final DoublePublisher alignPitchPub;
+    private final DoublePublisher alignDistancePub;
     private final DoublePublisher alignTargetRpsPub;
-    private final DoublePublisher alignRadialVelocityPub;
-    private final DoublePublisher alignLateralVelocityPub;
-    private final DoublePublisher alignCommandedXVelocityPub;
-    private final DoublePublisher alignCommandedYVelocityPub;
-    private final DoublePublisher alignTranslationCapPub;
-    private final DoublePublisher alignTimeOfFlightPub;
     private final BooleanPublisher alignFeedGateReadyPub;
     private final StringPublisher alignAbortReasonPub;
 
@@ -120,27 +113,16 @@ public class RobotDashboardService {
     private final IntegerPublisher matchNumberPub;
     private final StringPublisher eventNamePub;
 
-    // Camera / vision connection
+    // Camera / vision connection (PhotonVision on Raspberry Pi 4)
     private final BooleanPublisher cameraConnectedPub;
     private final StringPublisher cameraStatusPub;
-    private final IntegerPublisher cameraActiveDevicePub;
-    private final StringPublisher cameraActiveNamePub;
-    private final StringPublisher cameraActivePathPub;
-    private final StringPublisher cameraEnumeratedPub;
-    private final StringPublisher cameraLastErrorPub;
-    private final IntegerPublisher cameraFrameCountPub;
-    private final DoublePublisher cameraLastFrameTimestampPub;
+    private final StringPublisher cameraNamePub;
+    // Vision pose estimation
     private final IntegerPublisher visionTagIdPub;
     private final BooleanPublisher visionHasTargetPub;
-    private final DoublePublisher visionYawPub;
-    private final DoublePublisher visionPitchPub;
-    private final DoublePublisher visionBestTagYawPub;
-    private final DoublePublisher visionBestTagPitchPub;
+    private final DoublePublisher visionHeadingErrorPub;
     private final DoublePublisher visionDistancePub;
-    private final DoublePublisher visionTagPixelHeightPub;
     private final IntegerPublisher visionHubTagCountPub;
-    private final IntegerPublisher visionHubFaceCountPub;
-    private final DoublePublisher visionHubSpanPub;
     private final DoublePublisher visionTargetTimestampPub;
 
     // CAN bus health
@@ -283,17 +265,10 @@ public class RobotDashboardService {
         alignHasTargetPub = table.getBooleanTopic("align/has_target").publish();
         alignGeometryFeasiblePub = table.getBooleanTopic("align/geometry_feasible").publish();
         alignHasShootableTargetPub = table.getBooleanTopic("align/has_shootable_target").publish();
-        alignYawPub = table.getDoubleTopic("align/yaw_deg").publish();
+        alignHeadingErrorPub = table.getDoubleTopic("align/heading_error_deg").publish();
         alignAimErrorPub = table.getDoubleTopic("align/aim_error_deg").publish();
-        alignLeadYawPub = table.getDoubleTopic("align/lead_yaw_deg").publish();
-        alignPitchPub = table.getDoubleTopic("align/pitch_deg").publish();
+        alignDistancePub = table.getDoubleTopic("align/distance_m").publish();
         alignTargetRpsPub = table.getDoubleTopic("align/target_rps").publish();
-        alignRadialVelocityPub = table.getDoubleTopic("align/radial_velocity_mps").publish();
-        alignLateralVelocityPub = table.getDoubleTopic("align/lateral_velocity_mps").publish();
-        alignCommandedXVelocityPub = table.getDoubleTopic("align/commanded_x_mps").publish();
-        alignCommandedYVelocityPub = table.getDoubleTopic("align/commanded_y_mps").publish();
-        alignTranslationCapPub = table.getDoubleTopic("align/translation_cap_mps").publish();
-        alignTimeOfFlightPub = table.getDoubleTopic("align/time_of_flight_sec").publish();
         alignFeedGateReadyPub = table.getBooleanTopic("align/feed_gate_ready").publish();
         alignAbortReasonPub = table.getStringTopic("align/last_abort_reason").publish();
 
@@ -324,27 +299,16 @@ public class RobotDashboardService {
         matchNumberPub = table.getIntegerTopic("match/number").publish();
         eventNamePub = table.getStringTopic("match/event_name").publish();
 
-        // Camera / vision connection
+        // Camera / vision connection (PhotonVision on Raspberry Pi 4)
         cameraConnectedPub = table.getBooleanTopic("vision/camera_connected").publish();
         cameraStatusPub = table.getStringTopic("vision/camera_status").publish();
-        cameraActiveDevicePub = table.getIntegerTopic("vision/camera_active_device").publish();
-        cameraActiveNamePub = table.getStringTopic("vision/camera_name").publish();
-        cameraActivePathPub = table.getStringTopic("vision/camera_path").publish();
-        cameraEnumeratedPub = table.getStringTopic("vision/camera_enumerated").publish();
-        cameraLastErrorPub = table.getStringTopic("vision/camera_last_error").publish();
-        cameraFrameCountPub = table.getIntegerTopic("vision/camera_frame_count").publish();
-        cameraLastFrameTimestampPub = table.getDoubleTopic("vision/camera_last_frame_ts_sec").publish();
+        cameraNamePub = table.getStringTopic("vision/camera_name").publish();
+        // Vision pose estimation
         visionTagIdPub = table.getIntegerTopic("vision/tag_id").publish();
         visionHasTargetPub = table.getBooleanTopic("vision/has_target").publish();
-        visionYawPub = table.getDoubleTopic("vision/yaw_deg").publish();
-        visionPitchPub = table.getDoubleTopic("vision/pitch_deg").publish();
-        visionBestTagYawPub = table.getDoubleTopic("vision/best_tag_yaw_deg").publish();
-        visionBestTagPitchPub = table.getDoubleTopic("vision/best_tag_pitch_deg").publish();
+        visionHeadingErrorPub = table.getDoubleTopic("vision/heading_error_deg").publish();
         visionDistancePub = table.getDoubleTopic("vision/distance_m").publish();
-        visionTagPixelHeightPub = table.getDoubleTopic("vision/tag_pixel_height_px").publish();
         visionHubTagCountPub = table.getIntegerTopic("vision/hub_tag_count").publish();
-        visionHubFaceCountPub = table.getIntegerTopic("vision/hub_face_count").publish();
-        visionHubSpanPub = table.getDoubleTopic("vision/hub_span_px").publish();
         visionTargetTimestampPub = table.getDoubleTopic("vision/target_timestamp_sec").publish();
 
         // CAN bus health
@@ -488,17 +452,10 @@ public class RobotDashboardService {
         alignHasTargetPub.set(snapshot.alignHasTarget());
         alignGeometryFeasiblePub.set(snapshot.alignGeometryFeasible());
         alignHasShootableTargetPub.set(snapshot.alignHasShootableTarget());
-        alignYawPub.set(snapshot.alignYawDeg());
+        alignHeadingErrorPub.set(snapshot.alignHeadingErrorDeg());
         alignAimErrorPub.set(snapshot.alignAimErrorDeg());
-        alignLeadYawPub.set(snapshot.alignLeadYawDeg());
-        alignPitchPub.set(snapshot.alignPitchDeg());
+        alignDistancePub.set(snapshot.alignDistanceM());
         alignTargetRpsPub.set(snapshot.alignTargetRps());
-        alignRadialVelocityPub.set(snapshot.alignRadialVelocityMps());
-        alignLateralVelocityPub.set(snapshot.alignLateralVelocityMps());
-        alignCommandedXVelocityPub.set(snapshot.alignCommandedXVelocityMps());
-        alignCommandedYVelocityPub.set(snapshot.alignCommandedYVelocityMps());
-        alignTranslationCapPub.set(snapshot.alignTranslationCapMps());
-        alignTimeOfFlightPub.set(snapshot.alignTimeOfFlightSec());
         alignFeedGateReadyPub.set(snapshot.alignFeedGateReady());
         alignAbortReasonPub.set(snapshot.alignAbortReason());
 
@@ -529,27 +486,16 @@ public class RobotDashboardService {
         matchNumberPub.set(snapshot.matchNumber());
         eventNamePub.set(snapshot.eventName());
 
-        // Camera / vision connection
+        // Camera / vision connection (PhotonVision on Raspberry Pi 4)
         cameraConnectedPub.set(snapshot.cameraConnected());
         cameraStatusPub.set(snapshot.cameraStatus());
-        cameraActiveDevicePub.set(snapshot.cameraActiveDeviceId());
-        cameraActiveNamePub.set(snapshot.cameraActiveName());
-        cameraActivePathPub.set(snapshot.cameraActivePath());
-        cameraEnumeratedPub.set(snapshot.cameraEnumerated());
-        cameraLastErrorPub.set(snapshot.cameraLastError());
-        cameraFrameCountPub.set(snapshot.cameraFrameCount());
-        cameraLastFrameTimestampPub.set(snapshot.cameraLastFrameTimestampSec());
+        cameraNamePub.set(snapshot.cameraName());
+        // Vision pose estimation
         visionTagIdPub.set(snapshot.visionTagId());
         visionHasTargetPub.set(snapshot.visionHasTarget());
-        visionYawPub.set(snapshot.visionYawDeg());
-        visionPitchPub.set(snapshot.visionPitchDeg());
-        visionBestTagYawPub.set(snapshot.visionBestTagYawDeg());
-        visionBestTagPitchPub.set(snapshot.visionBestTagPitchDeg());
+        visionHeadingErrorPub.set(snapshot.visionHeadingErrorDeg());
         visionDistancePub.set(snapshot.visionDistanceM());
-        visionTagPixelHeightPub.set(snapshot.visionTagPixelHeightPx());
         visionHubTagCountPub.set(snapshot.visionHubTagCount());
-        visionHubFaceCountPub.set(snapshot.visionHubFaceCount());
-        visionHubSpanPub.set(snapshot.visionHubSpanPx());
         visionTargetTimestampPub.set(snapshot.visionTargetTimestampSec());
 
         // CAN bus health

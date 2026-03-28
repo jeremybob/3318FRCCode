@@ -92,26 +92,14 @@ public class DashboardNtClient implements AutoCloseable {
             table.getBooleanTopic("align/geometry_feasible").subscribe(false);
     private final BooleanSubscriber alignShootableSub =
             table.getBooleanTopic("align/has_shootable_target").subscribe(false);
-    private final DoubleSubscriber alignYawSub = table.getDoubleTopic("align/yaw_deg").subscribe(Double.NaN);
+    private final DoubleSubscriber alignHeadingErrorSub =
+            table.getDoubleTopic("align/heading_error_deg").subscribe(Double.NaN);
     private final DoubleSubscriber alignAimErrorSub =
             table.getDoubleTopic("align/aim_error_deg").subscribe(Double.NaN);
-    private final DoubleSubscriber alignLeadYawSub =
-            table.getDoubleTopic("align/lead_yaw_deg").subscribe(Double.NaN);
-    private final DoubleSubscriber alignPitchSub = table.getDoubleTopic("align/pitch_deg").subscribe(Double.NaN);
+    private final DoubleSubscriber alignDistanceSub =
+            table.getDoubleTopic("align/distance_m").subscribe(Double.NaN);
     private final DoubleSubscriber alignTargetRpsSub =
             table.getDoubleTopic("align/target_rps").subscribe(Double.NaN);
-    private final DoubleSubscriber alignRadialVelocitySub =
-            table.getDoubleTopic("align/radial_velocity_mps").subscribe(Double.NaN);
-    private final DoubleSubscriber alignLateralVelocitySub =
-            table.getDoubleTopic("align/lateral_velocity_mps").subscribe(Double.NaN);
-    private final DoubleSubscriber alignCommandedXVelocitySub =
-            table.getDoubleTopic("align/commanded_x_mps").subscribe(Double.NaN);
-    private final DoubleSubscriber alignCommandedYVelocitySub =
-            table.getDoubleTopic("align/commanded_y_mps").subscribe(Double.NaN);
-    private final DoubleSubscriber alignTranslationCapSub =
-            table.getDoubleTopic("align/translation_cap_mps").subscribe(Double.NaN);
-    private final DoubleSubscriber alignTimeOfFlightSub =
-            table.getDoubleTopic("align/time_of_flight_sec").subscribe(Double.NaN);
     private final BooleanSubscriber alignFeedGateReadySub =
             table.getBooleanTopic("align/feed_gate_ready").subscribe(false);
     private final StringSubscriber alignAbortSub = table.getStringTopic("align/last_abort_reason").subscribe("");
@@ -146,47 +134,24 @@ public class DashboardNtClient implements AutoCloseable {
     private final IntegerSubscriber matchNumberSub = table.getIntegerTopic("match/number").subscribe(0);
     private final StringSubscriber eventNameSub = table.getStringTopic("match/event_name").subscribe("");
 
-    // Camera / vision connection
+    // Camera / vision connection (PhotonVision on Raspberry Pi 4)
     private final BooleanSubscriber cameraConnectedSub =
             table.getBooleanTopic("vision/camera_connected").subscribe(false);
     private final StringSubscriber cameraStatusSub =
             table.getStringTopic("vision/camera_status").subscribe("STARTING");
-    private final IntegerSubscriber cameraActiveDeviceSub =
-            table.getIntegerTopic("vision/camera_active_device").subscribe(-1);
-    private final StringSubscriber cameraActiveNameSub =
+    private final StringSubscriber cameraNameSub =
             table.getStringTopic("vision/camera_name").subscribe("");
-    private final StringSubscriber cameraActivePathSub =
-            table.getStringTopic("vision/camera_path").subscribe("");
-    private final StringSubscriber cameraEnumeratedSub =
-            table.getStringTopic("vision/camera_enumerated").subscribe("");
-    private final StringSubscriber cameraLastErrorSub =
-            table.getStringTopic("vision/camera_last_error").subscribe("");
-    private final IntegerSubscriber cameraFrameCountSub =
-            table.getIntegerTopic("vision/camera_frame_count").subscribe(0);
-    private final DoubleSubscriber cameraLastFrameTimestampSub =
-            table.getDoubleTopic("vision/camera_last_frame_ts_sec").subscribe(Double.NaN);
+    // Vision pose estimation
     private final IntegerSubscriber visionTagIdSub =
             table.getIntegerTopic("vision/tag_id").subscribe(-1);
     private final BooleanSubscriber visionHasTargetSub =
             table.getBooleanTopic("vision/has_target").subscribe(false);
-    private final DoubleSubscriber visionYawSub =
-            table.getDoubleTopic("vision/yaw_deg").subscribe(Double.NaN);
-    private final DoubleSubscriber visionPitchSub =
-            table.getDoubleTopic("vision/pitch_deg").subscribe(Double.NaN);
-    private final DoubleSubscriber visionBestTagYawSub =
-            table.getDoubleTopic("vision/best_tag_yaw_deg").subscribe(Double.NaN);
-    private final DoubleSubscriber visionBestTagPitchSub =
-            table.getDoubleTopic("vision/best_tag_pitch_deg").subscribe(Double.NaN);
+    private final DoubleSubscriber visionHeadingErrorSub =
+            table.getDoubleTopic("vision/heading_error_deg").subscribe(Double.NaN);
     private final DoubleSubscriber visionDistanceSub =
             table.getDoubleTopic("vision/distance_m").subscribe(Double.NaN);
-    private final DoubleSubscriber visionTagPixelHeightSub =
-            table.getDoubleTopic("vision/tag_pixel_height_px").subscribe(Double.NaN);
     private final IntegerSubscriber visionHubTagCountSub =
             table.getIntegerTopic("vision/hub_tag_count").subscribe(0);
-    private final IntegerSubscriber visionHubFaceCountSub =
-            table.getIntegerTopic("vision/hub_face_count").subscribe(0);
-    private final DoubleSubscriber visionHubSpanSub =
-            table.getDoubleTopic("vision/hub_span_px").subscribe(Double.NaN);
     private final DoubleSubscriber visionTargetTimestampSub =
             table.getDoubleTopic("vision/target_timestamp_sec").subscribe(Double.NaN);
 
@@ -368,17 +333,10 @@ public class DashboardNtClient implements AutoCloseable {
                 alignHasTargetSub.get(),
                 alignGeometrySub.get(),
                 alignShootableSub.get(),
-                alignYawSub.get(),
+                alignHeadingErrorSub.get(),
                 alignAimErrorSub.get(),
-                alignLeadYawSub.get(),
-                alignPitchSub.get(),
+                alignDistanceSub.get(),
                 alignTargetRpsSub.get(),
-                alignRadialVelocitySub.get(),
-                alignLateralVelocitySub.get(),
-                alignCommandedXVelocitySub.get(),
-                alignCommandedYVelocitySub.get(),
-                alignTranslationCapSub.get(),
-                alignTimeOfFlightSub.get(),
                 alignFeedGateReadySub.get(),
                 alignAbortSub.get(),
                 readySub.get(),
@@ -402,27 +360,16 @@ public class DashboardNtClient implements AutoCloseable {
                 // Match info
                 matchNumberSub.get(),
                 eventNameSub.get(),
-                // Camera
+                // Camera (PhotonVision on Raspberry Pi 4)
                 cameraConnectedSub.get(),
                 cameraStatusSub.get(),
-                (int) cameraActiveDeviceSub.get(),
-                cameraActiveNameSub.get(),
-                cameraActivePathSub.get(),
-                cameraEnumeratedSub.get(),
-                cameraLastErrorSub.get(),
-                cameraFrameCountSub.get(),
-                cameraLastFrameTimestampSub.get(),
+                cameraNameSub.get(),
+                // Vision pose estimation
                 (int) visionTagIdSub.get(),
                 visionHasTargetSub.get(),
-                visionYawSub.get(),
-                visionPitchSub.get(),
-                visionBestTagYawSub.get(),
-                visionBestTagPitchSub.get(),
+                visionHeadingErrorSub.get(),
                 visionDistanceSub.get(),
-                visionTagPixelHeightSub.get(),
                 (int) visionHubTagCountSub.get(),
-                (int) visionHubFaceCountSub.get(),
-                visionHubSpanSub.get(),
                 visionTargetTimestampSub.get(),
                 // CAN health
                 canBusUtilizationSub.get(),

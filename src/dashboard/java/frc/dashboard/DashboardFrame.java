@@ -123,11 +123,10 @@ public class DashboardFrame extends JFrame {
     // Driver tab: align pipeline
     private final JLabel alignPhaseLabel = new JLabel("Align phase: IDLE");
     private final JLabel aimErrorLabel = new JLabel("Aim error: --");
-    private final JLabel yawLabel = new JLabel("Raw yaw: --");
-    private final JLabel leadLabel = new JLabel("Lead: --");
-    private final JLabel pitchLabel = new JLabel("Pitch: --");
+    private final JLabel headingLabel = new JLabel("Heading error: --");
+    private final JLabel distanceLabel = new JLabel("Distance: --");
     private final JLabel shotModelLabel = new JLabel("Shot: --");
-    private final JLabel motionLabel = new JLabel("Motion: --");
+    // motionLabel removed — stationary alignment only, no moving shot data
     private final JProgressBar yawBar = new JProgressBar(-30, 30);
     private final JLabel visionLabel = new JLabel("Vision: --");
     private final JLabel abortLabel = new JLabel("Last abort: --");
@@ -142,7 +141,7 @@ public class DashboardFrame extends JFrame {
     private final JLabel climberLabel = new JLabel("DISABLED — no hardware");
     private final JLabel operatorVisionLabel = new JLabel("Target: NO  Feasible: NO");
     private final JLabel operatorPhaseLabel = new JLabel("Align phase: IDLE");
-    private final JLabel operatorMotionLabel = new JLabel("Motion: --");
+    // operatorMotionLabel removed — stationary alignment only
     private final JLabel operatorShotModelLabel = new JLabel("Shot model: --");
     private final JLabel operatorReadyLabel = new JLabel("NOT READY");
     private final JLabel operatorReadyReasonLabel = new JLabel("Reason: --");
@@ -177,11 +176,10 @@ public class DashboardFrame extends JFrame {
     private final JLabel visionStreamCameraLabel = new JLabel("Camera: --");
     private final JLabel visionStreamErrorLabel = new JLabel("Error: --");
     private final JLabel visionTargetStatusLabel = new JLabel("Target: --");
-    private final JLabel visionTargetAnglesLabel = new JLabel("Yaw: --  Pitch: --");
-    private final JLabel visionTargetDistanceLabel = new JLabel("Distance: --  Height: --");
-    private final JLabel visionTargetDebugLabel = new JLabel("Best tag: --");
+    private final JLabel visionHeadingLabel = new JLabel("Heading error: --");
+    private final JLabel visionTargetDistanceLabel = new JLabel("Distance: --");
     private final JLabel visionTargetCoverageLabel = new JLabel("Hub tags: --");
-    private final JLabel visionTargetAgeLabel = new JLabel("Target age: --  Frame age: --");
+    private final JLabel visionTargetAgeLabel = new JLabel("Target age: --");
     private final JLabel visionPoseSourceLabel = new JLabel("Estimator: --");
     private JComboBox<String> visionStreamModeCombo;
     private JToggleButton visionStreamEnabledToggle;
@@ -344,11 +342,10 @@ public class DashboardFrame extends JFrame {
         styleCompactLabel(autoChooserStatusLabel);
         styleCompactLabel(alignPhaseLabel);
         styleCompactLabel(aimErrorLabel);
-        styleCompactLabel(yawLabel);
-        styleCompactLabel(leadLabel);
-        styleCompactLabel(pitchLabel);
+        styleCompactLabel(headingLabel);
+        styleCompactLabel(distanceLabel);
         styleCompactLabel(shotModelLabel);
-        styleCompactLabel(motionLabel);
+        // motionLabel removed
         styleCompactLabel(visionLabel);
         styleCompactLabel(abortLabel);
         styleMetricLabel(ackLabel);
@@ -390,7 +387,7 @@ public class DashboardFrame extends JFrame {
         styleMetricLabel(climberLabel);
         styleMetricLabel(operatorVisionLabel);
         styleMetricLabel(operatorPhaseLabel);
-        styleMetricLabel(operatorMotionLabel);
+        // operatorMotionLabel removed
         styleMetricLabel(operatorShotModelLabel);
         styleMetricLabel(operatorReadyLabel);
         styleMetricLabel(operatorReadyReasonLabel);
@@ -414,7 +411,7 @@ public class DashboardFrame extends JFrame {
         // Row 2: more subsystems
         top.add(wrapLabelCard("Climber", climberLabel));
         top.add(wrapLabelCard("Vision", operatorVisionLabel, operatorPhaseLabel,
-                operatorMotionLabel, operatorShotModelLabel));
+                operatorShotModelLabel));
         top.add(wrapLabelCard("Readiness", operatorReadyLabel, operatorReadyReasonLabel));
         // Row 3: system health
         top.add(wrapLabelCard("Swerve Modules", swerveAnglesLabel));
@@ -476,9 +473,8 @@ public class DashboardFrame extends JFrame {
         styleMetricLabel(visionStreamCameraLabel);
         styleMetricLabel(visionStreamErrorLabel);
         styleMetricLabel(visionTargetStatusLabel);
-        styleMetricLabel(visionTargetAnglesLabel);
+        styleMetricLabel(visionHeadingLabel);
         styleMetricLabel(visionTargetDistanceLabel);
-        styleMetricLabel(visionTargetDebugLabel);
         styleMetricLabel(visionTargetCoverageLabel);
         styleMetricLabel(visionTargetAgeLabel);
         styleMetricLabel(visionPoseSourceLabel);
@@ -529,9 +525,8 @@ public class DashboardFrame extends JFrame {
         bottom.add(wrapLabelCard(
                 "Vision Target Metrics",
                 visionTargetStatusLabel,
-                visionTargetAnglesLabel,
+                visionHeadingLabel,
                 visionTargetDistanceLabel,
-                visionTargetDebugLabel,
                 visionTargetCoverageLabel,
                 visionTargetAgeLabel,
                 visionPoseSourceLabel));
@@ -722,12 +717,11 @@ public class DashboardFrame extends JFrame {
         panel.setBackground(CARD);
         panel.add(alignPhaseLabel);
         panel.add(aimErrorLabel);
-        panel.add(yawLabel);
-        panel.add(leadLabel);
+        panel.add(headingLabel);
         panel.add(yawBar);
-        panel.add(pitchLabel);
+        panel.add(distanceLabel);
         panel.add(shotModelLabel);
-        panel.add(motionLabel);
+        // motionLabel removed — stationary alignment only
         panel.add(visionLabel);
         panel.add(abortLabel);
         return wrapCard("Align Pipeline", panel);
@@ -1092,24 +1086,16 @@ public class DashboardFrame extends JFrame {
 
         // Align pipeline
         alignPhaseLabel.setText("Align phase: " + data.alignState() + (data.alignCommandActive() ? " (ACTIVE)" : ""));
-        aimErrorLabel.setText("Aim error: " + formatMaybe(data.alignAimErrorDeg()) + " deg");
-        yawLabel.setText("Hub yaw: " + formatMaybe(data.alignYawDeg()) + " deg"
-                + "  Best: " + formatMaybe(data.visionBestTagYawDeg()) + " deg");
-        leadLabel.setText("Lead: " + formatMaybe(data.alignLeadYawDeg()) + " deg"
+        aimErrorLabel.setText("Aim error: " + formatMaybe(data.alignAimErrorDeg()) + " deg"
                 + "  Gate: " + yesNo(data.alignFeedGateReady()));
-        pitchLabel.setText("Pitch: " + formatMaybe(data.alignPitchDeg()) + " deg");
+        headingLabel.setText("Heading error: " + formatMaybe(data.alignHeadingErrorDeg()) + " deg");
+        distanceLabel.setText("Distance: " + formatMaybe(data.alignDistanceM()) + " m");
         shotModelLabel.setText("Shot: " + formatMaybe(data.alignTargetRps()) + " RPS"
-                + "  TOF " + formatMaybe(data.alignTimeOfFlightSec()) + " s"
                 + "  Dist " + formatMaybe(data.visionDistanceM()) + " m");
-        motionLabel.setText("Motion: rad " + formatMaybe(data.alignRadialVelocityMps())
-                + "  lat " + formatMaybe(data.alignLateralVelocityMps())
-                + "  cmd " + formatMaybe(data.alignCommandedXVelocityMps()) + "/"
-                + formatMaybe(data.alignCommandedYVelocityMps())
-                + "  cap " + formatMaybe(data.alignTranslationCapMps()));
         visionLabel.setText("Vision: " + yesNo(data.alignHasTarget())
                 + "  Feasible: " + yesNo(data.alignGeometryFeasible())
                 + "  Dist: " + formatMaybe(data.visionDistanceM()) + " m"
-                + "  Tags/Faces: " + data.visionHubTagCount() + "/" + data.visionHubFaceCount());
+                + "  Tags: " + data.visionHubTagCount());
         abortLabel.setText("Last abort: " + sanitize(data.alignAbortReason()));
         updateYawBar(data.alignAimErrorDeg());
 
@@ -1142,16 +1128,11 @@ public class DashboardFrame extends JFrame {
                 + "  Feasible: " + yesNo(data.alignGeometryFeasible())
                 + "  Dist: " + formatMaybe(data.visionDistanceM()) + " m"
                 + "  Gate: " + yesNo(data.alignFeedGateReady())
-                + "  Tags/Faces: " + data.visionHubTagCount() + "/" + data.visionHubFaceCount());
+                + "  Tags: " + data.visionHubTagCount());
         operatorPhaseLabel.setText("Align phase: " + data.alignState());
-        operatorMotionLabel.setText("Motion: rad " + formatMaybe(data.alignRadialVelocityMps())
-                + "  lat " + formatMaybe(data.alignLateralVelocityMps())
-                + "  cmd " + formatMaybe(data.alignCommandedXVelocityMps()) + "/"
-                + formatMaybe(data.alignCommandedYVelocityMps()));
-        operatorShotModelLabel.setText("Shot model: aim " + formatMaybe(data.alignAimErrorDeg())
-                + "  lead " + formatMaybe(data.alignLeadYawDeg())
-                + "  rps " + formatMaybe(data.alignTargetRps())
-                + "  dist " + formatMaybe(data.visionDistanceM()) + " m");
+        operatorShotModelLabel.setText("Shot: aim " + formatMaybe(data.alignAimErrorDeg())
+                + " deg  rps " + formatMaybe(data.alignTargetRps())
+                + "  dist " + formatMaybe(data.alignDistanceM()) + " m");
         operatorReadyLabel.setText(data.readyToScore() ? "READY" : "NOT READY");
         operatorReadyLabel.setForeground(data.readyToScore() ? OK : BAD);
         operatorReadyReasonLabel.setText("Reason: " + sanitize(data.readyReason()));
@@ -1172,8 +1153,8 @@ public class DashboardFrame extends JFrame {
         cameraStatusLabel.setForeground(data.cameraConnected() ? OK : BAD);
         cameraDebugLabel.setText("Debug: " + buildCameraDebugSummary(data));
         cameraDebugLabel.setForeground(data.cameraConnected() ? TEXT : WARN);
-        cameraErrorLabel.setText("Error: " + sanitize(nonBlankOr(data.cameraLastError(), "none")));
-        cameraErrorLabel.setForeground(isBlank(data.cameraLastError()) ? MUTED : WARN);
+        cameraErrorLabel.setText("Camera: " + sanitize(data.cameraName()));
+        cameraErrorLabel.setForeground(MUTED);
         pigeonLabel.setText("Pigeon: Y " + formatMaybe(data.pigeonYawDeg())
                 + "  P " + formatMaybe(data.pigeonPitchDeg())
                 + "  R " + formatMaybe(data.pigeonRollDeg()) + " deg");
@@ -1271,8 +1252,8 @@ public class DashboardFrame extends JFrame {
         visionStreamStatusLabel.setText("Stream: " + visionStreamPanel.getStatusText());
         visionStreamSourceLabel.setText("Source: " + buildVisionStreamSourceLabel(data));
         visionStreamCameraLabel.setText("Camera: " + buildCameraDebugSummary(data));
-        visionStreamErrorLabel.setText("Error: " + sanitize(nonBlankOr(data.cameraLastError(), "none")));
-        visionStreamErrorLabel.setForeground(isBlank(data.cameraLastError()) ? MUTED : WARN);
+        visionStreamErrorLabel.setText("Camera: " + sanitize(data.cameraName()));
+        visionStreamErrorLabel.setForeground(MUTED);
         updateVisionTargetMetrics(data);
     }
 
@@ -1296,60 +1277,23 @@ public class DashboardFrame extends JFrame {
     }
 
     private String buildCameraDebugSummary(DashboardData data) {
-        return sanitize(data.cameraStatus())
-                + " dev=" + data.cameraActiveDeviceId()
-                + " frames=" + data.cameraFrameCount()
-                + " age=" + formatMaybe(cameraFrameAgeSec(data)) + "s";
-    }
-
-    private double cameraFrameAgeSec(DashboardData data) {
-        if (!Double.isFinite(data.robotTimestampSec()) || !Double.isFinite(data.cameraLastFrameTimestampSec())) {
-            return Double.NaN;
-        }
-        return Math.max(0.0, data.robotTimestampSec() - data.cameraLastFrameTimestampSec());
+        return sanitize(data.cameraStatus()) + " name=" + sanitize(data.cameraName());
     }
 
     private void updateVisionTargetMetrics(DashboardData data) {
         boolean hasTarget = data.visionHasTarget() && data.visionTagId() >= 0;
+        String estimator = data.visionHubTagCount() > 1 ? "MULTI_TAG" : "SINGLE_TAG";
         visionTargetStatusLabel.setText("Target: " + yesNo(hasTarget)
                 + (hasTarget ? "  Tag: " + data.visionTagId() : "")
-                + "  Est: " + visionEstimatorLabel(data));
+                + "  Est: " + (hasTarget ? estimator : "NONE"));
         visionTargetStatusLabel.setForeground(hasTarget ? OK : WARN);
-        visionTargetAnglesLabel.setText("Hub yaw: " + formatMaybe(data.visionYawDeg())
-                + " deg  Pitch: " + formatMaybe(data.visionPitchDeg()) + " deg");
-        visionTargetDistanceLabel.setText("Distance: " + formatMaybe(data.visionDistanceM())
-                + " m  Height: " + formatMaybe(data.visionTagPixelHeightPx()) + " px");
-        visionTargetDebugLabel.setText("Best tag yaw: " + formatMaybe(data.visionBestTagYawDeg())
-                + " deg  dYaw: " + formatMaybe(hubYawDeltaDeg(data)) + " deg");
-        visionTargetCoverageLabel.setText("Hub tags: " + data.visionHubTagCount()
-                + "  Faces: " + data.visionHubFaceCount()
-                + "  Span: " + formatMaybe(data.visionHubSpanPx()) + " px");
-        visionTargetAgeLabel.setText("Target age: " + formatMaybe(visionTargetAgeSec(data))
-                + " s  Frame age: " + formatMaybe(cameraFrameAgeSec(data)) + " s");
+        visionHeadingLabel.setText("Heading error: " + formatMaybe(data.visionHeadingErrorDeg()) + " deg");
+        visionTargetDistanceLabel.setText("Distance: " + formatMaybe(data.visionDistanceM()) + " m");
+        visionTargetCoverageLabel.setText("Hub tags: " + data.visionHubTagCount());
+        visionTargetAgeLabel.setText("Target age: " + formatMaybe(visionTargetAgeSec(data)) + " s");
         visionTargetAgeLabel.setForeground(hasTarget ? OK : MUTED);
-        visionPoseSourceLabel.setText("Estimator: " + visionEstimatorLabel(data)
-                + "  Best-vs-hub: " + formatMaybe(hubYawDeltaDeg(data)) + " deg");
+        visionPoseSourceLabel.setText("Estimator: " + (hasTarget ? estimator : "NONE"));
         visionPoseSourceLabel.setForeground(hasTarget ? OK : MUTED);
-    }
-
-    private double hubYawDeltaDeg(DashboardData data) {
-        if (!Double.isFinite(data.visionYawDeg()) || !Double.isFinite(data.visionBestTagYawDeg())) {
-            return Double.NaN;
-        }
-        return data.visionYawDeg() - data.visionBestTagYawDeg();
-    }
-
-    private String visionEstimatorLabel(DashboardData data) {
-        if (!data.visionHasTarget()) {
-            return "NONE";
-        }
-        if (data.visionHubFaceCount() > 1) {
-            return "MULTI_FACE";
-        }
-        if (data.visionHubTagCount() > 1) {
-            return "PAIR_MIDPOINT";
-        }
-        return "SINGLE_TAG";
     }
 
     private double visionTargetAgeSec(DashboardData data) {
@@ -1742,16 +1686,12 @@ public class DashboardFrame extends JFrame {
                 .append(" event='").append(sanitize(data.eventName())).append("'\n");
         sb.append("Camera: connected=").append(data.cameraConnected()).append('\n');
         sb.append("CameraDebug: status=").append(sanitize(data.cameraStatus()))
-                .append(" activeDev=").append(data.cameraActiveDeviceId())
-                .append(" name='").append(sanitize(data.cameraActiveName()))
-                .append("' path='").append(sanitize(data.cameraActivePath()))
-                .append("' frameCount=").append(data.cameraFrameCount())
-                .append(" lastFrameTs=").append(formatMaybe(data.cameraLastFrameTimestampSec()))
-                .append('\n');
-        sb.append("CameraEnum: ").append(sanitize(data.cameraEnumerated())).append('\n');
-        sb.append("CameraErr: ").append(sanitize(data.cameraLastError())).append('\n');
+                .append(" name='").append(sanitize(data.cameraName()))
+                .append("'\n");
         sb.append("Vision: tagId=").append(data.visionTagId())
-                .append(" distM=").append(formatMaybe(data.visionDistanceM())).append('\n');
+                .append(" headingErr=").append(formatMaybe(data.visionHeadingErrorDeg()))
+                .append(" distM=").append(formatMaybe(data.visionDistanceM()))
+                .append(" tags=").append(data.visionHubTagCount()).append('\n');
         sb.append("CAN: util=").append(ONE_DECIMAL.format(data.canBusUtilization() * 100.0)).append("%")
                 .append(" rxErr=").append(data.canReceiveErrorCount())
                 .append(" txErr=").append(data.canTransmitErrorCount()).append('\n');
@@ -1817,17 +1757,10 @@ public class DashboardFrame extends JFrame {
                 .append(" hasTarget=").append(data.alignHasTarget())
                 .append(" feasible=").append(data.alignGeometryFeasible())
                 .append(" shootable=").append(data.alignHasShootableTarget())
-                .append(" yaw=").append(data.alignYawDeg())
+                .append(" headingErr=").append(data.alignHeadingErrorDeg())
                 .append(" aimErr=").append(data.alignAimErrorDeg())
-                .append(" lead=").append(data.alignLeadYawDeg())
-                .append(" pitch=").append(data.alignPitchDeg())
+                .append(" dist=").append(data.alignDistanceM())
                 .append(" rps=").append(data.alignTargetRps())
-                .append(" radial=").append(data.alignRadialVelocityMps())
-                .append(" lateral=").append(data.alignLateralVelocityMps())
-                .append(" cmd=(").append(data.alignCommandedXVelocityMps())
-                .append(",").append(data.alignCommandedYVelocityMps()).append(")")
-                .append(" cap=").append(data.alignTranslationCapMps())
-                .append(" tof=").append(data.alignTimeOfFlightSec())
                 .append(" gate=").append(data.alignFeedGateReady())
                 .append(" abort='").append(sanitize(data.alignAbortReason())).append("'\n");
         sb.append("ReadyToScore: ").append(data.readyToScore())
@@ -1923,30 +1856,10 @@ public class DashboardFrame extends JFrame {
         appendDeviceLine(
                 sb,
                 statusFromBoolean(connected, liveTelemetry, data.cameraConnected(), "WARN"),
-                "USB camera (C920)",
+                "PhotonVision camera",
                 "connected=" + data.cameraConnected()
                         + " status=" + sanitize(data.cameraStatus())
-                        + " cfgDev=" + Constants.Vision.CAMERA_DEVICE_ID
-                        + " activeDev=" + data.cameraActiveDeviceId()
-                        + " fps=" + Constants.Vision.CAMERA_FPS
-                        + " size=" + Constants.Vision.CAMERA_WIDTH + "x" + Constants.Vision.CAMERA_HEIGHT);
-        appendDeviceLine(
-                sb,
-                statusFromBoolean(connected, liveTelemetry, data.cameraFrameCount() > 0, "WARN"),
-                "Camera frames",
-                "count=" + data.cameraFrameCount()
-                        + " lastFrameTs=" + formatMaybe(data.cameraLastFrameTimestampSec())
-                        + " ageSec=" + formatMaybe(cameraFrameAgeSec(data)));
-        appendDeviceLine(
-                sb,
-                statusFromBoolean(connected, liveTelemetry, !isBlank(data.cameraEnumerated()), "CHECK"),
-                "Enumerated USB cameras",
-                sanitize(nonBlankOr(data.cameraEnumerated(), "none")));
-        appendDeviceLine(
-                sb,
-                statusFromBoolean(connected, liveTelemetry, isBlank(data.cameraLastError()), "WARN"),
-                "Camera last error",
-                sanitize(nonBlankOr(data.cameraLastError(), "none")));
+                        + " name=" + sanitize(data.cameraName()));
         appendDeviceLine(
                 sb,
                 statusFromBoolean(connected, liveTelemetry, data.autoOptions().length > 0, "CHECK"),
@@ -2485,7 +2398,7 @@ public class DashboardFrame extends JFrame {
         private boolean hasTarget;
         private int visionTagId = -1;
         private double visionDistanceM = Double.NaN;
-        private double alignYawDeg = Double.NaN;
+        private double alignHeadingErrorDeg = Double.NaN;
         private double autoStartX_m = Double.NaN;
         private double autoStartY_m = Double.NaN;
         private double autoStartHeadingDeg = Double.NaN;
@@ -2530,7 +2443,7 @@ public class DashboardFrame extends JFrame {
             this.hasTarget = data.visionHasTarget();
             this.visionTagId = data.visionTagId();
             this.visionDistanceM = data.visionDistanceM();
-            this.alignYawDeg = data.visionYawDeg();
+            this.alignHeadingErrorDeg = data.visionHeadingErrorDeg();
 
             // Expected auto starting pose (flip for red alliance)
             double startX = data.autoStartX_m();
@@ -2674,9 +2587,9 @@ public class DashboardFrame extends JFrame {
             if (Double.isFinite(visionDistanceM)) {
                 info.append("Dist: ").append(ONE_DECIMAL.format(visionDistanceM)).append("m");
             }
-            if (Double.isFinite(alignYawDeg)) {
+            if (Double.isFinite(alignHeadingErrorDeg)) {
                 if (info.length() > 0) info.append("  ");
-                info.append("Yaw: ").append(ONE_DECIMAL.format(alignYawDeg)).append("\u00B0");
+                info.append("Hdg Err: ").append(ONE_DECIMAL.format(alignHeadingErrorDeg)).append("\u00B0");
             }
             if (info.length() > 0) {
                 g2.drawString(info.toString(), pad, bottomY);

@@ -28,12 +28,12 @@ public final class ReadyToScoreEvaluator {
             return new ReadyToScoreResult(false, "Target lost");
         }
 
-        if (!Double.isFinite(inputs.yawDeg())) {
-            return new ReadyToScoreResult(false, "Yaw unavailable");
+        if (!Double.isFinite(inputs.headingErrorDeg())) {
+            return new ReadyToScoreResult(false, "Heading unavailable");
         }
 
-        if (Math.abs(inputs.yawDeg()) > inputs.yawToleranceDeg()) {
-            return new ReadyToScoreResult(false, "Yaw not aligned");
+        if (Math.abs(inputs.headingErrorDeg()) > inputs.headingToleranceDeg()) {
+            return new ReadyToScoreResult(false, "Heading not aligned");
         }
 
         if (!inputs.feedGateReady()) {
@@ -55,8 +55,8 @@ public final class ReadyToScoreEvaluator {
             boolean hasTarget,
             boolean geometryFeasible,
             boolean hasShootableTarget,
-            double yawDeg,
-            double yawToleranceDeg,
+            double headingErrorDeg,
+            double headingToleranceDeg,
             boolean feedGateReady) {
     }
 }

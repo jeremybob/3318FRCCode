@@ -44,15 +44,8 @@ public class AlignAndShootCommand extends Command {
             boolean hasShootableTarget,
             double headingErrorDeg,
             double aimErrorDeg,
-            double leadYawDeg,
             double distanceM,
             double targetRps,
-            double radialVelocityMps,
-            double lateralVelocityMps,
-            double commandedXVelocityMps,
-            double commandedYVelocityMps,
-            double activeTranslationCapMps,
-            double timeOfFlightSec,
             boolean feedGateReady,
             String lastAbortReason) {}
 
@@ -62,13 +55,6 @@ public class AlignAndShootCommand extends Command {
             false,
             false,
             false,
-            Double.NaN,
-            Double.NaN,
-            Double.NaN,
-            Double.NaN,
-            Double.NaN,
-            Double.NaN,
-            Double.NaN,
             Double.NaN,
             Double.NaN,
             Double.NaN,
@@ -115,15 +101,8 @@ public class AlignAndShootCommand extends Command {
     private boolean workHasShootableTarget = false;
     private double workHeadingErrorDeg = Double.NaN;
     private double workAimErrorDeg = Double.NaN;
-    private double workLeadYawDeg = Double.NaN;
     private double workDistanceM = Double.NaN;
     private double workTargetRps = Double.NaN;
-    private double workRadialVelocityMps = Double.NaN;
-    private double workLateralVelocityMps = Double.NaN;
-    private double workCommandedXVelocityMps = Double.NaN;
-    private double workCommandedYVelocityMps = Double.NaN;
-    private double workActiveTranslationCapMps = Double.NaN;
-    private double workTimeOfFlightSec = Double.NaN;
     private boolean workFeedGateReady = false;
     private String workLastAbortReason = "";
 
@@ -170,15 +149,8 @@ public class AlignAndShootCommand extends Command {
         workHasShootableTarget = false;
         workHeadingErrorDeg = Double.NaN;
         workAimErrorDeg = Double.NaN;
-        workLeadYawDeg = 0.0;
         workDistanceM = Double.NaN;
         workTargetRps = Constants.Shooter.TARGET_RPS;
-        workRadialVelocityMps = 0.0;
-        workLateralVelocityMps = 0.0;
-        workCommandedXVelocityMps = 0.0;
-        workCommandedYVelocityMps = 0.0;
-        workActiveTranslationCapMps = 0.0;
-        workTimeOfFlightSec = Double.NaN;
         workFeedGateReady = false;
         workLastAbortReason = "";
 
@@ -231,7 +203,6 @@ public class AlignAndShootCommand extends Command {
         workHasShootableTarget = false;
         workFeedGateReady = false;
         workTargetRps = Double.NaN;
-        workTimeOfFlightSec = Double.NaN;
         alignmentLocked = false;
         hadAlignmentLockThisRun = false;
         resetAlignmentLockTimer();
@@ -256,14 +227,7 @@ public class AlignAndShootCommand extends Command {
             workHasShootableTarget = false;
             workHeadingErrorDeg = Double.NaN;
             workAimErrorDeg = Double.NaN;
-            workLeadYawDeg = 0.0;
             workDistanceM = Double.NaN;
-            workRadialVelocityMps = 0.0;
-            workLateralVelocityMps = 0.0;
-            workCommandedXVelocityMps = 0.0;
-            workCommandedYVelocityMps = 0.0;
-            workActiveTranslationCapMps = 0.0;
-            workTimeOfFlightSec = Double.NaN;
             workFeedGateReady = false;
             resetFeedGateTimer();
             filteredHeadingErrorDeg = Double.NaN;
@@ -326,10 +290,6 @@ public class AlignAndShootCommand extends Command {
             workGeometryFeasible = false;
             workHasShootableTarget = false;
             workAimErrorDeg = aimErrorDeg;
-            workLeadYawDeg = 0.0;
-            workRadialVelocityMps = 0.0;
-            workLateralVelocityMps = 0.0;
-            workTimeOfFlightSec = Double.NaN;
             workFeedGateReady = false;
             resetFeedGateTimer();
             updateSearchDirectionFromError(aimErrorDeg);
@@ -558,15 +518,8 @@ public class AlignAndShootCommand extends Command {
         workHasShootableTarget = true;
         workHeadingErrorDeg = tracking.aimErrorDeg();
         workAimErrorDeg = tracking.aimErrorDeg();
-        workLeadYawDeg = 0.0;
         workDistanceM = tracking.distanceM();
-        workRadialVelocityMps = 0.0;
-        workLateralVelocityMps = 0.0;
-        workCommandedXVelocityMps = tracking.translationCmd().vxMetersPerSecond;
-        workCommandedYVelocityMps = tracking.translationCmd().vyMetersPerSecond;
-        workActiveTranslationCapMps = 0.0;
         workFeedGateReady = tracking.feedGateReady();
-        workTimeOfFlightSec = Double.NaN;
         workTargetRps = tracking.targetRps();
         shooter.setShooterVelocity(workTargetRps);
 
@@ -585,9 +538,6 @@ public class AlignAndShootCommand extends Command {
     // =========================================================================
 
     private void driveSearchPattern() {
-        workCommandedXVelocityMps = 0.0;
-        workCommandedYVelocityMps = 0.0;
-        workActiveTranslationCapMps = 0.0;
         swerve.driveRobotRelative(new ChassisSpeeds(
                 0.0,
                 0.0,
@@ -603,9 +553,6 @@ public class AlignAndShootCommand extends Command {
                         -Constants.AlignShoot.MAX_AUTO_AIM_OMEGA_RADPS,
                         Constants.AlignShoot.MAX_AUTO_AIM_OMEGA_RADPS);
 
-        workCommandedXVelocityMps = 0.0;
-        workCommandedYVelocityMps = 0.0;
-        workActiveTranslationCapMps = 0.0;
         swerve.driveRobotRelative(new ChassisSpeeds(0.0, 0.0, rotCmd));
     }
 
@@ -862,26 +809,17 @@ public class AlignAndShootCommand extends Command {
                 workHasShootableTarget,
                 workHeadingErrorDeg,
                 workAimErrorDeg,
-                workLeadYawDeg,
                 workDistanceM,
                 workTargetRps,
-                workRadialVelocityMps,
-                workLateralVelocityMps,
-                workCommandedXVelocityMps,
-                workCommandedYVelocityMps,
-                workActiveTranslationCapMps,
-                workTimeOfFlightSec,
                 workFeedGateReady,
                 workLastAbortReason);
     }
 
     private void publishTelemetry() {
-        SmartDashboard.putNumber("AlignShoot/HeadingError", workHeadingErrorDeg);
+        SmartDashboard.putNumber("AlignShoot/HeadingErrorDeg", workHeadingErrorDeg);
         SmartDashboard.putNumber("AlignShoot/AimErrorDeg", workAimErrorDeg);
         SmartDashboard.putNumber("AlignShoot/DistanceM", workDistanceM);
         SmartDashboard.putNumber("AlignShoot/CalculatedRPS", workTargetRps);
-        SmartDashboard.putNumber("AlignShoot/CommandedXVelocityMps", workCommandedXVelocityMps);
-        SmartDashboard.putNumber("AlignShoot/CommandedYVelocityMps", workCommandedYVelocityMps);
         SmartDashboard.putBoolean("AlignShoot/FeedGateReady", workFeedGateReady);
     }
 
@@ -892,23 +830,10 @@ public class AlignAndShootCommand extends Command {
     public static boolean telemetryHasTarget() { return telemetrySnapshot.hasTarget(); }
     public static boolean telemetryGeometryFeasible() { return telemetrySnapshot.geometryFeasible(); }
     public static boolean telemetryHasShootableTarget() { return telemetrySnapshot.hasShootableTarget(); }
-    public static double getTelemetryYawDeg() { return telemetrySnapshot.headingErrorDeg(); }
+    public static double getTelemetryHeadingErrorDeg() { return telemetrySnapshot.headingErrorDeg(); }
     public static double getTelemetryAimErrorDeg() { return telemetrySnapshot.aimErrorDeg(); }
-    public static double getTelemetryLeadYawDeg() { return telemetrySnapshot.leadYawDeg(); }
-    public static double getTelemetryPitchDeg() { return telemetrySnapshot.distanceM(); }
+    public static double getTelemetryDistanceM() { return telemetrySnapshot.distanceM(); }
     public static double getTelemetryTargetRps() { return telemetrySnapshot.targetRps(); }
-    public static double getTelemetryRadialVelocityMps() { return telemetrySnapshot.radialVelocityMps(); }
-    public static double getTelemetryLateralVelocityMps() { return telemetrySnapshot.lateralVelocityMps(); }
-    public static double getTelemetryCommandedXVelocityMps() {
-        return telemetrySnapshot.commandedXVelocityMps();
-    }
-    public static double getTelemetryCommandedYVelocityMps() {
-        return telemetrySnapshot.commandedYVelocityMps();
-    }
-    public static double getTelemetryActiveTranslationCapMps() {
-        return telemetrySnapshot.activeTranslationCapMps();
-    }
-    public static double getTelemetryTimeOfFlightSec() { return telemetrySnapshot.timeOfFlightSec(); }
     public static boolean telemetryFeedGateReady() { return telemetrySnapshot.feedGateReady(); }
     public static String getTelemetryLastAbortReason() { return telemetrySnapshot.lastAbortReason(); }
 
