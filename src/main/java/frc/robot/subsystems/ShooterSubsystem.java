@@ -1,14 +1,18 @@
 // ============================================================================
 // FILE: src/main/java/frc/robot/subsystems/ShooterSubsystem.java
 //
-// PURPOSE: Controls the two shooter wheels that launch game pieces.
-//   Hardware: Two Kraken X60 (TalonFX), 4-inch wheels, 1:1 gearing
+// PURPOSE: Controls the two shooter motors that launch game pieces.
+//   Hardware: Two Kraken X60 (TalonFX) on a single shared shaft, 4-inch
+//   wheels, 1:1 gearing. Motors are mounted facing opposite directions.
 //
 // HOW IT WORKS:
-//   - Left and right wheels spin at the same target speed (right is inverted).
-//   - We use velocity closed-loop control so the wheels reach and hold a
-//     precise RPS even as the battery voltage drops during a match.
-//   - isAtSpeed() checks whether the wheels are within tolerance before feeding.
+//   - Left motor is the LEADER running velocity closed-loop control.
+//   - Right motor is a FOLLOWER that mirrors the leader's output with
+//     opposite direction (since the motors face each other on the shaft).
+//   - A single PID loop controls both motors, eliminating the dual-loop
+//     fighting problem that occurs when two independent controllers drive
+//     the same mechanism.
+//   - isAtSpeed() checks the leader's velocity before feeding.
 // ============================================================================
 package frc.robot.subsystems;
 
@@ -16,6 +20,7 @@ import com.ctre.phoenix6.CANBus;
 import com.ctre.phoenix6.StatusCode;
 import com.ctre.phoenix6.StatusSignal;
 import com.ctre.phoenix6.configs.TalonFXConfiguration;
+import com.ctre.phoenix6.controls.Follower;
 import com.ctre.phoenix6.controls.VelocityVoltage;
 import com.ctre.phoenix6.hardware.TalonFX;
 import com.ctre.phoenix6.signals.NeutralModeValue;
@@ -62,42 +67,58 @@ public class ShooterSubsystem extends SubsystemBase {
     private double currentTargetRPS = Constants.Shooter.TARGET_RPS;
 
     // --------------------------------------------------------------------------
-    // Constructor: configure both shooter motors identically
+    // Constructor: configure leader + follower shooter motors
     // --------------------------------------------------------------------------
     public ShooterSubsystem() {
-        TalonFXConfiguration cfg = new TalonFXConfiguration();
+        // ---- Leader (left) configuration ----
+        TalonFXConfiguration leaderCfg = new TalonFXConfiguration();
 
-        // Coast mode: wheels can keep spinning freely when we stop commanding them.
-        // This is intentional — we don't want the shooter to brake and slow down
-        // mid-shot.
-        cfg.MotorOutput.NeutralMode = NeutralModeValue.Coast;
+        // Coast mode: shaft keeps spinning freely when we stop commanding.
+        // Intentional — we don't want to brake and slow down mid-shot.
+        leaderCfg.MotorOutput.NeutralMode = NeutralModeValue.Coast;
 
         // Current limiting protects the motors from stall damage
-        cfg.CurrentLimits.StatorCurrentLimit       = Constants.Shooter.STATOR_CURRENT_LIMIT_A;
-        cfg.CurrentLimits.StatorCurrentLimitEnable = true;
-        cfg.CurrentLimits.SupplyCurrentLimit       = Constants.Shooter.SUPPLY_CURRENT_LIMIT_A;
-        cfg.CurrentLimits.SupplyCurrentLimitEnable = true;
+        leaderCfg.CurrentLimits.StatorCurrentLimit       = Constants.Shooter.STATOR_CURRENT_LIMIT_A;
+        leaderCfg.CurrentLimits.StatorCurrentLimitEnable = true;
+        leaderCfg.CurrentLimits.SupplyCurrentLimit       = Constants.Shooter.SUPPLY_CURRENT_LIMIT_A;
+        leaderCfg.CurrentLimits.SupplyCurrentLimitEnable = true;
 
-        // Velocity PID (Slot 0)
-        // kS: static friction offset — minimum voltage to get the wheel moving
+        // Velocity PID (Slot 0) — only runs on the leader
+        // kS: static friction offset — minimum voltage to get the shaft moving
         // kV: feedforward gain — 12V ÷ free-speed-RPS = 12 ÷ 100 = 0.12
-        //     This is the main driver of the wheel speed. Get this right first.
+        //     This is the main driver of the shaft speed. Get this right first.
         // kP: small correction term — adds voltage when actual speed ≠ target
         //     Start low; too high causes oscillation / speed hunting.
-        cfg.Slot0.kS = Constants.Shooter.SHOOTER_kS;   // TUNE ME
-        cfg.Slot0.kV = Constants.Shooter.SHOOTER_kV;   // 0.12 for Kraken at 12V
-        cfg.Slot0.kP = Constants.Shooter.SHOOTER_kP;   // TUNE ME
+        leaderCfg.Slot0.kS = Constants.Shooter.SHOOTER_kS;   // TUNE ME
+        leaderCfg.Slot0.kV = Constants.Shooter.SHOOTER_kV;   // 0.12 for Kraken at 12V
+        leaderCfg.Slot0.kP = Constants.Shooter.SHOOTER_kP;   // TUNE ME
 
-        applyWithRetry(() -> leftShooter.getConfigurator().apply(cfg), "Left shooter config");
-        applyWithRetry(() -> rightShooter.getConfigurator().apply(cfg), "Right shooter config");
+        applyWithRetry(() -> leftShooter.getConfigurator().apply(leaderCfg), "Left shooter (leader) config");
+
+        // ---- Follower (right) configuration ----
+        // The follower only needs current limits and neutral mode — PID gains are
+        // irrelevant since it mirrors the leader's output directly.
+        TalonFXConfiguration followerCfg = new TalonFXConfiguration();
+        followerCfg.MotorOutput.NeutralMode = NeutralModeValue.Coast;
+        followerCfg.CurrentLimits.StatorCurrentLimit       = Constants.Shooter.STATOR_CURRENT_LIMIT_A;
+        followerCfg.CurrentLimits.StatorCurrentLimitEnable = true;
+        followerCfg.CurrentLimits.SupplyCurrentLimit       = Constants.Shooter.SUPPLY_CURRENT_LIMIT_A;
+        followerCfg.CurrentLimits.SupplyCurrentLimitEnable = true;
+
+        applyWithRetry(() -> rightShooter.getConfigurator().apply(followerCfg), "Right shooter (follower) config");
+
+        // Set right motor as follower with opposed direction.
+        // Motors face opposite directions on the shared shaft, so opposing the
+        // master makes them apply torque in the same physical direction.
+        rightShooter.setControl(new Follower(Constants.CAN.SHOOTER_LEFT, true));
 
         // Reduce CAN status frame rates without starving the ready-to-shoot gate.
-        // Velocity needs low enough latency that isAtSpeed() can react promptly.
-        // Position and temperature at 4 Hz — we rarely read these.
+        // Only the leader needs high-rate velocity for isAtSpeed() checks.
+        // The follower's velocity is monitored at a lower rate for diagnostics only.
         leftVelocitySignal.setUpdateFrequency(Constants.Shooter.VELOCITY_SIGNAL_HZ);
         leftShooter.getPosition().setUpdateFrequency(4);
         leftTempSignal.setUpdateFrequency(1);
-        rightVelocitySignal.setUpdateFrequency(Constants.Shooter.VELOCITY_SIGNAL_HZ);
+        rightVelocitySignal.setUpdateFrequency(4);
         rightShooter.getPosition().setUpdateFrequency(4);
         rightTempSignal.setUpdateFrequency(1);
         applyWithRetry(
@@ -138,8 +159,8 @@ public class ShooterSubsystem extends SubsystemBase {
     // --------------------------------------------------------------------------
     public void setShooterVelocity(double targetRPS) {
         currentTargetRPS = targetRPS;
+        // Only command the leader — the follower mirrors it automatically.
         leftShooter.setControl(velocityRequest.withVelocity(targetRPS));
-        rightShooter.setControl(velocityRequest.withVelocity(-targetRPS));
     }
 
     public static double manualStickToTargetRps(double rawStickInput) {
@@ -152,14 +173,12 @@ public class ShooterSubsystem extends SubsystemBase {
     // --------------------------------------------------------------------------
     // isAtSpeed()
     //
-    // Returns true when BOTH wheels are within tolerance of the target RPS.
-    // Used by shoot routines to wait until wheels are ready before feeding.
+    // Returns true when the leader wheel is within tolerance of the target RPS.
+    // The follower is mechanically locked to the same shaft, so checking one
+    // motor is sufficient. Used by shoot routines to gate feeding.
     // --------------------------------------------------------------------------
     public boolean isAtSpeed(double targetRPS) {
-        double leftRPS  = Math.abs(getLeftRPS());
-        double rightRPS = Math.abs(getRightRPS());
-        return Math.abs(leftRPS  - targetRPS) <= Constants.Shooter.TOLERANCE_RPS
-            && Math.abs(rightRPS - targetRPS) <= Constants.Shooter.TOLERANCE_RPS;
+        return Math.abs(Math.abs(getLeftRPS()) - targetRPS) <= Constants.Shooter.TOLERANCE_RPS;
     }
 
     public double getLeftRPS() {
@@ -249,7 +268,10 @@ public class ShooterSubsystem extends SubsystemBase {
     public void stop() {
         currentTargetRPS = 0.0;
         leftShooter.stopMotor();
-        rightShooter.stopMotor();
+        // stopMotor() sends a NeutralOut control request which overrides the
+        // Follower state. Re-establish follower so the right motor resumes
+        // mirroring the leader on the next setShooterVelocity() call.
+        rightShooter.setControl(new Follower(Constants.CAN.SHOOTER_LEFT, true));
     }
 
     // --------------------------------------------------------------------------
