@@ -70,8 +70,9 @@ public final class Constants {
         public static final int SHOOTER_RIGHT = 17;
 
         // ---- Intake ----
-        public static final int INTAKE_TILT_NEO = 14;  // REV SparkMax
-        public static final int INTAKE_ROLLER   = 15;  // TalonFX (Kraken)
+        public static final int INTAKE_SLIDE_NEO = 14;  // REV SparkMax (linear slide)
+        public static final int INTAKE_ROLLER_LEADER   = 15;  // TalonFX (Kraken)
+        public static final int INTAKE_ROLLER_FOLLOWER = 22;  // TalonFX (Kraken, opposite direction)
 
         // ---- Hopper & Feeder (REV SparkMax) ----
         public static final int HOPPER_FLOOR_NEO = 19;
@@ -99,8 +100,9 @@ public final class Constants {
             registerCanId(used, BACK_RIGHT_CANCODER, "BACK_RIGHT_CANCODER");
             registerCanId(used, SHOOTER_LEFT, "SHOOTER_LEFT");
             registerCanId(used, SHOOTER_RIGHT, "SHOOTER_RIGHT");
-            registerCanId(used, INTAKE_TILT_NEO, "INTAKE_TILT_NEO");
-            registerCanId(used, INTAKE_ROLLER, "INTAKE_ROLLER");
+            registerCanId(used, INTAKE_SLIDE_NEO, "INTAKE_SLIDE_NEO");
+            registerCanId(used, INTAKE_ROLLER_LEADER, "INTAKE_ROLLER_LEADER");
+            registerCanId(used, INTAKE_ROLLER_FOLLOWER, "INTAKE_ROLLER_FOLLOWER");
             registerCanId(used, HOPPER_FLOOR_NEO, "HOPPER_FLOOR_NEO");
             registerCanId(used, FEEDER_NEO, "FEEDER_NEO");
             // --- CLIMBER DISABLED ---
@@ -413,60 +415,62 @@ public final class Constants {
     // INTAKE CONSTANTS
     // =========================================================================
     public static final class Intake {
-        // How many degrees the encoder reports per motor revolution.
-        // With a 96:1 reduction, each motor rev = 360/96 = 3.75 degrees.
-        public static final double TILT_POS_CONV_DEG = 360.0 / 96.0;
+        // ---- Linear slide (rack and pinion) ----
+        // NEO motor → 2:1 gear reduction → 16-tooth pinion gear (2.5" diameter).
+        // Pinion circumference = π × 2.5 ≈ 7.854 inches per pinion revolution.
+        // With 2:1 reduction: 1 motor revolution = 0.5 pinion revolutions
+        //   = 0.5 × π × 2.5 ≈ 3.927 inches of linear travel.
+        public static final double SLIDE_GEAR_RATIO = 2.0;
+        public static final double SLIDE_PINION_DIAMETER_IN = 2.5;  // TUNE ME if gear changes
+        public static final double SLIDE_POS_CONV_IN =
+                (Math.PI * SLIDE_PINION_DIAMETER_IN) / SLIDE_GEAR_RATIO;
 
-        // Tilt position PID (SparkMax built-in, units are power-per-degree)
-        // 96:1 reduction uses MAXMotion profiling + modest PD gains.
-        public static final double TILT_kP = 0.08;  // TUNE ME on robot
-        public static final double TILT_kD = 0.004; // TUNE ME on robot
-        // Closed-loop output caps for position mode (Y-toggle/autonomous setpoints).
-        // Positive = tilt up/toward home, negative = tilt down/away from home.
-        public static final double TILT_PID_MAX_OUTPUT_UP = 0.30;
-        public static final double TILT_PID_MAX_OUTPUT_DOWN = 0.10;
-        // Extra-soft profile to slow B-button deploy and reduce arm slam.
-        public static final double TILT_MAX_MOTION_CRUISE_VEL_DEG_PER_SEC = 50.0;
-        public static final double TILT_MAX_MOTION_ACCEL_DEG_PER_SEC2 = 100.0;
-        public static final double TILT_MAX_MOTION_ALLOWED_ERROR_DEG = 1.5;
+        // Slide position PID (SparkMax built-in, units are power-per-inch)
+        public static final double SLIDE_kP = 0.15;  // TUNE ME on robot
+        public static final double SLIDE_kD = 0.005; // TUNE ME on robot
+        // Closed-loop output caps for position mode.
+        // Positive = retract toward home, negative = extend away from home.
+        public static final double SLIDE_PID_MAX_OUTPUT_RETRACT = 0.30;
+        public static final double SLIDE_PID_MAX_OUTPUT_EXTEND = 0.15;
+        // MAXMotion profile for smooth slide motion.
+        public static final double SLIDE_MAX_MOTION_CRUISE_VEL_IN_PER_SEC = 20.0;  // TUNE ME
+        public static final double SLIDE_MAX_MOTION_ACCEL_IN_PER_SEC2 = 40.0;      // TUNE ME
+        public static final double SLIDE_MAX_MOTION_ALLOWED_ERROR_IN = 0.25;
 
         // Sign convention for this robot:
-        //   stow/home is near 0 deg, deployed intake is negative degrees.
-        // Therefore positive power moves toward home (limit switch).
-        public static final double HOME_POWER       = 0.20;
+        //   home (retracted) is 0 inches, extended is positive inches.
+        // Negative power moves toward home (Hall effect sensor).
+        public static final double HOME_POWER       = -0.20;
         public static final double HOME_TIMEOUT_SEC =  3.0;
         public static final double HOME_SWITCH_DEBOUNCE_SEC = 0.04;
 
-        // Target angle for the intake to be "down" and collecting game pieces
-        public static final double INTAKE_DOWN_DEG = -76.0;  // TUNE ME
+        // Target position for the slide to be fully extended (intake deployed)
+        public static final double SLIDE_EXTEND_IN = 10.0;  // TUNE ME (max 12 inches)
 
-        // Target angle for the intake to be stowed (up / home position)
-        public static final double INTAKE_STOW_DEG = 0.0;
+        // Target position for the slide to be retracted (stowed / home)
+        public static final double SLIDE_RETRACT_IN = 0.0;
 
-        // Software limits for the tilt arm (in degrees from the homed position).
-        // Prevents commanding the arm into the chassis or past its mechanical travel.
-        // TUNE ME: Set these to the actual min/max safe travel of YOUR intake arm.
-        public static final double TILT_MIN_DEG = -90.0;  // fully deployed
-        public static final double TILT_MAX_DEG = 5.0;    // small margin past home
-        public static final double TILT_SOFT_LIMIT_HYSTERESIS_DEG = 1.0;
+        // Software limits for the linear slide (inches from home).
+        // TUNE ME: Set these to the actual min/max safe travel of YOUR slide.
+        public static final double SLIDE_MIN_IN = -0.25;  // small margin past home
+        public static final double SLIDE_MAX_IN = 12.0;   // max physical travel
+        public static final double SLIDE_SOFT_LIMIT_HYSTERESIS_IN = 0.25;
 
-        // Manual right-stick deadband hysteresis for intake tilt.
-        // Enter movement above ENGAGE; return to idle below RELEASE.
-        public static final double MANUAL_TILT_ENGAGE_DEADBAND = 0.12;
-        public static final double MANUAL_TILT_RELEASE_DEADBAND = 0.08;
-        // Override threshold for canceling auto tilt toggles (higher than manual
-        // engage deadband to reject small stick drift).
-        public static final double MANUAL_TILT_TOGGLE_CANCEL_DEADBAND = 0.25;
-        // Y-toggle completion criteria.
-        public static final double TILT_TOGGLE_AT_TARGET_TOLERANCE_DEG = 2.0;
-        public static final double TILT_TOGGLE_SAFETY_TIMEOUT_SEC = 5.0;
-        // Manual tilt output caps (as motor percent output).
-        // Positive = tilt up/toward home, negative = tilt down/away from home.
-        public static final double MANUAL_TILT_MAX_POWER_UP = 0.45;
-        public static final double MANUAL_TILT_MAX_POWER_DOWN = 0.25;
+        // Manual right-stick deadband hysteresis for slide control.
+        public static final double MANUAL_SLIDE_ENGAGE_DEADBAND = 0.12;
+        public static final double MANUAL_SLIDE_RELEASE_DEADBAND = 0.08;
+        // Override threshold for canceling auto slide moves.
+        public static final double MANUAL_SLIDE_TOGGLE_CANCEL_DEADBAND = 0.25;
+        // Toggle completion criteria.
+        public static final double SLIDE_TOGGLE_AT_TARGET_TOLERANCE_IN = 0.5;
+        public static final double SLIDE_TOGGLE_SAFETY_TIMEOUT_SEC = 5.0;
+        // Manual slide output caps (as motor percent output).
+        // Positive = extend, negative = retract toward home.
+        public static final double MANUAL_SLIDE_MAX_POWER_EXTEND = 0.25;
+        public static final double MANUAL_SLIDE_MAX_POWER_RETRACT = 0.45;
 
         // Current limit to protect the NEO and gearbox during homing stalls
-        public static final int TILT_CURRENT_LIMIT_A = 40;
+        public static final int SLIDE_CURRENT_LIMIT_A = 40;
 
         // Roller current limit (TalonFX / Kraken)
         public static final int ROLLER_STATOR_LIMIT_A = 60;  // prevents jam burnout

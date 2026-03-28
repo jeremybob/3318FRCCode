@@ -679,15 +679,15 @@ public class RobotContainer implements RobotRuntimeContainer {
                 Commands.run(() -> hood.setDefault(), hood)
                         .withName("HoodDefaultPosition"));
 
-        // Right stick Y: Manual intake tilt control with deadband to prevent jitter.
+        // Right stick Y: Manual intake slide control with deadband to prevent jitter.
         intake.setDefaultCommand(
                 Commands.run(() -> {
-                    double tiltPower = getOperatorIntakeTiltManualPower();
-                    intake.setTiltPowerManual(tiltPower);
+                    double slidePower = getOperatorIntakeSlideManualPower();
+                    intake.setSlidePowerManual(slidePower);
 
-                    lastIntakeTiltPower = tiltPower;
+                    lastIntakeTiltPower = slidePower;
                     refreshOperatorCommandSummary();
-                }, intake).withName("OperatorIntakeTiltManualDefault"));
+                }, intake).withName("OperatorIntakeSlideManualDefault"));
 
         // --- CLIMBER DISABLED: old climb bindings removed ---
         // A button: Align-only test (no shooter/feed motors).
@@ -751,21 +751,21 @@ public class RobotContainer implements RobotRuntimeContainer {
                         Commands.runOnce(() -> logControlEvent("Operator:X", "IntakeHome requested")),
                         buildIntakeHomeCommand()));
 
-        // D-pad Up: Intake tilt up/stow (home angle)
+        // D-pad Up: Intake slide retract/stow (home position)
         operatorController.povUp().onTrue(
                 Commands.sequence(
-                        Commands.runOnce(() -> logControlEvent("Operator:POV_UP", "Intake tilt stow requested")),
-                        buildIntakeTiltMoveCommand(
-                                Constants.Intake.INTAKE_STOW_DEG,
-                                "IntakeTiltStow")));
+                        Commands.runOnce(() -> logControlEvent("Operator:POV_UP", "Intake slide retract requested")),
+                        buildIntakeSlideMoveCommand(
+                                Constants.Intake.SLIDE_RETRACT_IN,
+                                "IntakeSlideRetract")));
 
-        // B button: Intake tilt down/deploy (pickup angle)
+        // B button: Intake slide extend/deploy (pickup position)
         operatorController.b().onTrue(
                 Commands.sequence(
-                        Commands.runOnce(() -> logControlEvent("Operator:B", "Intake tilt deploy requested")),
-                        buildIntakeTiltMoveCommand(
-                                Constants.Intake.INTAKE_DOWN_DEG,
-                                "IntakeTiltDeploy")));
+                        Commands.runOnce(() -> logControlEvent("Operator:B", "Intake slide extend requested")),
+                        buildIntakeSlideMoveCommand(
+                                Constants.Intake.SLIDE_EXTEND_IN,
+                                "IntakeSlideExtend")));
     }
 
     // =========================================================================
@@ -1079,28 +1079,28 @@ public class RobotContainer implements RobotRuntimeContainer {
         return !driverController.leftBumper().getAsBoolean();
     }
 
-    private double getOperatorIntakeTiltManualPower() {
-        double rawTiltInput = -operatorController.getRightY();
-        double absTiltInput = Math.abs(rawTiltInput);
+    private double getOperatorIntakeSlideManualPower() {
+        double rawSlideInput = -operatorController.getRightY();
+        double absSlideInput = Math.abs(rawSlideInput);
 
         // Hysteresis avoids run/stop chatter when the stick hovers near deadband.
         if (intakeTiltManualAxisActive) {
-            if (absTiltInput < Constants.Intake.MANUAL_TILT_RELEASE_DEADBAND) {
+            if (absSlideInput < Constants.Intake.MANUAL_SLIDE_RELEASE_DEADBAND) {
                 intakeTiltManualAxisActive = false;
             }
-        } else if (absTiltInput > Constants.Intake.MANUAL_TILT_ENGAGE_DEADBAND) {
+        } else if (absSlideInput > Constants.Intake.MANUAL_SLIDE_ENGAGE_DEADBAND) {
             intakeTiltManualAxisActive = true;
         }
 
         if (!intakeTiltManualAxisActive) {
             return 0.0;
         }
-        double manualPower = MathUtil.applyDeadband(rawTiltInput, Constants.Intake.MANUAL_TILT_RELEASE_DEADBAND);
+        double manualPower = MathUtil.applyDeadband(rawSlideInput, Constants.Intake.MANUAL_SLIDE_RELEASE_DEADBAND);
         if (manualPower > 0.0) {
-            return Math.min(manualPower, Constants.Intake.MANUAL_TILT_MAX_POWER_UP);
+            return Math.min(manualPower, Constants.Intake.MANUAL_SLIDE_MAX_POWER_EXTEND);
         }
         if (manualPower < 0.0) {
-            return Math.max(manualPower, -Constants.Intake.MANUAL_TILT_MAX_POWER_DOWN);
+            return Math.max(manualPower, -Constants.Intake.MANUAL_SLIDE_MAX_POWER_RETRACT);
         }
         return 0.0;
     }
@@ -1155,25 +1155,25 @@ public class RobotContainer implements RobotRuntimeContainer {
         return solution.angleDeg();
     }
 
-    private Command buildIntakeTiltMoveCommand(double targetDegrees, String commandName) {
-        final double clampedTargetDeg = Math.max(
-                Constants.Intake.TILT_MIN_DEG,
-                Math.min(Constants.Intake.TILT_MAX_DEG, targetDegrees));
+    private Command buildIntakeSlideMoveCommand(double targetInches, String commandName) {
+        final double clampedTargetIn = Math.max(
+                Constants.Intake.SLIDE_MIN_IN,
+                Math.min(Constants.Intake.SLIDE_MAX_IN, targetInches));
         Command moveWhenHomed = Commands.sequence(
-                Commands.runOnce(() -> intake.setTiltPosition(clampedTargetDeg), intake),
+                Commands.runOnce(() -> intake.setSlidePosition(clampedTargetIn), intake),
                 // Hold subsystem ownership so manual default command cannot
                 // override position control until complete/override/timeout.
                 Commands.run(() -> { }, intake)
                         .until(() -> {
                             boolean manualOverride =
                                     Math.abs(operatorController.getRightY())
-                                            > Constants.Intake.MANUAL_TILT_TOGGLE_CANCEL_DEADBAND;
+                                            > Constants.Intake.MANUAL_SLIDE_TOGGLE_CANCEL_DEADBAND;
                             boolean atTarget =
-                                    Math.abs(intake.getTiltPositionDeg() - clampedTargetDeg)
-                                            <= Constants.Intake.TILT_TOGGLE_AT_TARGET_TOLERANCE_DEG;
+                                    Math.abs(intake.getSlidePositionIn() - clampedTargetIn)
+                                            <= Constants.Intake.SLIDE_TOGGLE_AT_TARGET_TOLERANCE_IN;
                             return manualOverride || atTarget;
                         })
-                        .withTimeout(Constants.Intake.TILT_TOGGLE_SAFETY_TIMEOUT_SEC)
+                        .withTimeout(Constants.Intake.SLIDE_TOGGLE_SAFETY_TIMEOUT_SEC)
         ).withName(commandName + "Active");
 
         Command notHomed = Commands.runOnce(
@@ -1204,7 +1204,7 @@ public class RobotContainer implements RobotRuntimeContainer {
                         () -> !intake.isHomed()),
                 // Deploy only if homing succeeded; otherwise report and skip.
                 Commands.either(
-                        Commands.runOnce(() -> intake.setTiltPosition(Constants.Intake.INTAKE_DOWN_DEG), intake),
+                        Commands.runOnce(() -> intake.setSlidePosition(Constants.Intake.SLIDE_EXTEND_IN), intake),
                         Commands.runOnce(
                                 () -> System.out.println(
                                         "[RobotContainer] AutoIntakeDeployOnly aborted: intake not homed after homing attempt."),
@@ -1230,8 +1230,8 @@ public class RobotContainer implements RobotRuntimeContainer {
                 // Continue only if homing succeeded; otherwise abort loudly.
                 Commands.either(
                         Commands.sequence(
-                                // Deploy arm to pickup position
-                                Commands.runOnce(() -> intake.setTiltPosition(Constants.Intake.INTAKE_DOWN_DEG), intake),
+                                // Extend slide to pickup position
+                                Commands.runOnce(() -> intake.setSlidePosition(Constants.Intake.SLIDE_EXTEND_IN), intake),
                                 // Spin rollers with stall detection — auto-reverses if jammed.
                                 // 4-second timeout allows time to drive over fuel and intake it.
                                 new IntakeRollerCommand(intake, this::getSpeedMatchedIntakeRollerForwardPower)
