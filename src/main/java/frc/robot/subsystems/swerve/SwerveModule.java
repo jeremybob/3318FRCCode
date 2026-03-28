@@ -46,8 +46,12 @@ import frc.robot.Constants;
 public class SwerveModule {
     // Max retries when applying device configuration over CAN
     private static final int CONFIG_APPLY_RETRIES = 5;
-    private static final int CONTROL_SIGNAL_HZ = 50;
-    private static final int CANCODER_TELEMETRY_HZ = 2;
+    // CANivore's dedicated 1 Mbps bus can sustain higher rates than the shared
+    // roboRIO CAN bus. 100 Hz gives tighter odometry and faster PID response.
+    private static final int CONTROL_SIGNAL_HZ = 100;
+    // CANcoder telemetry at 10 Hz (up from 2 Hz on rio) enables faster belt-skip
+    // detection during the periodic re-sync check.
+    private static final int CANCODER_TELEMETRY_HZ = 10;
 
     // Re-sync threshold: if internal encoder and CANcoder diverge by more than
     // this many rotations (~5.4°), re-seed the internal encoder.
@@ -137,10 +141,10 @@ public class SwerveModule {
         this.name = moduleName;
         this.cancoderOffsetRot = cancoderOffsetRot;
 
-        // Create the hardware objects
-        driveMotor = new TalonFX(driveId, new CANBus(Constants.CAN.CTRE_CAN_BUS));
-        steerMotor = new TalonFX(steerId, new CANBus(Constants.CAN.CTRE_CAN_BUS));
-        cancoder   = new CANcoder(cancoderId, new CANBus(Constants.CAN.CTRE_CAN_BUS));
+        // Create the hardware objects — swerve devices live on the CANivore bus
+        driveMotor = new TalonFX(driveId, new CANBus(Constants.CAN.CANIVORE_BUS));
+        steerMotor = new TalonFX(steerId, new CANBus(Constants.CAN.CANIVORE_BUS));
+        cancoder   = new CANcoder(cancoderId, new CANBus(Constants.CAN.CANIVORE_BUS));
 
         // ---- Configure the CANcoder ----------------------------------------
         CANcoderConfiguration ccfg = new CANcoderConfiguration();
