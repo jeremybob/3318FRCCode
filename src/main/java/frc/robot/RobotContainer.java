@@ -1013,8 +1013,7 @@ public class RobotContainer implements RobotRuntimeContainer {
 
     private Command buildAutoManualDistanceShootCommand() {
         return Commands.defer(() -> {
-            double targetRps = 52.0;
-            //double targetRps = getManualDistanceShotTargetRps();
+            double targetRps = getManualDistanceShotTargetRps();
             System.out.println("[AutoManualDistanceShoot] targetRps=" + formatSigned(targetRps));
             return shooter.buildContinuousShootRoutine(feeder, hopper, intake, hood,
                             targetRps, Constants.Hood.DEFAULT_ANGLE_DEG)
@@ -1026,13 +1025,6 @@ public class RobotContainer implements RobotRuntimeContainer {
 
     private Command withTeleopShotPriority(Command command) {
         return command.withInterruptBehavior(Command.InterruptionBehavior.kCancelIncoming);
-    }
-
-    private DriverDriveUtil.DriveRequest getDriverDriveRequest() {
-        return getDriverDriveRequest(
-                getDriverForwardInput(),
-                getDriverLeftInput(),
-                getDriverTurnInput());
     }
 
     private DriverDriveUtil.DriveRequest getDriverDriveRequest(

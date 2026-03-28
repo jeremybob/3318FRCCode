@@ -129,8 +129,9 @@ public class AlignOnlyCommand extends Command {
 
         alignedHoldTimer.stop();
         alignedHoldTimer.reset();
+        // Negate: positive heading error → positive omega (CCW toward target).
         double rotCmd = MathUtil.clamp(
-                turnPID.calculate(filteredError, 0.0),
+                -turnPID.calculate(filteredError, 0.0),
                 -Constants.AlignShoot.MAX_AUTO_AIM_OMEGA_RADPS,
                 Constants.AlignShoot.MAX_AUTO_AIM_OMEGA_RADPS);
         swerve.drive(0, 0, rotCmd, false);
