@@ -23,6 +23,7 @@ import com.ctre.phoenix6.hardware.Pigeon2;
 import edu.wpi.first.math.estimator.SwerveDrivePoseEstimator;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Rotation2d;
+import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
 import edu.wpi.first.math.kinematics.SwerveDriveKinematics;
 import edu.wpi.first.math.kinematics.SwerveModulePosition;
@@ -107,7 +108,8 @@ public class SwerveSubsystem extends SubsystemBase {
     // No vision pose correction in USB camera fallback mode.
     private final SwerveDrivePoseEstimator poseEstimator;
 
-    // (Vision connectivity now checked via PhotonCamera.isConnected() in RobotContainer)
+    // ---- Vision pose tracking ----
+    private double lastVisionUpdateSec = Double.NaN;
 
     // ---- Field visualization (appears in Shuffleboard / SmartDashboard) ----
     private final Field2d field = new Field2d();
@@ -459,11 +461,44 @@ public class SwerveSubsystem extends SubsystemBase {
     }
 
     /**
-     * Camera connectivity is now checked via PhotonCamera.isConnected() in
-     * RobotContainer. This method is kept for dashboard compatibility.
+     * Adds a vision-derived pose measurement to the pose estimator.
+     * Called by RobotContainer when PhotonPoseEstimator produces a result.
      */
+    public void addVisionMeasurement(Pose2d visionPose, double timestampSec) {
+        poseEstimator.addVisionMeasurement(visionPose, timestampSec);
+        lastVisionUpdateSec = Timer.getFPGATimestamp();
+    }
+
+    /** Returns true if we've had a vision pose update recently. */
+    public boolean isVisionActive() {
+        if (!Double.isFinite(lastVisionUpdateSec)) return false;
+        return (Timer.getFPGATimestamp() - lastVisionUpdateSec) < Constants.Vision.VISION_STALE_SEC;
+    }
+
+    /** Returns the horizontal distance from the robot to a field point. */
+    public double getDistanceTo(Translation2d fieldPoint) {
+        return getPose().getTranslation().getDistance(fieldPoint);
+    }
+
+    /**
+     * Returns the heading error in degrees to face a field point.
+     * Positive = need to turn CCW (left). Normalized to [-180, 180].
+     */
+    public double getHeadingErrorDegTo(Translation2d fieldPoint) {
+        Pose2d pose = getPose();
+        double dx = fieldPoint.getX() - pose.getX();
+        double dy = fieldPoint.getY() - pose.getY();
+        double desiredRad = Math.atan2(dy, dx);
+        double currentRad = pose.getRotation().getRadians();
+        double errorRad = desiredRad - currentRad;
+        // Normalize to [-pi, pi]
+        errorRad = Math.atan2(Math.sin(errorRad), Math.cos(errorRad));
+        return Math.toDegrees(errorRad);
+    }
+
+    /** Dashboard compatibility — returns true if vision pose is recent. */
     public boolean isCameraConnected() {
-        return false; // Caller should use photonCamera.isConnected() instead
+        return isVisionActive();
     }
 
     private SwerveModulePosition[] getModulePositions() {

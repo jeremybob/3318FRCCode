@@ -1,23 +1,21 @@
 package frc.robot.commands;
 
-import java.util.concurrent.atomic.AtomicReference;
-
 import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.controller.PIDController;
+import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;
 
 import frc.robot.Constants;
+import frc.robot.RobotContainer;
 import frc.robot.subsystems.SwerveSubsystem;
 import frc.robot.util.AlignmentCaptureUtil;
-import frc.robot.vision.VisionResult;
-import frc.robot.vision.VisionSupport;
 
 
 /**
- * Rotates the robot to center the active vision target yaw without running any
- * shooter/feed/intake motors. Intended for alignment-direction bring-up.
+ * Rotates the robot to face the alliance HUB using pose-based heading without
+ * running any shooter/feed/intake motors. Intended for alignment bring-up.
  */
 public class AlignOnlyCommand extends Command {
     private static final double NO_TARGET_TIMEOUT_SEC = 3.0;
@@ -25,7 +23,6 @@ public class AlignOnlyCommand extends Command {
     private static final double STABLE_ALIGNMENT_TIME_SEC = Constants.AlignShoot.SETTLE_TIME_SEC;
 
     private final SwerveSubsystem swerve;
-    private final AtomicReference<VisionResult> visionRef;
     private final PIDController turnPID = new PIDController(
             Constants.AlignShoot.TURN_kP,
             0.0,
@@ -34,15 +31,14 @@ public class AlignOnlyCommand extends Command {
     private final Timer noTargetTimer = new Timer();
     private final Timer alignTimer = new Timer();
     private final Timer alignedHoldTimer = new Timer();
-    private double filteredYawDeg = Double.NaN;
+    private double filteredHeadingErrorDeg = Double.NaN;
     private double previousAimErrorDeg = Double.NaN;
 
     private boolean finished;
     private String finishReason = "";
 
-    public AlignOnlyCommand(SwerveSubsystem swerve, AtomicReference<VisionResult> visionRef) {
+    public AlignOnlyCommand(SwerveSubsystem swerve) {
         this.swerve = swerve;
-        this.visionRef = visionRef;
 
         addRequirements(swerve);
         turnPID.setTolerance(Constants.AlignShoot.YAW_TOLERANCE_DEG);
@@ -57,35 +53,35 @@ public class AlignOnlyCommand extends Command {
         alignTimer.restart();
         alignedHoldTimer.stop();
         alignedHoldTimer.reset();
-        filteredYawDeg = Double.NaN;
+        filteredHeadingErrorDeg = Double.NaN;
         previousAimErrorDeg = Double.NaN;
 
         SmartDashboard.putString("AlignOnly/State", "ALIGN");
         SmartDashboard.putString("AlignOnly/FinishReason", "");
-        SmartDashboard.putNumber("AlignOnly/YawError", Double.NaN);
-        SmartDashboard.putNumber("AlignOnly/FilteredYawError", Double.NaN);
-        SmartDashboard.putNumber("AlignOnly/YawSetpointDeg", Double.NaN);
+        SmartDashboard.putNumber("AlignOnly/HeadingError", Double.NaN);
+        SmartDashboard.putNumber("AlignOnly/FilteredError", Double.NaN);
         SmartDashboard.putNumber("AlignOnly/RotCmd", 0.0);
     }
 
     @Override
     public void execute() {
-        VisionResult result = visionRef.get();
-        if (!isResultFresh(result)) {
+        Translation2d hubCenter = RobotContainer.getAllianceHubCenter();
+        boolean hasVision = swerve.isVisionActive();
+
+        if (!hasVision) {
             swerve.drive(0, 0, 0, false);
             alignedHoldTimer.stop();
             alignedHoldTimer.reset();
-            filteredYawDeg = Double.NaN;
+            filteredHeadingErrorDeg = Double.NaN;
             previousAimErrorDeg = Double.NaN;
 
             SmartDashboard.putString("AlignOnly/State", "NO_TARGET");
-            SmartDashboard.putNumber("AlignOnly/YawError", Double.NaN);
-            SmartDashboard.putNumber("AlignOnly/FilteredYawError", Double.NaN);
-            SmartDashboard.putNumber("AlignOnly/YawSetpointDeg", Double.NaN);
+            SmartDashboard.putNumber("AlignOnly/HeadingError", Double.NaN);
+            SmartDashboard.putNumber("AlignOnly/FilteredError", Double.NaN);
             SmartDashboard.putNumber("AlignOnly/RotCmd", 0.0);
 
             if (noTargetTimer.hasElapsed(NO_TARGET_TIMEOUT_SEC)) {
-                finishReason = "No fresh vision target";
+                finishReason = "No vision-corrected pose";
                 finished = true;
             }
             return;
@@ -93,17 +89,14 @@ public class AlignOnlyCommand extends Command {
 
         noTargetTimer.reset();
 
-        double yawDeg = result.yawDeg();
-        double filteredYawDeg = filterYaw(yawDeg);
-        double distanceM = estimateDistanceM(result);
-        double yawSetpointDeg = calculateCameraYawSetpointDeg(distanceM);
-        double aimErrorDeg = filteredYawDeg - yawSetpointDeg;
+        double headingErrorDeg = swerve.getHeadingErrorDegTo(hubCenter);
+        double filteredError = filterHeadingError(headingErrorDeg);
+        double aimErrorDeg = filteredError;
 
-        SmartDashboard.putNumber("AlignOnly/TargetTagId", result.tagId());
-        SmartDashboard.putNumber("AlignOnly/TargetYawDeg", yawDeg);
-        SmartDashboard.putNumber("AlignOnly/YawSetpointDeg", yawSetpointDeg);
-        SmartDashboard.putNumber("AlignOnly/YawError", aimErrorDeg);
-        SmartDashboard.putNumber("AlignOnly/FilteredYawError", aimErrorDeg);
+        SmartDashboard.putNumber("AlignOnly/HeadingError", headingErrorDeg);
+        SmartDashboard.putNumber("AlignOnly/FilteredError", aimErrorDeg);
+        SmartDashboard.putNumber("AlignOnly/DistanceM", swerve.getDistanceTo(hubCenter));
+
         if (AlignmentCaptureUtil.shouldCaptureOnEntryOrCrossing(
                 previousAimErrorDeg,
                 aimErrorDeg,
@@ -137,7 +130,7 @@ public class AlignOnlyCommand extends Command {
         alignedHoldTimer.stop();
         alignedHoldTimer.reset();
         double rotCmd = MathUtil.clamp(
-                turnPID.calculate(filteredYawDeg, yawSetpointDeg),
+                turnPID.calculate(filteredError, 0.0),
                 -Constants.AlignShoot.MAX_AUTO_AIM_OMEGA_RADPS,
                 Constants.AlignShoot.MAX_AUTO_AIM_OMEGA_RADPS);
         swerve.drive(0, 0, rotCmd, false);
@@ -170,45 +163,27 @@ public class AlignOnlyCommand extends Command {
         System.out.println("[AlignOnly] Ended: " + finishReason);
     }
 
-    private boolean isResultFresh(VisionResult result) {
-        return VisionSupport.isResultFresh(
-                result,
-                Timer.getFPGATimestamp(),
-                Constants.Vision.TARGET_LOSS_TOLERANCE_SEC);
-    }
-
-    private double filterYaw(double rawYawDeg) {
-        if (!Double.isFinite(rawYawDeg)) {
-            filteredYawDeg = Double.NaN;
+    private double filterHeadingError(double rawErrorDeg) {
+        if (!Double.isFinite(rawErrorDeg)) {
+            filteredHeadingErrorDeg = Double.NaN;
             return Double.NaN;
         }
-        if (!Double.isFinite(filteredYawDeg)) {
-            filteredYawDeg = rawYawDeg;
+        if (!Double.isFinite(filteredHeadingErrorDeg)) {
+            filteredHeadingErrorDeg = rawErrorDeg;
         } else {
-            filteredYawDeg = Constants.AlignShoot.YAW_FILTER_ALPHA * filteredYawDeg
-                    + (1.0 - Constants.AlignShoot.YAW_FILTER_ALPHA) * rawYawDeg;
+            filteredHeadingErrorDeg = Constants.AlignShoot.YAW_FILTER_ALPHA * filteredHeadingErrorDeg
+                    + (1.0 - Constants.AlignShoot.YAW_FILTER_ALPHA) * rawErrorDeg;
         }
-        return filteredYawDeg;
+        return filteredHeadingErrorDeg;
     }
 
-    private boolean shouldHoldAlignment(double filteredYawDeg) {
-        if (!Double.isFinite(filteredYawDeg)) {
+    private boolean shouldHoldAlignment(double errorDeg) {
+        if (!Double.isFinite(errorDeg)) {
             return false;
         }
-        double absYawDeg = Math.abs(filteredYawDeg);
-        return absYawDeg <= Constants.AlignShoot.YAW_TOLERANCE_DEG
+        double absError = Math.abs(errorDeg);
+        return absError <= Constants.AlignShoot.YAW_TOLERANCE_DEG
                 || (alignedHoldTimer.isRunning()
-                        && absYawDeg <= Constants.AlignShoot.YAW_BREAK_TOLERANCE_DEG);
-    }
-
-    private double calculateCameraYawSetpointDeg(double distanceM) {
-        if (!Double.isFinite(distanceM) || distanceM <= 0.0) {
-            return 0.0;
-        }
-        return Math.toDegrees(Math.atan2(Constants.Vision.CAMERA_LATERAL_OFFSET_M, distanceM));
-    }
-
-    private double estimateDistanceM(VisionResult result) {
-        return result.distanceM();
+                        && absError <= Constants.AlignShoot.YAW_BREAK_TOLERANCE_DEG);
     }
 }

@@ -1,11 +1,13 @@
 // ============================================================================
 // FILE: src/main/java/frc/robot/commands/AlignAndShootCommand.java
 //
-// PURPOSE: Auto-aligns to the vision target in place, then fires while
-// stationary.
+// PURPOSE: Auto-aligns to the HUB using pose-based heading, then fires while
+// stationary. Vision tags correct the robot's pose estimate; alignment is
+// calculated from the corrected pose to the known HUB center — not from
+// raw camera tag yaw.
 //
 // SEQUENCE:
-//   1. ALIGN    - Spin shooter and rotate in place until yaw + RPM are ready
+//   1. ALIGN    - Spin shooter and rotate in place until heading + RPM are ready
 //   2. CLEAR    - Optional short clear pulse before feed (non-continuous mode)
 //   3. FEED     - Continue aiming in place while feeding (or skip CLEAR in
 //                 continuous hold-to-shoot mode)
@@ -13,10 +15,9 @@
 // ============================================================================
 package frc.robot.commands;
 
-import java.util.concurrent.atomic.AtomicReference;
-
 import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.controller.PIDController;
+import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
 import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
@@ -24,14 +25,13 @@ import edu.wpi.first.wpilibj2.command.Command;
 
 import frc.robot.Constants;
 import frc.robot.HubActivityTracker;
+import frc.robot.RobotContainer;
 import frc.robot.subsystems.FeederSubsystem;
 import frc.robot.subsystems.HopperSubsystem;
 import frc.robot.subsystems.IntakeSubsystem;
 import frc.robot.subsystems.ShooterSubsystem;
 import frc.robot.subsystems.SwerveSubsystem;
 import frc.robot.util.AlignmentCaptureUtil;
-import frc.robot.vision.VisionResult;
-import frc.robot.vision.VisionSupport;
 
 
 public class AlignAndShootCommand extends Command {
@@ -42,10 +42,10 @@ public class AlignAndShootCommand extends Command {
             boolean hasTarget,
             boolean geometryFeasible,
             boolean hasShootableTarget,
-            double yawDeg,
+            double headingErrorDeg,
             double aimErrorDeg,
             double leadYawDeg,
-            double pitchDeg,
+            double distanceM,
             double targetRps,
             double radialVelocityMps,
             double lateralVelocityMps,
@@ -83,7 +83,6 @@ public class AlignAndShootCommand extends Command {
     private final FeederSubsystem feeder;
     private final HopperSubsystem hopper;
     private final IntakeSubsystem intake;
-    private final AtomicReference<VisionResult> visionRef;
     private final boolean continuousFeedUntilInterrupted;
     private final PIDController turnPID = new PIDController(
             Constants.AlignShoot.TURN_kP,
@@ -104,7 +103,7 @@ public class AlignAndShootCommand extends Command {
     private final Timer alignTargetLossTimer = new Timer();
     private double searchRotationSign = 1.0;
     private boolean seenTargetThisRun = false;
-    private double filteredYawDeg = Double.NaN;
+    private double filteredHeadingErrorDeg = Double.NaN;
     private double previousAimErrorDeg = Double.NaN;
     private boolean alignmentLocked = false;
     private boolean hadAlignmentLockThisRun = false;
@@ -114,10 +113,10 @@ public class AlignAndShootCommand extends Command {
     private boolean workHasTarget = false;
     private boolean workGeometryFeasible = false;
     private boolean workHasShootableTarget = false;
-    private double workYawDeg = Double.NaN;
+    private double workHeadingErrorDeg = Double.NaN;
     private double workAimErrorDeg = Double.NaN;
     private double workLeadYawDeg = Double.NaN;
-    private double workPitchDeg = Double.NaN;
+    private double workDistanceM = Double.NaN;
     private double workTargetRps = Double.NaN;
     private double workRadialVelocityMps = Double.NaN;
     private double workLateralVelocityMps = Double.NaN;
@@ -134,14 +133,12 @@ public class AlignAndShootCommand extends Command {
             FeederSubsystem feeder,
             HopperSubsystem hopper,
             IntakeSubsystem intake,
-            AtomicReference<VisionResult> visionRef,
             boolean continuousFeedUntilInterrupted) {
         this.swerve = swerve;
         this.shooter = shooter;
         this.feeder = feeder;
         this.hopper = hopper;
         this.intake = intake;
-        this.visionRef = visionRef;
         this.continuousFeedUntilInterrupted = continuousFeedUntilInterrupted;
 
         addRequirements(swerve, shooter, feeder, hopper, intake);
@@ -161,7 +158,7 @@ public class AlignAndShootCommand extends Command {
         resetAlignTargetLossTimer();
         searchRotationSign = 1.0;
         seenTargetThisRun = false;
-        filteredYawDeg = Double.NaN;
+        filteredHeadingErrorDeg = Double.NaN;
         previousAimErrorDeg = Double.NaN;
         alignmentLocked = false;
         hadAlignmentLockThisRun = false;
@@ -171,10 +168,10 @@ public class AlignAndShootCommand extends Command {
         workHasTarget = false;
         workGeometryFeasible = false;
         workHasShootableTarget = false;
-        workYawDeg = Double.NaN;
+        workHeadingErrorDeg = Double.NaN;
         workAimErrorDeg = Double.NaN;
         workLeadYawDeg = 0.0;
-        workPitchDeg = Double.NaN;
+        workDistanceM = Double.NaN;
         workTargetRps = Constants.Shooter.TARGET_RPS;
         workRadialVelocityMps = 0.0;
         workLateralVelocityMps = 0.0;
@@ -194,9 +191,6 @@ public class AlignAndShootCommand extends Command {
             SmartDashboard.putBoolean("AlignShoot/HubInactiveWarning", false);
         }
 
-        // Don't stop the shooter here — the driver may have pre-spun the
-        // wheels before triggering align, and killing that momentum wastes
-        // spin-up time we'd have to pay again once a target is acquired.
         SmartDashboard.putString("AlignShoot/State", "ALIGN");
         updateTelemetry();
         publishTelemetry();
@@ -246,20 +240,24 @@ public class AlignAndShootCommand extends Command {
         publishTelemetry();
     }
 
-    private void executeAlign() {
-        VisionResult result = visionRef.get();
-        boolean hasFreshTarget = isResultFresh(result);
-        workHasTarget = hasFreshTarget;
+    // =========================================================================
+    // State implementations
+    // =========================================================================
 
-        if (!hasFreshTarget) {
-            // Keep the shooter spinning during brief target loss; stopping and
-            // restarting the flywheels here wastes time and increases oscillation.
+    private void executeAlign() {
+        Translation2d hubCenter = RobotContainer.getAllianceHubCenter();
+        boolean hasVision = swerve.isVisionActive();
+        double distanceM = swerve.getDistanceTo(hubCenter);
+        double headingErrorDeg = swerve.getHeadingErrorDegTo(hubCenter);
+        workHasTarget = hasVision;
+
+        if (!hasVision) {
             workGeometryFeasible = false;
             workHasShootableTarget = false;
-            workYawDeg = Double.NaN;
+            workHeadingErrorDeg = Double.NaN;
             workAimErrorDeg = Double.NaN;
             workLeadYawDeg = 0.0;
-            workPitchDeg = Double.NaN;
+            workDistanceM = Double.NaN;
             workRadialVelocityMps = 0.0;
             workLateralVelocityMps = 0.0;
             workCommandedXVelocityMps = 0.0;
@@ -268,7 +266,7 @@ public class AlignAndShootCommand extends Command {
             workTimeOfFlightSec = Double.NaN;
             workFeedGateReady = false;
             resetFeedGateTimer();
-            filteredYawDeg = Double.NaN;
+            filteredHeadingErrorDeg = Double.NaN;
             previousAimErrorDeg = Double.NaN;
             alignmentLocked = false;
             resetAlignmentLockTimer();
@@ -290,7 +288,7 @@ public class AlignAndShootCommand extends Command {
             }
 
             if (hasAlignConvergenceTimedOut()) {
-                abort("No alliance HUB tag found");
+                abort("No vision-corrected pose available");
             }
             return;
         }
@@ -300,53 +298,51 @@ public class AlignAndShootCommand extends Command {
         workState = State.ALIGN.name();
         SmartDashboard.putString("AlignShoot/State", "ALIGN");
 
-        workPitchDeg = result.pitchDeg();
-        workYawDeg = result.yawDeg();
-        double filteredYawDeg = filterYaw(result.yawDeg());
-        double distanceM = estimateDistanceM(result);
-        double yawSetpointDeg = calculateCameraYawSetpointDeg(distanceM);
-        double aimErrorDeg = filteredYawDeg - yawSetpointDeg;
-        if (!isShotPitchFeasible(result.pitchDeg())) {
+        workDistanceM = distanceM;
+        workHeadingErrorDeg = headingErrorDeg;
+        double filteredError = filterHeadingError(headingErrorDeg);
+        double aimErrorDeg = filteredError;
+
+        if (!isShotDistanceFeasible(distanceM)) {
             shooter.stop();
             workHasShootableTarget = false;
             workFeedGateReady = false;
             resetFeedGateTimer();
-            abort("Shot pitch out of range");
+            abort("Shot distance out of range");
             return;
         }
 
         // Pre-spin the shooter as soon as we have a valid target so spin-up
-        // happens in parallel with yaw alignment instead of after it.
-        ShooterSubsystem.ShotSolution preSpinSolution =
-                ShooterSubsystem.calculateMovingShotSolution(distanceM, 0.0, 0.0);
-        if (preSpinSolution.feasible()) {
-            shooter.setShooterVelocity(preSpinSolution.targetRps());
-            workTargetRps = preSpinSolution.targetRps();
+        // happens in parallel with heading alignment instead of after it.
+        double targetRps = ShooterSubsystem.calculateTargetRPS(distanceM);
+        if (Double.isFinite(targetRps) && targetRps > 0.0) {
+            shooter.setShooterVelocity(targetRps);
+            workTargetRps = targetRps;
         }
 
-        if (!isWithinTrackingYaw(aimErrorDeg)) {
+        if (!isWithinTrackingHeading(aimErrorDeg)) {
             alignmentLocked = false;
             resetAlignmentLockTimer();
             workGeometryFeasible = false;
             workHasShootableTarget = false;
             workAimErrorDeg = aimErrorDeg;
-            workLeadYawDeg = yawSetpointDeg;
+            workLeadYawDeg = 0.0;
             workRadialVelocityMps = 0.0;
             workLateralVelocityMps = 0.0;
             workTimeOfFlightSec = Double.NaN;
             workFeedGateReady = false;
             resetFeedGateTimer();
-            updateSearchDirectionFromYaw(aimErrorDeg);
-            driveAcquireTarget(filteredYawDeg, yawSetpointDeg);
+            updateSearchDirectionFromError(aimErrorDeg);
+            driveTowardsHub(filteredError);
             if (hasAlignConvergenceTimedOut()) {
-                abort("Target yaw acquisition timeout");
+                abort("Heading acquisition timeout");
             }
             return;
         }
 
         updateAlignmentLock(aimErrorDeg);
-        ShotTracking tracking = buildStationaryTracking(result, filteredYawDeg, distanceM);
-        if (!tracking.solution().feasible()) {
+        ShotTracking tracking = buildStationaryTracking(filteredError, distanceM);
+        if (!tracking.feasible()) {
             shooter.stop();
             workHasShootableTarget = false;
             workFeedGateReady = false;
@@ -366,8 +362,8 @@ public class AlignAndShootCommand extends Command {
     }
 
     private void executeClear() {
-        VisionResult result = visionRef.get();
-        if (!hasShootableTarget(result)) {
+        Translation2d hubCenter = RobotContainer.getAllianceHubCenter();
+        if (!hasShootableTarget(hubCenter)) {
             if (continuousFeedUntilInterrupted) {
                 if (shouldHoldContinuousFeed()) {
                     holdStationaryWhileReacquiring();
@@ -382,10 +378,11 @@ public class AlignAndShootCommand extends Command {
             return;
         }
 
-        double filteredYawDeg = filterYaw(result.yawDeg());
-        double distanceM = estimateDistanceM(result);
-        double yawSetpointDeg = calculateCameraYawSetpointDeg(distanceM);
-        double aimErrorDeg = filteredYawDeg - yawSetpointDeg;
+        double distanceM = swerve.getDistanceTo(hubCenter);
+        double headingErrorDeg = swerve.getHeadingErrorDegTo(hubCenter);
+        double filteredError = filterHeadingError(headingErrorDeg);
+        double aimErrorDeg = filteredError;
+
         if (!maintainLockedAlignment(aimErrorDeg)) {
             if (continuousFeedUntilInterrupted) {
                 if (shouldHoldContinuousFeed()) {
@@ -401,8 +398,8 @@ public class AlignAndShootCommand extends Command {
             return;
         }
 
-        ShotTracking tracking = buildStationaryTracking(result, filteredYawDeg, distanceM);
-        if (!tracking.solution().feasible()) {
+        ShotTracking tracking = buildStationaryTracking(filteredError, distanceM);
+        if (!tracking.feasible()) {
             if (continuousFeedUntilInterrupted) {
                 stopFeedPath();
                 shooter.stop();
@@ -427,8 +424,8 @@ public class AlignAndShootCommand extends Command {
     }
 
     private void executeFeed() {
-        VisionResult result = visionRef.get();
-        if (!hasShootableTarget(result)) {
+        Translation2d hubCenter = RobotContainer.getAllianceHubCenter();
+        if (!hasShootableTarget(hubCenter)) {
             if (continuousFeedUntilInterrupted) {
                 if (shouldHoldContinuousFeed()) {
                     holdStationaryWhileReacquiring();
@@ -443,10 +440,11 @@ public class AlignAndShootCommand extends Command {
             return;
         }
 
-        double filteredYawDeg = filterYaw(result.yawDeg());
-        double distanceM = estimateDistanceM(result);
-        double yawSetpointDeg = calculateCameraYawSetpointDeg(distanceM);
-        double aimErrorDeg = filteredYawDeg - yawSetpointDeg;
+        double distanceM = swerve.getDistanceTo(hubCenter);
+        double headingErrorDeg = swerve.getHeadingErrorDegTo(hubCenter);
+        double filteredError = filterHeadingError(headingErrorDeg);
+        double aimErrorDeg = filteredError;
+
         if (!maintainLockedAlignment(aimErrorDeg)) {
             if (continuousFeedUntilInterrupted) {
                 if (shouldHoldContinuousFeed()) {
@@ -462,8 +460,8 @@ public class AlignAndShootCommand extends Command {
             return;
         }
 
-        ShotTracking tracking = buildStationaryTracking(result, filteredYawDeg, distanceM);
-        if (!tracking.solution().feasible()) {
+        ShotTracking tracking = buildStationaryTracking(filteredError, distanceM);
+        if (!tracking.feasible()) {
             if (continuousFeedUntilInterrupted) {
                 stopFeedPath();
                 shooter.stop();
@@ -489,6 +487,10 @@ public class AlignAndShootCommand extends Command {
         }
     }
 
+    // =========================================================================
+    // State management
+    // =========================================================================
+
     private void transitionTo(State newState) {
         state = newState;
         stateTimer.restart();
@@ -512,57 +514,20 @@ public class AlignAndShootCommand extends Command {
         transitionTo(State.DONE);
     }
 
-    private void updateTelemetry() {
-        telemetrySnapshot = new TelemetrySnapshot(
-                workState,
-                workCommandActive,
-                workHasTarget,
-                workGeometryFeasible,
-                workHasShootableTarget,
-                workYawDeg,
-                workAimErrorDeg,
-                workLeadYawDeg,
-                workPitchDeg,
-                workTargetRps,
-                workRadialVelocityMps,
-                workLateralVelocityMps,
-                workCommandedXVelocityMps,
-                workCommandedYVelocityMps,
-                workActiveTranslationCapMps,
-                workTimeOfFlightSec,
-                workFeedGateReady,
-                workLastAbortReason);
-    }
+    // =========================================================================
+    // Shot tracking — stationary only (no moving shots)
+    // =========================================================================
 
-    private void publishTelemetry() {
-        SmartDashboard.putNumber("AlignShoot/YawError", workYawDeg);
-        SmartDashboard.putNumber("AlignShoot/AimErrorDeg", workAimErrorDeg);
-        SmartDashboard.putNumber("AlignShoot/LeadYawDeg", workLeadYawDeg);
-        SmartDashboard.putNumber("AlignShoot/TargetPitchDeg", workPitchDeg);
-        SmartDashboard.putNumber("AlignShoot/CalculatedRPS", workTargetRps);
-        SmartDashboard.putNumber("AlignShoot/RadialVelocityMps", workRadialVelocityMps);
-        SmartDashboard.putNumber("AlignShoot/LateralVelocityMps", workLateralVelocityMps);
-        SmartDashboard.putNumber("AlignShoot/CommandedXVelocityMps", workCommandedXVelocityMps);
-        SmartDashboard.putNumber("AlignShoot/CommandedYVelocityMps", workCommandedYVelocityMps);
-        SmartDashboard.putNumber("AlignShoot/ActiveTranslationCapMps", workActiveTranslationCapMps);
-        SmartDashboard.putNumber("AlignShoot/TimeOfFlightSec", workTimeOfFlightSec);
-        SmartDashboard.putBoolean("AlignShoot/FeedGateReady", workFeedGateReady);
-    }
-
-    private ShotTracking buildStationaryTracking(
-            VisionResult result,
-            double filteredYawDeg,
-            double distanceM) {
-        double rawYawDeg = result.yawDeg();
-        double pitchDeg = result.pitchDeg();
-        double yawSetpointDeg = calculateCameraYawSetpointDeg(distanceM);
-        double aimErrorDeg = filteredYawDeg - yawSetpointDeg;
-        ShooterSubsystem.ShotSolution solution = ShooterSubsystem.calculateMovingShotSolution(distanceM, 0.0, 0.0);
+    private ShotTracking buildStationaryTracking(double filteredErrorDeg, double distanceM) {
+        double aimErrorDeg = filteredErrorDeg;
+        double targetRps = ShooterSubsystem.calculateTargetRPS(distanceM);
+        boolean feasible = Double.isFinite(targetRps) && targetRps > 0.0
+                && isShotDistanceFeasible(distanceM);
 
         boolean holdingAlignment = shouldHoldAlignment(aimErrorDeg);
         double rotCmd = 0.0;
         if (!holdingAlignment) {
-            double pidOutput = turnPID.calculate(filteredYawDeg, yawSetpointDeg);
+            double pidOutput = turnPID.calculate(filteredErrorDeg, 0.0);
             rotCmd = MathUtil.clamp(
                     pidOutput,
                     -Constants.AlignShoot.MAX_AUTO_AIM_OMEGA_RADPS,
@@ -570,25 +535,20 @@ public class AlignAndShootCommand extends Command {
         }
 
         boolean feedGateSettled = updateFeedGateTimer(
-                solution.feasible()
+                feasible
                         && holdingAlignment
-                        && isShooterReady(solution.targetRps()));
-        boolean feedGateReady = solution.feasible()
+                        && isShooterReady(targetRps));
+        boolean feedGateReady = feasible
                 && alignmentLocked
                 && feedGateSettled;
 
         return new ShotTracking(
-                rawYawDeg,
                 aimErrorDeg,
-                yawSetpointDeg,
-                pitchDeg,
                 distanceM,
-                0.0,
-                0.0,
+                targetRps,
                 new ChassisSpeeds(0.0, 0.0, 0.0),
-                0.0,
-                solution,
                 rotCmd,
+                feasible,
                 feedGateReady);
     }
 
@@ -596,18 +556,18 @@ public class AlignAndShootCommand extends Command {
         workHasTarget = true;
         workGeometryFeasible = true;
         workHasShootableTarget = true;
-        workYawDeg = tracking.rawYawDeg();
+        workHeadingErrorDeg = tracking.aimErrorDeg();
         workAimErrorDeg = tracking.aimErrorDeg();
-        workLeadYawDeg = tracking.leadYawDeg();
-        workPitchDeg = tracking.pitchDeg();
-        workRadialVelocityMps = tracking.radialVelocityMps();
-        workLateralVelocityMps = tracking.lateralVelocityMps();
+        workLeadYawDeg = 0.0;
+        workDistanceM = tracking.distanceM();
+        workRadialVelocityMps = 0.0;
+        workLateralVelocityMps = 0.0;
         workCommandedXVelocityMps = tracking.translationCmd().vxMetersPerSecond;
         workCommandedYVelocityMps = tracking.translationCmd().vyMetersPerSecond;
-        workActiveTranslationCapMps = tracking.translationCapMps();
+        workActiveTranslationCapMps = 0.0;
         workFeedGateReady = tracking.feedGateReady();
-        workTimeOfFlightSec = tracking.solution().timeOfFlightSec();
-        workTargetRps = tracking.solution().targetRps();
+        workTimeOfFlightSec = Double.NaN;
+        workTargetRps = tracking.targetRps();
         shooter.setShooterVelocity(workTargetRps);
 
         SmartDashboard.putNumber("AlignShoot/EstDistanceM", tracking.distanceM());
@@ -620,6 +580,10 @@ public class AlignAndShootCommand extends Command {
                 tracking.rotCmdRadPerSec()));
     }
 
+    // =========================================================================
+    // Drive helpers
+    // =========================================================================
+
     private void driveSearchPattern() {
         workCommandedXVelocityMps = 0.0;
         workCommandedYVelocityMps = 0.0;
@@ -630,8 +594,8 @@ public class AlignAndShootCommand extends Command {
                 searchRotationSign * Constants.AlignShoot.SEARCH_OMEGA_RADPS));
     }
 
-    private void driveAcquireTarget(double measuredYawDeg, double yawSetpointDeg) {
-        double pidOutput = turnPID.calculate(measuredYawDeg, yawSetpointDeg);
+    private void driveTowardsHub(double filteredErrorDeg) {
+        double pidOutput = turnPID.calculate(filteredErrorDeg, 0.0);
         double rotCmd = turnPID.atSetpoint()
                 ? 0.0
                 : MathUtil.clamp(
@@ -645,28 +609,44 @@ public class AlignAndShootCommand extends Command {
         swerve.driveRobotRelative(new ChassisSpeeds(0.0, 0.0, rotCmd));
     }
 
-    private double estimateDistanceM(VisionResult result) {
-        return result.distanceM();
+    // =========================================================================
+    // Heading filter — smooth pose-estimator heading error updates
+    // =========================================================================
+
+    private double filterHeadingError(double rawErrorDeg) {
+        if (!Double.isFinite(rawErrorDeg)) {
+            filteredHeadingErrorDeg = Double.NaN;
+            return Double.NaN;
+        }
+        if (!Double.isFinite(filteredHeadingErrorDeg)) {
+            filteredHeadingErrorDeg = rawErrorDeg;
+        } else {
+            filteredHeadingErrorDeg = Constants.AlignShoot.YAW_FILTER_ALPHA * filteredHeadingErrorDeg
+                    + (1.0 - Constants.AlignShoot.YAW_FILTER_ALPHA) * rawErrorDeg;
+        }
+        return filteredHeadingErrorDeg;
     }
 
-    private boolean isResultFresh(VisionResult result) {
-        return VisionSupport.isResultFresh(
-                result,
-                Timer.getFPGATimestamp(),
-                Constants.Vision.TARGET_LOSS_TOLERANCE_SEC);
-    }
+    // =========================================================================
+    // Target presence and feasibility
+    // =========================================================================
 
-    private boolean hasShootableTarget(VisionResult result) {
-        boolean hasTarget = isResultFresh(result);
-        workHasTarget = hasTarget;
-        if (!hasTarget) {
+    private boolean hasShootableTarget(Translation2d hubCenter) {
+        boolean hasVision = swerve.isVisionActive();
+        workHasTarget = hasVision;
+        if (!hasVision) {
             workGeometryFeasible = false;
             workHasShootableTarget = false;
             return false;
         }
 
-        boolean geometryFeasible = isShotGeometryFeasible(result);
+        double distanceM = swerve.getDistanceTo(hubCenter);
+        double headingErrorDeg = swerve.getHeadingErrorDegTo(hubCenter);
+        boolean geometryFeasible = isShotDistanceFeasible(distanceM)
+                && isWithinTrackingHeading(headingErrorDeg);
         workGeometryFeasible = geometryFeasible;
+        workDistanceM = distanceM;
+
         if (!geometryFeasible) {
             workHasShootableTarget = false;
             return false;
@@ -676,19 +656,10 @@ public class AlignAndShootCommand extends Command {
         return true;
     }
 
-    private boolean isShotGeometryFeasible(VisionResult result) {
-        double pitchDeg = result.pitchDeg();
-        double yawDeg = result.yawDeg();
-        double distanceM = estimateDistanceM(result);
-        double yawSetpointDeg = calculateCameraYawSetpointDeg(distanceM);
-        double aimErrorDeg = yawDeg - yawSetpointDeg;
-        workPitchDeg = pitchDeg;
-
-        SmartDashboard.putNumber("AlignShoot/TargetTagId", result.tagId());
-        SmartDashboard.putNumber("AlignShoot/YawGeometryCheck", yawDeg);
-        SmartDashboard.putNumber("AlignShoot/YawSetpointDeg", yawSetpointDeg);
-
-        return isShotPitchFeasible(pitchDeg) && isWithinTrackingYaw(aimErrorDeg);
+    static boolean isShotDistanceFeasible(double distanceM) {
+        return Double.isFinite(distanceM)
+                && distanceM >= Constants.Vision.MIN_SHOT_DISTANCE_M
+                && distanceM <= Constants.Vision.MAX_SHOT_DISTANCE_M;
     }
 
     private boolean isShooterReady(double targetRps) {
@@ -697,6 +668,10 @@ public class AlignAndShootCommand extends Command {
         return leftError <= Constants.AlignShoot.RPS_TOLERANCE_RPS
                 && rightError <= Constants.AlignShoot.RPS_TOLERANCE_RPS;
     }
+
+    // =========================================================================
+    // Timer helpers
+    // =========================================================================
 
     private void resetFeedGateTimer() {
         feedGateTimer.stop();
@@ -748,6 +723,10 @@ public class AlignAndShootCommand extends Command {
         hopper.stop();
         intake.setRollerPower(0);
     }
+
+    // =========================================================================
+    // Alignment lock — require stable heading before allowing feed
+    // =========================================================================
 
     private void updateAlignmentLock(double aimErrorDeg) {
         if (!Double.isFinite(aimErrorDeg)) {
@@ -827,10 +806,10 @@ public class AlignAndShootCommand extends Command {
         if (!Double.isFinite(aimErrorDeg)) {
             return false;
         }
-        double absYawDeg = Math.abs(aimErrorDeg);
-        return absYawDeg <= Constants.AlignShoot.YAW_TOLERANCE_DEG
+        double absError = Math.abs(aimErrorDeg);
+        return absError <= Constants.AlignShoot.YAW_TOLERANCE_DEG
                 || (alignmentLockTimer.isRunning()
-                        && absYawDeg <= Constants.AlignShoot.YAW_BREAK_TOLERANCE_DEG)
+                        && absError <= Constants.AlignShoot.YAW_BREAK_TOLERANCE_DEG)
                 || alignmentLocked;
     }
 
@@ -858,39 +837,52 @@ public class AlignAndShootCommand extends Command {
         swerve.driveRobotRelative(new ChassisSpeeds(0.0, 0.0, 0.0));
     }
 
-    private double calculateCameraYawSetpointDeg(double distanceM) {
-        if (!Double.isFinite(distanceM) || distanceM <= 0.0) {
-            return 0.0;
-        }
-        // Camera is mounted laterally from robot center; yaw to this setpoint so
-        // the shooter centerline, not camera centerline, points at the hub center.
-        return Math.toDegrees(Math.atan2(Constants.Vision.CAMERA_LATERAL_OFFSET_M, distanceM));
-    }
-
-    private double filterYaw(double rawYawDeg) {
-        if (!Double.isFinite(rawYawDeg)) {
-            filteredYawDeg = Double.NaN;
-            return Double.NaN;
-        }
-        if (!Double.isFinite(filteredYawDeg)) {
-            filteredYawDeg = rawYawDeg;
-        } else {
-            filteredYawDeg = Constants.AlignShoot.YAW_FILTER_ALPHA * filteredYawDeg
-                    + (1.0 - Constants.AlignShoot.YAW_FILTER_ALPHA) * rawYawDeg;
-        }
-        return filteredYawDeg;
-    }
-
-    private void updateSearchDirectionFromYaw(double yawDeg) {
-        double desiredSign = -Math.signum(yawDeg);
+    private void updateSearchDirectionFromError(double errorDeg) {
+        double desiredSign = -Math.signum(errorDeg);
         if (desiredSign != 0.0) {
             searchRotationSign = desiredSign;
         }
     }
 
-    private static boolean isWithinTrackingYaw(double yawDeg) {
-        return Double.isFinite(yawDeg)
-                && Math.abs(yawDeg) <= Constants.AlignShoot.ACQUIRE_YAW_MAX_DEG;
+    private static boolean isWithinTrackingHeading(double errorDeg) {
+        return Double.isFinite(errorDeg)
+                && Math.abs(errorDeg) <= Constants.AlignShoot.ACQUIRE_YAW_MAX_DEG;
+    }
+
+    // =========================================================================
+    // Telemetry
+    // =========================================================================
+
+    private void updateTelemetry() {
+        telemetrySnapshot = new TelemetrySnapshot(
+                workState,
+                workCommandActive,
+                workHasTarget,
+                workGeometryFeasible,
+                workHasShootableTarget,
+                workHeadingErrorDeg,
+                workAimErrorDeg,
+                workLeadYawDeg,
+                workDistanceM,
+                workTargetRps,
+                workRadialVelocityMps,
+                workLateralVelocityMps,
+                workCommandedXVelocityMps,
+                workCommandedYVelocityMps,
+                workActiveTranslationCapMps,
+                workTimeOfFlightSec,
+                workFeedGateReady,
+                workLastAbortReason);
+    }
+
+    private void publishTelemetry() {
+        SmartDashboard.putNumber("AlignShoot/HeadingError", workHeadingErrorDeg);
+        SmartDashboard.putNumber("AlignShoot/AimErrorDeg", workAimErrorDeg);
+        SmartDashboard.putNumber("AlignShoot/DistanceM", workDistanceM);
+        SmartDashboard.putNumber("AlignShoot/CalculatedRPS", workTargetRps);
+        SmartDashboard.putNumber("AlignShoot/CommandedXVelocityMps", workCommandedXVelocityMps);
+        SmartDashboard.putNumber("AlignShoot/CommandedYVelocityMps", workCommandedYVelocityMps);
+        SmartDashboard.putBoolean("AlignShoot/FeedGateReady", workFeedGateReady);
     }
 
     public static TelemetrySnapshot getTelemetrySnapshot() { return telemetrySnapshot; }
@@ -900,10 +892,10 @@ public class AlignAndShootCommand extends Command {
     public static boolean telemetryHasTarget() { return telemetrySnapshot.hasTarget(); }
     public static boolean telemetryGeometryFeasible() { return telemetrySnapshot.geometryFeasible(); }
     public static boolean telemetryHasShootableTarget() { return telemetrySnapshot.hasShootableTarget(); }
-    public static double getTelemetryYawDeg() { return telemetrySnapshot.yawDeg(); }
+    public static double getTelemetryYawDeg() { return telemetrySnapshot.headingErrorDeg(); }
     public static double getTelemetryAimErrorDeg() { return telemetrySnapshot.aimErrorDeg(); }
     public static double getTelemetryLeadYawDeg() { return telemetrySnapshot.leadYawDeg(); }
-    public static double getTelemetryPitchDeg() { return telemetrySnapshot.pitchDeg(); }
+    public static double getTelemetryPitchDeg() { return telemetrySnapshot.distanceM(); }
     public static double getTelemetryTargetRps() { return telemetrySnapshot.targetRps(); }
     public static double getTelemetryRadialVelocityMps() { return telemetrySnapshot.radialVelocityMps(); }
     public static double getTelemetryLateralVelocityMps() { return telemetrySnapshot.lateralVelocityMps(); }
@@ -920,23 +912,12 @@ public class AlignAndShootCommand extends Command {
     public static boolean telemetryFeedGateReady() { return telemetrySnapshot.feedGateReady(); }
     public static String getTelemetryLastAbortReason() { return telemetrySnapshot.lastAbortReason(); }
 
-    static boolean isShotPitchFeasible(double pitchDeg) {
-        return Double.isFinite(pitchDeg)
-                && pitchDeg >= Constants.Vision.MIN_SHOT_PITCH_DEG
-                && pitchDeg <= Constants.Vision.MAX_SHOT_PITCH_DEG;
-    }
-
     private record ShotTracking(
-            double rawYawDeg,
             double aimErrorDeg,
-            double leadYawDeg,
-            double pitchDeg,
             double distanceM,
-            double radialVelocityMps,
-            double lateralVelocityMps,
+            double targetRps,
             ChassisSpeeds translationCmd,
-            double translationCapMps,
-            ShooterSubsystem.ShotSolution solution,
             double rotCmdRadPerSec,
+            boolean feasible,
             boolean feedGateReady) {}
 }

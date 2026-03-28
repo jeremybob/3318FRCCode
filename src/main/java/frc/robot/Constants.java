@@ -11,7 +11,10 @@
 // ============================================================================
 package frc.robot;
 
+import edu.wpi.first.math.geometry.Rotation3d;
+import edu.wpi.first.math.geometry.Transform3d;
 import edu.wpi.first.math.geometry.Translation2d;
+import edu.wpi.first.math.geometry.Translation3d;
 import edu.wpi.first.math.util.Units;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -493,6 +496,8 @@ public final class Constants {
     //
     // PhotonVision runs on the Pi coprocessor and handles all AprilTag
     // detection and pose estimation. Robot code reads results via PhotonLib.
+    // Tags are used to correct the robot's pose estimate. Alignment to the
+    // HUB is calculated from the corrected pose, not from raw tag yaw.
     // =========================================================================
     public static final class Vision {
         // Set false for electrical bring-up when no camera is present.
@@ -501,19 +506,29 @@ public final class Constants {
         // ---- PhotonVision camera name (configured in PhotonVision UI) ----
         public static final String PHOTON_CAMERA_NAME = "OV9281";
 
-        // Tolerate brief vision dropouts instead of immediately canceling a shot.
-        public static final double TARGET_LOSS_TOLERANCE_SEC = 0.50; // TUNE ME
-        // Feasible vertical angle band for a valid shot solution from the camera.
-        public static final double MIN_SHOT_PITCH_DEG = -20.0; // TUNE ME
-        public static final double MAX_SHOT_PITCH_DEG =  22.0; // TUNE ME
-
-        // ---- Camera mount position ----
+        // ---- Camera mount → robot-to-camera transform ----
         // Same mount location as the previous Logitech camera.
-        // Robot frame convention is +X forward, +Y left, +Z up.
-        // Measured mount: 16.5 in high and 9 in to the RIGHT of robot center.
-        public static final double CAMERA_UP_M       = Units.inchesToMeters(16.5);
-        public static final double CAMERA_LATERAL_OFFSET_M = -Units.inchesToMeters(9.0);
-        public static final double CAMERA_PITCH_RAD  = Math.toRadians(10.5); // tilted up, approximate
+        // Robot frame: +X forward, +Y left, +Z up.
+        // Camera: 16.5 in high, 9 in to the RIGHT, pitched up 10.5 deg.
+        public static final Transform3d ROBOT_TO_CAMERA = new Transform3d(
+                new Translation3d(
+                        0.0,                          // forward offset (approx centered)
+                        -Units.inchesToMeters(9.0),   // lateral: 9 in right = negative Y
+                        Units.inchesToMeters(16.5)),  // height
+                new Rotation3d(0, Math.toRadians(-10.5), 0)); // pitched up
+
+        // ---- HUB center field coordinates (meters, blue-origin) ----
+        // These are the scoring target centers. TUNE ME — measure on your field.
+        public static final Translation2d RED_HUB_CENTER  = new Translation2d(11.92, 4.03);
+        public static final Translation2d BLUE_HUB_CENTER = new Translation2d(4.63, 4.03);
+
+        // ---- Shot distance feasibility ----
+        // Robot must be within this range for a valid shot solution.
+        public static final double MIN_SHOT_DISTANCE_M = 1.0;  // TUNE ME
+        public static final double MAX_SHOT_DISTANCE_M = 6.0;  // TUNE ME
+
+        // Vision pose freshness — how long to trust the pose after last tag sighting.
+        public static final double VISION_STALE_SEC = 1.5;
 
         // ---- Alliance-specific HUB tag IDs for targeting ----
         // Each HUB has 4 faces with 2 tags per face = 8 tags per HUB.

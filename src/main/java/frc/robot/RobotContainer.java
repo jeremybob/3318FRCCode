@@ -34,8 +34,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.stream.Collectors;
-import java.util.concurrent.atomic.AtomicReference;
-
 import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.system.plant.DCMotor;
 import edu.wpi.first.wpilibj.DriverStation;
@@ -63,23 +61,30 @@ import frc.robot.subsystems.swerve.SwerveCorner;
 import frc.robot.subsystems.swerve.SwerveValidationMode;
 import frc.robot.util.DriverDriveUtil;
 import frc.robot.util.DriverHeadingHoldController;
-import frc.robot.vision.VisionResult;
-import frc.robot.vision.VisionSupport;
+import edu.wpi.first.math.geometry.Translation2d;
 
 import org.photonvision.PhotonCamera;
+import org.photonvision.PhotonPoseEstimator;
+import org.photonvision.PhotonPoseEstimator.PoseStrategy;
+import org.photonvision.EstimatedRobotPose;
 import org.photonvision.targeting.PhotonPipelineResult;
 import org.photonvision.targeting.PhotonTrackedTarget;
 
-import edu.wpi.first.math.geometry.Transform3d;
+import edu.wpi.first.apriltag.AprilTagFieldLayout;
+import edu.wpi.first.apriltag.AprilTagFields;
+import edu.wpi.first.wpilibj.Filesystem;
 
 public class RobotContainer implements RobotRuntimeContainer {
 
     // =========================================================================
     // VISION — Arducam OV9281 on Raspberry Pi 4, processed by PhotonVision.
-    // Robot code reads results via PhotonLib (NetworkTables).
+    // Tag sightings correct the robot's pose estimate. Alignment to the HUB
+    // is calculated from the corrected pose, not from raw tag yaw.
     // =========================================================================
-    private final AtomicReference<VisionResult> visionResult = new AtomicReference<>();
     private PhotonCamera photonCamera;
+    private PhotonPoseEstimator photonPoseEstimator;
+    private int lastVisionTagId = -1;
+    private int lastVisionTagCount = 0;
 
     // =========================================================================
     // SUBSYSTEMS — created once here, shared with commands
@@ -148,8 +153,20 @@ public class RobotContainer implements RobotRuntimeContainer {
         configureCommandEventLogging();
 
         // Connect to PhotonVision on the Raspberry Pi 4 via NetworkTables.
+        // Tag detections are used to correct the robot's pose estimate.
         if (Constants.Vision.ENABLE_VISION) {
             photonCamera = new PhotonCamera(Constants.Vision.PHOTON_CAMERA_NAME);
+            try {
+                AprilTagFieldLayout fieldLayout = AprilTagFieldLayout.loadField(AprilTagFields.kDefaultField);
+                photonPoseEstimator = new PhotonPoseEstimator(
+                        fieldLayout,
+                        PoseStrategy.MULTI_TAG_PNP_ON_COPROCESSOR,
+                        Constants.Vision.ROBOT_TO_CAMERA);
+                photonPoseEstimator.setMultiTagFallbackStrategy(PoseStrategy.LOWEST_AMBIGUITY);
+            } catch (Exception ex) {
+                System.err.println("[Vision] Failed to load field layout: " + ex.getMessage());
+                System.err.println("[Vision] Pose estimation DISABLED — alignment will use odometry only.");
+            }
         }
 
         // Intake homing is handled by:
@@ -216,69 +233,38 @@ public class RobotContainer implements RobotRuntimeContainer {
     }
 
     /**
-     * Polls PhotonVision for the latest pipeline result, filters for alliance
-     * HUB tags, and publishes the best target as a VisionResult.
+     * Polls PhotonVision for the latest result and feeds any pose estimate
+     * into the swerve drive pose estimator to correct odometry drift.
      */
     private void updateVision() {
-        if (photonCamera == null) return;
+        if (photonCamera == null || photonPoseEstimator == null) return;
 
         PhotonPipelineResult result = photonCamera.getLatestResult();
-        if (!result.hasTargets()) return;
 
-        int[] hubTagIds = getAllianceHubTagIds();
-        PhotonTrackedTarget bestTarget = null;
-        double bestDistance = Double.MAX_VALUE;
-        int hubTagCount = 0;
-
-        for (PhotonTrackedTarget target : result.getTargets()) {
-            if (!isHubTag(target.getFiducialId(), hubTagIds)) continue;
-            hubTagCount++;
-            Transform3d camToTarget = target.getBestCameraToTarget();
-            double dist = Math.hypot(camToTarget.getX(), camToTarget.getY());
-            if (dist < bestDistance) {
-                bestDistance = dist;
-                bestTarget = target;
-            }
+        // Track which tags are visible for telemetry
+        if (result.hasTargets()) {
+            lastVisionTagId = result.getBestTarget().getFiducialId();
+            lastVisionTagCount = result.getTargets().size();
         }
 
-        if (bestTarget == null) return;
-
-        Transform3d camToTarget = bestTarget.getBestCameraToTarget();
-        double distanceM = Math.hypot(camToTarget.getX(), camToTarget.getY());
-
-        visionResult.set(new VisionResult(
-                bestTarget.getFiducialId(),
-                bestTarget.getYaw(),
-                bestTarget.getPitch(),
-                distanceM,
-                Timer.getFPGATimestamp(),
-                hubTagCount));
+        // Use PhotonPoseEstimator to compute robot field pose from tag sightings
+        photonPoseEstimator.setReferencePose(swerve.getPose());
+        var poseResult = photonPoseEstimator.update(result);
+        if (poseResult.isPresent()) {
+            EstimatedRobotPose estimated = poseResult.get();
+            swerve.addVisionMeasurement(
+                    estimated.estimatedPose.toPose2d(),
+                    estimated.timestampSeconds);
+        }
     }
 
-    private static int[] getAllianceHubTagIds() {
+    /** Returns the alliance HUB center on the field. */
+    static Translation2d getAllianceHubCenter() {
         var alliance = DriverStation.getAlliance();
-        if (alliance.isPresent()) {
-            return alliance.get() == DriverStation.Alliance.Red
-                    ? Constants.Vision.RED_HUB_TAG_IDS
-                    : Constants.Vision.BLUE_HUB_TAG_IDS;
+        if (alliance.isPresent() && alliance.get() == DriverStation.Alliance.Red) {
+            return Constants.Vision.RED_HUB_CENTER;
         }
-        return null;
-    }
-
-    private static boolean isHubTag(int fiducialId, int[] hubTagIds) {
-        if (hubTagIds == null) {
-            for (int id : Constants.Vision.RED_HUB_TAG_IDS) {
-                if (id == fiducialId) return true;
-            }
-            for (int id : Constants.Vision.BLUE_HUB_TAG_IDS) {
-                if (id == fiducialId) return true;
-            }
-            return false;
-        }
-        for (int id : hubTagIds) {
-            if (id == fiducialId) return true;
-        }
-        return false;
+        return Constants.Vision.BLUE_HUB_CENTER;
     }
 
     private void configureCommandEventLogging() {
@@ -840,18 +826,11 @@ public class RobotContainer implements RobotRuntimeContainer {
                         Constants.AlignShoot.YAW_TOLERANCE_DEG,
                         AlignAndShootCommand.telemetryFeedGateReady()));
 
-        VisionResult latestVision = visionResult.get();
-        boolean visionHasTarget = VisionSupport.isResultFresh(
-                latestVision,
-                nowSec,
-                Constants.Vision.TARGET_LOSS_TOLERANCE_SEC);
-        int visionTagId = latestVision != null ? latestVision.tagId() : -1;
-        double visionYawDeg = latestVision != null ? latestVision.yawDeg() : Double.NaN;
-        double visionPitchDeg = latestVision != null ? latestVision.pitchDeg() : Double.NaN;
-        double visionDistanceM = latestVision != null ? latestVision.distanceM() : Double.NaN;
-        int visionHubTagCount = latestVision != null ? latestVision.hubTagCount() : 0;
-        double visionTargetTimestampSec = latestVision != null ? latestVision.timestampSec() : Double.NaN;
         boolean photonConnected = photonCamera != null && photonCamera.isConnected();
+        boolean visionActive = swerve.isVisionActive();
+        Translation2d hubCenter = getAllianceHubCenter();
+        double visionHeadingErrorDeg = swerve.getHeadingErrorDegTo(hubCenter);
+        double visionDistanceM = swerve.getDistanceTo(hubCenter);
 
         double batteryVoltage = RobotController.getBatteryVoltage();
         var canStatus = RobotController.getCANStatus();
@@ -946,18 +925,18 @@ public class RobotContainer implements RobotRuntimeContainer {
                 "",                 // no local error
                 0,                  // frame count not tracked locally
                 Double.NaN,         // frame timestamp not tracked locally
-                visionTagId,
-                visionHasTarget,
-                visionYawDeg,
-                visionPitchDeg,
-                visionYawDeg,       // bestTagYaw = yaw (PhotonVision gives tag yaw directly)
-                visionPitchDeg,     // bestTagPitch = pitch
+                lastVisionTagId,
+                visionActive,
+                visionHeadingErrorDeg,  // yaw = heading error to hub
+                0.0,                    // pitch not used in pose-based alignment
+                visionHeadingErrorDeg,  // bestTagYaw = same
+                0.0,                    // bestTagPitch = same
                 visionDistanceM,
-                0.0,                // no pixel height from PhotonVision
-                visionHubTagCount,
-                0,                  // hub face count not tracked
-                0.0,                // hub span not tracked
-                visionTargetTimestampSec,
+                0.0,                    // no pixel height
+                lastVisionTagCount,
+                0,                      // hub face count not tracked
+                0.0,                    // hub span not tracked
+                nowSec,                 // timestamp
                 // CAN health
                 canStatus.percentBusUtilization,
                 canStatus.receiveErrorCount,
@@ -1005,7 +984,6 @@ public class RobotContainer implements RobotRuntimeContainer {
                 feeder,
                 hopper,
                 intake,
-                visionResult,
                 continuousFeedUntilInterrupted)
                 .withName("AlignAndShoot");
     }
@@ -1014,7 +992,7 @@ public class RobotContainer implements RobotRuntimeContainer {
         if (!Constants.Vision.ENABLE_VISION) {
             return Commands.print("[RobotContainer] AlignOnly unavailable: vision is disabled in Constants.");
         }
-        return new AlignOnlyCommand(swerve, visionResult)
+        return new AlignOnlyCommand(swerve)
                 .withName("AlignOnly");
     }
 
@@ -1179,20 +1157,14 @@ public class RobotContainer implements RobotRuntimeContainer {
     }
 
     private double getAlignAndShootTargetRps() {
-        VisionResult latestVision = visionResult.get();
-        if (latestVision == null) {
-            return Constants.Shooter.TARGET_RPS;
-        }
-
-        double distanceM = latestVision.distanceM();
+        Translation2d hubCenter = getAllianceHubCenter();
+        double distanceM = swerve.getDistanceTo(hubCenter);
         if (!Double.isFinite(distanceM) || distanceM <= 0.0) {
             return Constants.Shooter.TARGET_RPS;
         }
 
-        ShooterSubsystem.ShotSolution stationarySolution =
-                ShooterSubsystem.calculateMovingShotSolution(distanceM, 0.0, 0.0);
-        double targetRps = stationarySolution.targetRps();
-        if (!stationarySolution.feasible() || !Double.isFinite(targetRps) || targetRps <= 0.0) {
+        double targetRps = ShooterSubsystem.calculateTargetRPS(distanceM);
+        if (!Double.isFinite(targetRps) || targetRps <= 0.0) {
             return Constants.Shooter.TARGET_RPS;
         }
         return targetRps;
