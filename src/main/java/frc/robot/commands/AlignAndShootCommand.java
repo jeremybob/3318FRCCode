@@ -195,6 +195,7 @@ public class AlignAndShootCommand extends Command {
     public void end(boolean interrupted) {
         swerve.stop();
         shooter.stop();
+        hood.setDefault();
         feeder.stop();
         hopper.stop();
         intake.setRollerPower(0);
@@ -495,7 +496,9 @@ public class AlignAndShootCommand extends Command {
         boolean holdingAlignment = shouldHoldAlignment(aimErrorDeg);
         double rotCmd = 0.0;
         if (!holdingAlignment) {
-            double pidOutput = turnPID.calculate(filteredErrorDeg, 0.0);
+            // Negate because PID computes (setpoint - measurement) = (0 - error) = -error,
+            // but positive heading error needs positive omega (CCW) to close the gap.
+            double pidOutput = -turnPID.calculate(filteredErrorDeg, 0.0);
             rotCmd = MathUtil.clamp(
                     pidOutput,
                     -Constants.AlignShoot.MAX_AUTO_AIM_OMEGA_RADPS,
@@ -555,7 +558,8 @@ public class AlignAndShootCommand extends Command {
     }
 
     private void driveTowardsHub(double filteredErrorDeg) {
-        double pidOutput = turnPID.calculate(filteredErrorDeg, 0.0);
+        // Negate: positive heading error → positive omega (CCW toward target).
+        double pidOutput = -turnPID.calculate(filteredErrorDeg, 0.0);
         double rotCmd = turnPID.atSetpoint()
                 ? 0.0
                 : MathUtil.clamp(
@@ -795,7 +799,8 @@ public class AlignAndShootCommand extends Command {
     }
 
     private void updateSearchDirectionFromError(double errorDeg) {
-        double desiredSign = -Math.signum(errorDeg);
+        // Positive error = target is CCW (left) → search CCW (positive omega).
+        double desiredSign = Math.signum(errorDeg);
         if (desiredSign != 0.0) {
             searchRotationSign = desiredSign;
         }
