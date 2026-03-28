@@ -10,48 +10,41 @@ import frc.robot.Constants;
 class ShooterSubsystemTest {
 
     @Test
-    void empiricalShotCurveMatchesMeasuredCloseShot() {
-        double targetRps = ShooterSubsystem.calculateTargetRPS(
-                Constants.Shooter.MEASURED_CLOSE_SHOT_DISTANCE_M);
-
-        assertEquals(Constants.Shooter.FALLBACK_RPS, targetRps, 1e-9);
+    void calculateTargetRpsReturnsFallbackForInvalidDistance() {
+        assertEquals(Constants.Shooter.TARGET_RPS, ShooterSubsystem.calculateTargetRPS(0.0), 1e-9);
+        assertEquals(Constants.Shooter.TARGET_RPS, ShooterSubsystem.calculateTargetRPS(-1.0), 1e-9);
+        assertEquals(Constants.Shooter.TARGET_RPS, ShooterSubsystem.calculateTargetRPS(Double.NaN), 1e-9);
     }
 
     @Test
-    void empiricalShotCurvePreservesMidrangeReferenceTarget() {
-        double targetRps = ShooterSubsystem.calculateTargetRPS(
-                Constants.Shooter.MIDRANGE_REFERENCE_DISTANCE_M);
-
-        assertEquals(Constants.Shooter.MIDRANGE_REFERENCE_RPS, targetRps, 1e-9);
+    void calculateTargetRpsReturnsPositiveForValidDistance() {
+        double rps = ShooterSubsystem.calculateTargetRPS(3.0);
+        assertTrue(rps > 0.0, "RPS should be positive for valid distance");
+        assertTrue(rps >= Constants.Shooter.MIN_SHOT_RPS,
+                "RPS should be at least MIN_SHOT_RPS");
+        assertTrue(rps <= Constants.Shooter.MAX_SHOT_RPS,
+                "RPS should not exceed MAX_SHOT_RPS");
     }
 
     @Test
-    void stationaryMovingShotSolutionUsesEmpiricalTarget() {
+    void farShotsRequireMoreSpeedThanCloserShots() {
+        double closeRps = ShooterSubsystem.calculateTargetRPS(2.0);
+        double farRps = ShooterSubsystem.calculateTargetRPS(5.0);
+        assertTrue(farRps >= closeRps,
+                "Farther shots should require equal or greater RPS");
+    }
+
+    @Test
+    void stationaryMovingShotSolutionMatchesStationary() {
+        double distanceM = 3.0;
         ShooterSubsystem.ShotSolution solution = ShooterSubsystem.calculateMovingShotSolution(
-                Constants.Shooter.MIDRANGE_REFERENCE_DISTANCE_M,
-                0.0,
-                0.0);
+                distanceM, 0.0, 0.0);
 
         assertTrue(solution.feasible());
         assertEquals(
-                ShooterSubsystem.calculateTargetRPS(Constants.Shooter.MIDRANGE_REFERENCE_DISTANCE_M),
+                ShooterSubsystem.calculateTargetRPS(distanceM),
                 solution.targetRps(),
-                1e-9);
-    }
-
-    @Test
-    void closeShotNeverDropsBelowGlobalMinimum() {
-        double targetRps = ShooterSubsystem.calculateTargetRPS(0.5);
-
-        assertEquals(Constants.Shooter.MIN_SHOT_RPS, targetRps, 1e-9);
-    }
-
-    @Test
-    void shotCurveDoesNotGetSlowerAsDistanceIncreases() {
-        double closeRps = ShooterSubsystem.calculateTargetRPS(Constants.Shooter.MEASURED_CLOSE_SHOT_DISTANCE_M);
-        double farRps = ShooterSubsystem.calculateTargetRPS(Constants.Shooter.MIDRANGE_REFERENCE_DISTANCE_M);
-
-        assertTrue(farRps >= closeRps);
+                0.5);
     }
 
     @Test

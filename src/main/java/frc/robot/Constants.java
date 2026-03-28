@@ -111,6 +111,14 @@ public final class Constants {
     }
 
     // =========================================================================
+    // PWM PORTS (on the roboRIO)
+    // =========================================================================
+    public static final class PWM {
+        // Hood linear servo — plugs into PWM port 0
+        public static final int HOOD_SERVO = 0;
+    }
+
+    // =========================================================================
     // DIGITAL I/O PORTS (on the roboRIO)
     // =========================================================================
     public static final class DIO {
@@ -306,15 +314,8 @@ public final class Constants {
         public static final double WHEEL_CIRCUMFERENCE_M = Math.PI * WHEEL_DIAMETER_M; // ~0.319m
         public static final double GEAR_RATIO             = 1.0;  // motor:wheel
 
-        // ---- Distance-based shot model ----
-        // Anchor the curve to the robot's measured close shot:
-        // Right Bumper at 4.5 ft scores reliably at 52 RPS.
-        //
-        // Preserve the existing 60 RPS warmup value at a representative midrange
-        // shot, then interpolate between/through those two points until more
-        // measured shot data is available.
-        public static final double SHOT_ANGLE_DEG        = 60.0;  // TUNE ME
-        // Height of the shooter exit above the floor (20 inches).
+        // ---- Shot geometry ----
+        // Height of the shooter exit above the floor.
         public static final double SHOOTER_EXIT_HEIGHT_M = Units.inchesToMeters(16.5);
         // AprilTags are mounted at 44.25 in, but the scoring opening is the upper HUB.
         public static final double HUB_SCORING_HEIGHT_M  = Units.inchesToMeters(104.0);
@@ -333,12 +334,6 @@ public final class Constants {
         // so the shooter stays stopped when the stick is near center or pulled back.
         public static final double MANUAL_SPEED_DEADBAND = 0.10;
         public static final double MANUAL_MAX_RPS = MAX_SHOT_RPS;
-        public static final double MEASURED_CLOSE_SHOT_DISTANCE_M = Units.feetToMeters(4.5);
-        public static final double MIDRANGE_REFERENCE_DISTANCE_M = 2.4;
-        public static final double MIDRANGE_REFERENCE_RPS = 68.0;
-        public static final double EMPIRICAL_SHOT_SLOPE_RPS_PER_M =
-                (MIDRANGE_REFERENCE_RPS - FALLBACK_RPS)
-                        / (MIDRANGE_REFERENCE_DISTANCE_M - MEASURED_CLOSE_SHOT_DISTANCE_M);
 
         // Shooter wheel PID (VelocityVoltage)
         // Kraken X60 at 1:1, 4" wheel, 12V supply:
@@ -371,6 +366,39 @@ public final class Constants {
         // Manual left-stick shooter uses separate feed path values.
         public static final double MANUAL_HOPPER_POWER = 0.80;
         public static final double MANUAL_FEEDER_POWER = 0.80;
+    }
+
+    // =========================================================================
+    // HOOD CONSTANTS
+    //
+    // Hardware: Linear servo on PWM, controls shooter exit angle.
+    // The servo position (0.0–1.0) maps linearly to the hood angle range.
+    //
+    // The actual hood angle for each shot is computed by ShotSolver using
+    // projectile physics — it picks the minimum-energy trajectory angle
+    // clamped to [MIN_ANGLE_DEG, MAX_ANGLE_DEG], then calculates the
+    // required motor RPS for that angle.
+    // =========================================================================
+    public static final class Hood {
+        // ---- Angle range (degrees) ----
+        // Physical travel limits of the hood mechanism.
+        // Minimum angle = low/flat trajectory (close shots)
+        // Maximum angle = high/steep trajectory (far shots)
+        public static final double MIN_ANGLE_DEG = 30.0;  // TUNE ME
+        public static final double MAX_ANGLE_DEG = 60.0;  // TUNE ME
+
+        // Default hood position used during warmup / when distance is unknown.
+        public static final double DEFAULT_ANGLE_DEG = 45.0;  // TUNE ME
+
+        // ---- Servo timing ----
+        // Linear servos are slow; allow time for the servo to reach position.
+        public static final double SETTLE_TIME_SEC = 0.3;  // TUNE ME
+
+        // How close to target angle counts as "at position" (degrees).
+        public static final double TOLERANCE_DEG = 2.0;
+
+        // ---- Manual operator control ----
+        public static final double MANUAL_DEADBAND = 0.15;
     }
 
     // =========================================================================

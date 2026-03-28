@@ -27,10 +27,12 @@ import frc.robot.Constants;
 import frc.robot.HubActivityTracker;
 import frc.robot.RobotContainer;
 import frc.robot.subsystems.FeederSubsystem;
+import frc.robot.subsystems.HoodSubsystem;
 import frc.robot.subsystems.HopperSubsystem;
 import frc.robot.subsystems.IntakeSubsystem;
 import frc.robot.subsystems.ShooterSubsystem;
 import frc.robot.subsystems.SwerveSubsystem;
+import frc.robot.util.ShotSolver;
 import frc.robot.util.AlignmentCaptureUtil;
 
 
@@ -66,6 +68,7 @@ public class AlignAndShootCommand extends Command {
 
     private final SwerveSubsystem swerve;
     private final ShooterSubsystem shooter;
+    private final HoodSubsystem hood;
     private final FeederSubsystem feeder;
     private final HopperSubsystem hopper;
     private final IntakeSubsystem intake;
@@ -109,18 +112,20 @@ public class AlignAndShootCommand extends Command {
     public AlignAndShootCommand(
             SwerveSubsystem swerve,
             ShooterSubsystem shooter,
+            HoodSubsystem hood,
             FeederSubsystem feeder,
             HopperSubsystem hopper,
             IntakeSubsystem intake,
             boolean continuousFeedUntilInterrupted) {
         this.swerve = swerve;
         this.shooter = shooter;
+        this.hood = hood;
         this.feeder = feeder;
         this.hopper = hopper;
         this.intake = intake;
         this.continuousFeedUntilInterrupted = continuousFeedUntilInterrupted;
 
-        addRequirements(swerve, shooter, feeder, hopper, intake);
+        addRequirements(swerve, shooter, hood, feeder, hopper, intake);
         turnPID.setTolerance(Constants.AlignShoot.YAW_TOLERANCE_DEG);
     }
 
@@ -276,12 +281,14 @@ public class AlignAndShootCommand extends Command {
             return;
         }
 
-        // Pre-spin the shooter as soon as we have a valid target so spin-up
-        // happens in parallel with heading alignment instead of after it.
-        double targetRps = ShooterSubsystem.calculateTargetRPS(distanceM);
-        if (Double.isFinite(targetRps) && targetRps > 0.0) {
-            shooter.setShooterVelocity(targetRps);
-            workTargetRps = targetRps;
+        // Pre-spin the shooter and set hood angle as soon as we have a valid
+        // target so spin-up and hood travel happen in parallel with heading
+        // alignment instead of after it.
+        ShotSolver.Solution preSolution = ShotSolver.solve(distanceM);
+        if (preSolution.feasible()) {
+            shooter.setShooterVelocity(preSolution.motorRps());
+            hood.setAngle(preSolution.angleDeg());
+            workTargetRps = preSolution.motorRps();
         }
 
         if (!isWithinTrackingHeading(aimErrorDeg)) {
@@ -480,9 +487,10 @@ public class AlignAndShootCommand extends Command {
 
     private ShotTracking buildStationaryTracking(double filteredErrorDeg, double distanceM) {
         double aimErrorDeg = filteredErrorDeg;
-        double targetRps = ShooterSubsystem.calculateTargetRPS(distanceM);
-        boolean feasible = Double.isFinite(targetRps) && targetRps > 0.0
-                && isShotDistanceFeasible(distanceM);
+        ShotSolver.Solution solution = ShotSolver.solve(distanceM);
+        boolean feasible = solution.feasible() && isShotDistanceFeasible(distanceM);
+        double targetRps = feasible ? solution.motorRps() : 0.0;
+        double hoodAngleDeg = solution.angleDeg();
 
         boolean holdingAlignment = shouldHoldAlignment(aimErrorDeg);
         double rotCmd = 0.0;
@@ -506,6 +514,7 @@ public class AlignAndShootCommand extends Command {
                 aimErrorDeg,
                 distanceM,
                 targetRps,
+                hoodAngleDeg,
                 new ChassisSpeeds(0.0, 0.0, 0.0),
                 rotCmd,
                 feasible,
@@ -522,6 +531,7 @@ public class AlignAndShootCommand extends Command {
         workFeedGateReady = tracking.feedGateReady();
         workTargetRps = tracking.targetRps();
         shooter.setShooterVelocity(workTargetRps);
+        hood.setAngle(tracking.hoodAngleDeg());
 
         SmartDashboard.putNumber("AlignShoot/EstDistanceM", tracking.distanceM());
     }
@@ -841,6 +851,7 @@ public class AlignAndShootCommand extends Command {
             double aimErrorDeg,
             double distanceM,
             double targetRps,
+            double hoodAngleDeg,
             ChassisSpeeds translationCmd,
             double rotCmdRadPerSec,
             boolean feasible,
