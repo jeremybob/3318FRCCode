@@ -34,12 +34,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.stream.Collectors;
-import java.util.concurrent.atomic.AtomicReference;
-
-import edu.wpi.first.cameraserver.CameraServer;
-import edu.wpi.first.cscore.UsbCamera;
-import edu.wpi.first.cscore.UsbCameraInfo;
-import edu.wpi.first.cscore.VideoSource;
 import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.system.plant.DCMotor;
 import edu.wpi.first.wpilibj.DriverStation;
@@ -63,31 +57,39 @@ import frc.robot.dashboard.ReadyToScoreEvaluator;
 import frc.robot.dashboard.ReadyToScoreResult;
 import frc.robot.dashboard.RobotDashboardService;
 import frc.robot.subsystems.*;
-import frc.robot.vision.CameraDebugInfo;
 import frc.robot.subsystems.swerve.SwerveCorner;
 import frc.robot.subsystems.swerve.SwerveValidationMode;
 import frc.robot.util.DriverDriveUtil;
 import frc.robot.util.DriverHeadingHoldController;
-import frc.robot.vision.RioVisionThread;
-import frc.robot.vision.VisionResult;
-import frc.robot.vision.VisionSupport;
+import edu.wpi.first.math.geometry.Translation2d;
+
+import org.photonvision.PhotonCamera;
+import org.photonvision.PhotonPoseEstimator;
+import org.photonvision.PhotonPoseEstimator.PoseStrategy;
+import org.photonvision.EstimatedRobotPose;
+import org.photonvision.targeting.PhotonPipelineResult;
+import org.photonvision.targeting.PhotonTrackedTarget;
+
+import edu.wpi.first.apriltag.AprilTagFieldLayout;
+import edu.wpi.first.apriltag.AprilTagFields;
+import edu.wpi.first.wpilibj.Filesystem;
 
 public class RobotContainer implements RobotRuntimeContainer {
 
     // =========================================================================
-    // VISION — background thread running AprilTag detection on USB camera
-    // Publishes VisionResult via AtomicReference (thread-safe, lock-free).
-    // See docs/RIO_CAMERA_FALLBACK_PLAN.md for architecture details.
+    // VISION — Arducam OV9281 on Raspberry Pi 4, processed by PhotonVision.
+    // Tag sightings correct the robot's pose estimate. Alignment to the HUB
+    // is calculated from the corrected pose, not from raw tag yaw.
     // =========================================================================
-    private final AtomicReference<VisionResult> visionResult = new AtomicReference<>();
-    private final AtomicReference<Double> lastVisionFrameTimestampSec = new AtomicReference<>(Double.NaN);
-    private final AtomicReference<CameraDebugInfo> cameraDebugInfo =
-            new AtomicReference<>(CameraDebugInfo.defaultState());
+    private PhotonCamera photonCamera;
+    private PhotonPoseEstimator photonPoseEstimator;
+    private int lastVisionTagId = -1;
+    private int lastVisionTagCount = 0;
 
     // =========================================================================
     // SUBSYSTEMS — created once here, shared with commands
     // =========================================================================
-    private final SwerveSubsystem  swerve  = new SwerveSubsystem(lastVisionFrameTimestampSec);
+    private final SwerveSubsystem  swerve  = new SwerveSubsystem();
     private final IntakeSubsystem  intake  = new IntakeSubsystem();
     private final HopperSubsystem  hopper  = new HopperSubsystem();
     private final FeederSubsystem  feeder  = new FeederSubsystem();
@@ -150,14 +152,20 @@ public class RobotContainer implements RobotRuntimeContainer {
         configureBindings();
         configureCommandEventLogging();
 
-        // Start the background vision thread (USB camera AprilTag detection).
+        // Connect to PhotonVision on the Raspberry Pi 4 via NetworkTables.
+        // Tag detections are used to correct the robot's pose estimate.
         if (Constants.Vision.ENABLE_VISION) {
-            UsbCamera visionCamera = startVisionCamera();
-            if (visionCamera != null) {
-                new RioVisionThread(visionCamera, visionResult, lastVisionFrameTimestampSec, cameraDebugInfo).start();
-            } else {
-                System.err.println("[RobotContainer] Vision camera failed to open. "
-                        + "Vision-based shooting is UNAVAILABLE this match.");
+            photonCamera = new PhotonCamera(Constants.Vision.PHOTON_CAMERA_NAME);
+            try {
+                AprilTagFieldLayout fieldLayout = AprilTagFieldLayout.loadField(AprilTagFields.kDefaultField);
+                photonPoseEstimator = new PhotonPoseEstimator(
+                        fieldLayout,
+                        PoseStrategy.MULTI_TAG_PNP_ON_COPROCESSOR,
+                        Constants.Vision.ROBOT_TO_CAMERA);
+                photonPoseEstimator.setMultiTagFallbackStrategy(PoseStrategy.LOWEST_AMBIGUITY);
+            } catch (Exception ex) {
+                System.err.println("[Vision] Failed to load field layout: " + ex.getMessage());
+                System.err.println("[Vision] Pose estimation DISABLED — alignment will use odometry only.");
             }
         }
 
@@ -224,25 +232,39 @@ public class RobotContainer implements RobotRuntimeContainer {
         });
     }
 
-    private UsbCamera startVisionCamera() {
-        try {
-            UsbCamera camera = CameraServer.startAutomaticCapture(Constants.Vision.CAMERA_DEVICE_ID);
-            camera.setConnectionStrategy(VideoSource.ConnectionStrategy.kKeepOpen);
-            camera.setResolution(Constants.Vision.CAMERA_WIDTH, Constants.Vision.CAMERA_HEIGHT);
-            camera.setFPS(Constants.Vision.CAMERA_FPS);
-            CameraDebugInfo nextDebug = cameraDebugInfo.get().withStatus("CAPTURE_OPEN");
-            UsbCameraInfo info = camera.getInfo();
-            if (info != null) {
-                nextDebug = nextDebug.withActiveCamera(info.dev, info.name, info.path);
-            }
-            cameraDebugInfo.set(nextDebug);
-            return camera;
-        } catch (Exception ex) {
-            cameraDebugInfo.set(cameraDebugInfo.get().withError("CAPTURE_OPEN_FAILED", ex.getMessage()));
-            System.err.println("[RobotContainer] Failed to open USB camera: " + ex.getMessage());
-            ex.printStackTrace();
-            return null;
+    /**
+     * Polls PhotonVision for the latest result and feeds any pose estimate
+     * into the swerve drive pose estimator to correct odometry drift.
+     */
+    private void updateVision() {
+        if (photonCamera == null || photonPoseEstimator == null) return;
+
+        PhotonPipelineResult result = photonCamera.getLatestResult();
+
+        // Track which tags are visible for telemetry
+        if (result.hasTargets()) {
+            lastVisionTagId = result.getBestTarget().getFiducialId();
+            lastVisionTagCount = result.getTargets().size();
         }
+
+        // Use PhotonPoseEstimator to compute robot field pose from tag sightings
+        photonPoseEstimator.setReferencePose(swerve.getPose());
+        var poseResult = photonPoseEstimator.update(result);
+        if (poseResult.isPresent()) {
+            EstimatedRobotPose estimated = poseResult.get();
+            swerve.addVisionMeasurement(
+                    estimated.estimatedPose.toPose2d(),
+                    estimated.timestampSeconds);
+        }
+    }
+
+    /** Returns the alliance HUB center on the field. */
+    static Translation2d getAllianceHubCenter() {
+        var alliance = DriverStation.getAlliance();
+        if (alliance.isPresent() && alliance.get() == DriverStation.Alliance.Red) {
+            return Constants.Vision.RED_HUB_CENTER;
+        }
+        return Constants.Vision.BLUE_HUB_CENTER;
     }
 
     private void configureCommandEventLogging() {
@@ -774,6 +796,9 @@ public class RobotContainer implements RobotRuntimeContainer {
     }
 
     public void periodicDashboard() {
+        if (Constants.Vision.ENABLE_VISION) {
+            updateVision();
+        }
         dashboardService.periodic(buildDashboardSnapshot());
     }
 
@@ -801,30 +826,11 @@ public class RobotContainer implements RobotRuntimeContainer {
                         Constants.AlignShoot.YAW_TOLERANCE_DEG,
                         AlignAndShootCommand.telemetryFeedGateReady()));
 
-        VisionResult latestVision = visionResult.get();
-        CameraDebugInfo latestCameraDebug = cameraDebugInfo.get();
-        boolean visionHasTarget = VisionSupport.isResultFresh(
-                latestVision,
-                nowSec,
-                Constants.Vision.TARGET_LOSS_TOLERANCE_SEC);
-        int visionTagId = latestVision != null ? latestVision.tagId() : -1;
-        double visionYawDeg = latestVision != null ? latestVision.yawDeg() : Double.NaN;
-        double visionPitchDeg = latestVision != null ? latestVision.pitchDeg() : Double.NaN;
-        double visionBestTagYawDeg = latestVision != null ? latestVision.bestTagYawDeg() : Double.NaN;
-        double visionBestTagPitchDeg = latestVision != null ? latestVision.bestTagPitchDeg() : Double.NaN;
-        double visionDistanceM = latestVision != null
-                ? latestVision.estimateDistanceM(
-                        Constants.Vision.TAG_HEIGHT_M,
-                        Constants.Vision.FOCAL_LENGTH_PIXELS)
-                : Double.NaN;
-        if (Double.isFinite(visionDistanceM)) {
-            visionDistanceM = VisionSupport.calibrateDistanceM(visionDistanceM);
-        }
-        double visionTagPixelHeightPx = latestVision != null ? latestVision.tagPixelHeight() : Double.NaN;
-        int visionHubTagCount = latestVision != null ? latestVision.hubTagCount() : 0;
-        int visionHubFaceCount = latestVision != null ? latestVision.hubFaceCount() : 0;
-        double visionHubSpanPx = latestVision != null ? latestVision.hubSpanPx() : Double.NaN;
-        double visionTargetTimestampSec = latestVision != null ? latestVision.timestampSec() : Double.NaN;
+        boolean photonConnected = photonCamera != null && photonCamera.isConnected();
+        boolean visionActive = swerve.isVisionActive();
+        Translation2d hubCenter = getAllianceHubCenter();
+        double visionHeadingErrorDeg = swerve.getHeadingErrorDegTo(hubCenter);
+        double visionDistanceM = swerve.getDistanceTo(hubCenter);
 
         double batteryVoltage = RobotController.getBatteryVoltage();
         var canStatus = RobotController.getCANStatus();
@@ -875,17 +881,10 @@ public class RobotContainer implements RobotRuntimeContainer {
                 AlignAndShootCommand.telemetryHasTarget(),
                 AlignAndShootCommand.telemetryGeometryFeasible(),
                 AlignAndShootCommand.telemetryHasShootableTarget(),
-                AlignAndShootCommand.getTelemetryYawDeg(),
+                AlignAndShootCommand.getTelemetryHeadingErrorDeg(),
                 AlignAndShootCommand.getTelemetryAimErrorDeg(),
-                AlignAndShootCommand.getTelemetryLeadYawDeg(),
-                AlignAndShootCommand.getTelemetryPitchDeg(),
+                AlignAndShootCommand.getTelemetryDistanceM(),
                 AlignAndShootCommand.getTelemetryTargetRps(),
-                AlignAndShootCommand.getTelemetryRadialVelocityMps(),
-                AlignAndShootCommand.getTelemetryLateralVelocityMps(),
-                AlignAndShootCommand.getTelemetryCommandedXVelocityMps(),
-                AlignAndShootCommand.getTelemetryCommandedYVelocityMps(),
-                AlignAndShootCommand.getTelemetryActiveTranslationCapMps(),
-                AlignAndShootCommand.getTelemetryTimeOfFlightSec(),
                 AlignAndShootCommand.telemetryFeedGateReady(),
                 AlignAndShootCommand.getTelemetryLastAbortReason(),
                 ready.ready(),
@@ -909,28 +908,17 @@ public class RobotContainer implements RobotRuntimeContainer {
                 // Match info
                 DriverStation.getMatchNumber(),
                 DriverStation.getEventName(),
-                // Camera
-                swerve.isCameraConnected(),
-                latestCameraDebug.status(),
-                latestCameraDebug.activeDeviceId(),
-                latestCameraDebug.activeCameraName(),
-                latestCameraDebug.activeCameraPath(),
-                latestCameraDebug.enumeratedCameras(),
-                latestCameraDebug.lastError(),
-                latestCameraDebug.frameCount(),
-                latestCameraDebug.lastFrameTimestampSec(),
-                visionTagId,
-                visionHasTarget,
-                visionYawDeg,
-                visionPitchDeg,
-                visionBestTagYawDeg,
-                visionBestTagPitchDeg,
+                // Camera (PhotonVision on Pi 4)
+                photonConnected,
+                photonConnected ? "PHOTON_CONNECTED" : "PHOTON_DISCONNECTED",
+                Constants.Vision.PHOTON_CAMERA_NAME,
+                // Vision pose estimation
+                lastVisionTagId,
+                visionActive,
+                visionHeadingErrorDeg,
                 visionDistanceM,
-                visionTagPixelHeightPx,
-                visionHubTagCount,
-                visionHubFaceCount,
-                visionHubSpanPx,
-                visionTargetTimestampSec,
+                lastVisionTagCount,
+                nowSec,
                 // CAN health
                 canStatus.percentBusUtilization,
                 canStatus.receiveErrorCount,
@@ -978,7 +966,6 @@ public class RobotContainer implements RobotRuntimeContainer {
                 feeder,
                 hopper,
                 intake,
-                visionResult,
                 continuousFeedUntilInterrupted)
                 .withName("AlignAndShoot");
     }
@@ -987,7 +974,7 @@ public class RobotContainer implements RobotRuntimeContainer {
         if (!Constants.Vision.ENABLE_VISION) {
             return Commands.print("[RobotContainer] AlignOnly unavailable: vision is disabled in Constants.");
         }
-        return new AlignOnlyCommand(swerve, visionResult)
+        return new AlignOnlyCommand(swerve)
                 .withName("AlignOnly");
     }
 
@@ -1152,23 +1139,14 @@ public class RobotContainer implements RobotRuntimeContainer {
     }
 
     private double getAlignAndShootTargetRps() {
-        VisionResult latestVision = visionResult.get();
-        if (latestVision == null) {
-            return Constants.Shooter.TARGET_RPS;
-        }
-
-        double distanceM = latestVision.estimateDistanceM(
-                Constants.Vision.TAG_HEIGHT_M,
-                Constants.Vision.FOCAL_LENGTH_PIXELS);
+        Translation2d hubCenter = getAllianceHubCenter();
+        double distanceM = swerve.getDistanceTo(hubCenter);
         if (!Double.isFinite(distanceM) || distanceM <= 0.0) {
             return Constants.Shooter.TARGET_RPS;
         }
 
-        double calibratedDistanceM = VisionSupport.calibrateDistanceM(distanceM);
-        ShooterSubsystem.ShotSolution stationarySolution =
-                ShooterSubsystem.calculateMovingShotSolution(calibratedDistanceM, 0.0, 0.0);
-        double targetRps = stationarySolution.targetRps();
-        if (!stationarySolution.feasible() || !Double.isFinite(targetRps) || targetRps <= 0.0) {
+        double targetRps = ShooterSubsystem.calculateTargetRPS(distanceM);
+        if (!Double.isFinite(targetRps) || targetRps <= 0.0) {
             return Constants.Shooter.TARGET_RPS;
         }
         return targetRps;

@@ -299,11 +299,10 @@ public final class EventReplayPanel extends JPanel {
         readyLabel.setForeground(row.readyToScore() ? OK : BAD);
         alignLabel.setText("Align: " + row.alignState()
                 + " aim=" + ONE_D.format(row.alignAimErrorDeg())
-                + " raw=" + ONE_D.format(row.alignYawDeg())
-                + " lead=" + ONE_D.format(row.alignLeadYawDeg())
+                + " hdgErr=" + ONE_D.format(row.alignHeadingErrorDeg())
+                + " dist=" + ONE_D.format(row.alignDistanceM())
                 + " gate=" + (row.alignFeedGateReady() ? "YES" : "NO")
-                + " rps=" + ONE_D.format(row.alignTargetRps())
-                + " pitch=" + ONE_D.format(row.alignPitchDeg()));
+                + " rps=" + ONE_D.format(row.alignTargetRps()));
         poseLabel.setText("Pose: (" + ONE_D.format(row.poseXm()) + ", "
                 + ONE_D.format(row.poseYm()) + ") hdg " + ONE_D.format(row.headingDeg()));
         canLabel.setText("CAN: " + ONE_D.format(row.canBusUtilization() * 100.0) + "% util"

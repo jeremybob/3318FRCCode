@@ -11,7 +11,10 @@
 // ============================================================================
 package frc.robot;
 
+import edu.wpi.first.math.geometry.Rotation3d;
+import edu.wpi.first.math.geometry.Transform3d;
 import edu.wpi.first.math.geometry.Translation2d;
+import edu.wpi.first.math.geometry.Translation3d;
 import edu.wpi.first.math.util.Units;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -489,104 +492,46 @@ public final class Constants {
     }
 
     // =========================================================================
-    // VISION CONSTANTS — USB camera (Logitech C920 HD Pro) on roboRIO 2
+    // VISION CONSTANTS — Arducam OV9281 USB on Raspberry Pi 4 + PhotonVision
     //
-    // Fallback strategy: AprilTag detect-only in a background thread.
-    // No coprocessor required. See docs/RIO_CAMERA_FALLBACK_PLAN.md.
+    // PhotonVision runs on the Pi coprocessor and handles all AprilTag
+    // detection and pose estimation. Robot code reads results via PhotonLib.
+    // Tags are used to correct the robot's pose estimate. Alignment to the
+    // HUB is calculated from the corrected pose, not from raw tag yaw.
     // =========================================================================
     public static final class Vision {
         // Set false for electrical bring-up when no camera is present.
         public static final boolean ENABLE_VISION = true;
 
-        // ---- USB camera settings (Logitech C920 / C920 HD Pro) ----
-        public static final int CAMERA_DEVICE_ID = 0;     // /dev/video0
-        // 640x480 gives the AprilTag detector far more pixels to work with than
-        // 320x240. We trade some frame rate to extend useful tag range.
-        public static final int CAMERA_WIDTH     = 640;
-        public static final int CAMERA_HEIGHT    = 480;
-        public static final int CAMERA_FPS       = 10;
-        public static final int CAMERA_RAW_STREAM_PORT = 1181;
-        public static final int CAMERA_OVERLAY_STREAM_PORT = 1182;
+        // ---- PhotonVision camera name (configured in PhotonVision UI) ----
+        public static final String PHOTON_CAMERA_NAME = "OV9281";
 
-        // ---- C920 camera intrinsics (640x480, 4:3 crop) ----
-        // Horizontal FOV derived from C920 native 16:9 FOV (70.42°) adjusted
-        // for 4:3 crop: sensor crops 1920→1440 wide, so
-        // HFOV = 2 * atan((1440/1920) * tan(70.42°/2)) ≈ 55.8°.
-        public static final double HORIZONTAL_FOV_DEG = 55.8;
-        public static final double VERTICAL_FOV_DEG   = 43.3;   // TUNE ME
-        // Focal length in pixels — calibrate once per camera:
-        //   Place robot at known distance d from a tag, measure tag pixel height px,
-        //   then f = px * d / TAG_HEIGHT_M
-        public static final double FOCAL_LENGTH_PIXELS = 600.0;  // CALIBRATE ME
-        // Range calibration model applied after pinhole distance estimation:
-        //   calibrated = raw * DISTANCE_CALIBRATION_SCALE + DISTANCE_CALIBRATION_OFFSET_M
-        // Fit from on-field samples (actual, calc) captured on 2026-03-14:
-        // (3.00,3.10), (2.60,2.67), (2.40,2.39), (2.00,1.98), (1.80,1.76), (1.50,1.32)
-        // Least-squares affine fit: actual ~= 0.8552 * calc + 0.3324 (RMSE ~0.028 m).
-        public static final double DISTANCE_CALIBRATION_SCALE = 0.8552; // TUNE ME
-        public static final double DISTANCE_CALIBRATION_OFFSET_M = 0.3324; // TUNE ME
+        // ---- Camera mount → robot-to-camera transform ----
+        // Same mount location as the previous Logitech camera.
+        // Robot frame: +X forward, +Y left, +Z up.
+        // Camera: 16.5 in high, 9 in to the RIGHT, pitched up 10.5 deg.
+        public static final Transform3d ROBOT_TO_CAMERA = new Transform3d(
+                new Translation3d(
+                        0.0,                          // forward offset (approx centered)
+                        -Units.inchesToMeters(9.0),   // lateral: 9 in right = negative Y
+                        Units.inchesToMeters(16.5)),  // height
+                new Rotation3d(0, Math.toRadians(-10.5), 0)); // pitched up
 
-        // AprilTag detector tuning. WPILib's defaults are tuned for speed, not
-        // long-range detection on a low-res stream. These values keep more detail.
-        public static final int APRILTAG_NUM_THREADS = 2;
-        public static final float APRILTAG_QUAD_DECIMATE = 1.0f;
-        public static final float APRILTAG_QUAD_SIGMA = 0.0f;
-        public static final double APRILTAG_DECODE_SHARPENING = 0.25;
-        public static final int APRILTAG_MIN_CLUSTER_PIXELS = 60;
-        public static final int APRILTAG_MAX_NUM_MAXIMA = 10;
-        public static final double APRILTAG_CRITICAL_ANGLE_RAD = Math.PI / 4.0;
-        public static final float APRILTAG_MAX_LINE_FIT_MSE = 10.0f;
-        public static final int APRILTAG_MIN_WHITE_BLACK_DIFF = 5;
-        public static final boolean APRILTAG_DEGLITCH = false;
+        // ---- HUB center field coordinates (meters, blue-origin) ----
+        // These are the scoring target centers. TUNE ME — measure on your field.
+        public static final Translation2d RED_HUB_CENTER  = new Translation2d(11.92, 4.03);
+        public static final Translation2d BLUE_HUB_CENTER = new Translation2d(4.63, 4.03);
 
-        // Standard FRC AprilTag size (6.5 inches outer, 36h11 family)
-        public static final double TAG_HEIGHT_M = 0.1651;
-        // When only one HUB tag is visible, bias the aim point away from the
-        // single tag center toward the likely HUB center (toward image center).
-        // Units: pixels of center shift per pixel of detected tag height.
-        public static final double SINGLE_TAG_CENTER_BIAS_PX_PER_TAG_HEIGHT = 0.60; // TUNE ME
+        // ---- Shot distance feasibility ----
+        // Robot must be within this range for a valid shot solution.
+        public static final double MIN_SHOT_DISTANCE_M = 1.0;  // TUNE ME
+        public static final double MAX_SHOT_DISTANCE_M = 6.0;  // TUNE ME
 
-        // Alignment is "good enough" once yaw error is within this many degrees.
-        // Wider than PhotonVision because pixel-based yaw is noisier.
-        public static final double YAW_TOLERANCE_DEG = 3.5;
-        // After entering the alignment window, allow a slightly wider band
-        // before resuming turn corrections so camera jitter does not cause
-        // left-right hunting around center.
-        public static final double YAW_BREAK_TOLERANCE_DEG = 5.0; // TUNE ME
-        // Tolerate brief vision dropouts instead of immediately canceling a shot.
-        // Slightly longer to reduce false "target lost" transitions on noisy frames.
-        public static final double TARGET_LOSS_TOLERANCE_SEC = 0.75; // TUNE ME
-        // Camera health should track frame heartbeat, not whether a tag is visible.
-        public static final double CAMERA_HEARTBEAT_TIMEOUT_SEC = 2.0;
-        // Feasible vertical angle band for a valid shot solution from the camera.
-        public static final double MIN_SHOT_PITCH_DEG = -20.0; // TUNE ME
-        // Verify this band on-robot after camera pitch is finalized.
-        public static final double MAX_SHOT_PITCH_DEG =  22.0; // TUNE ME
-
-        // Filter raw camera yaw before feeding it into the turn controller.
-        // 0 = no filtering, closer to 1 = heavier smoothing.
-        public static final double YAW_FILTER_ALPHA = 0.50; // TUNE ME
-        // P-only turn control works better on this low-rate vision signal than a
-        // noisy derivative term. Keep authority high, then smooth the input.
-        public static final double TURN_kP     = 0.14;   // TUNE ME
-        public static final double TURN_kD     = 0.0;    // TUNE ME
-        public static final double MAX_ROT_CMD = 0.75;   // rad/s cap during alignment
-
-        // ---- Camera mount position ----
-        // Used for pitch-based distance estimation.
-        // Robot frame convention is +X forward, +Y left, +Z up.
-        // Measured mount: 16.5 in high and 9 in to the RIGHT of robot center
-        // when facing forward. Robot frame uses +Y to the LEFT, so this is negative.
-        // Used to compensate yaw aim so shooter center, not camera center, is aimed.
-        public static final double CAMERA_UP_M       = Units.inchesToMeters(16.5);
-        public static final double CAMERA_LATERAL_OFFSET_M = -Units.inchesToMeters(9.0);
-        public static final double CAMERA_PITCH_RAD  = Math.toRadians(10.5); // tilted up, approximate
+        // Vision pose freshness — how long to trust the pose after last tag sighting.
+        public static final double VISION_STALE_SEC = 1.5;
 
         // ---- Alliance-specific HUB tag IDs for targeting ----
-        // AlignAndShootCommand should ONLY aim at your alliance's HUB tags.
-        // These are the z=1.124m (44.25in) tags mounted on each alliance's HUB.
         // Each HUB has 4 faces with 2 tags per face = 8 tags per HUB.
-        // Red HUB center ≈ (11.92, 4.03), Blue HUB center ≈ (4.63, 4.03).
         public static final int[] RED_HUB_TAG_IDS  = {2, 3, 4, 5, 8, 9, 10, 11};
         public static final int[] BLUE_HUB_TAG_IDS = {18, 19, 20, 21, 24, 25, 26, 27};
     }

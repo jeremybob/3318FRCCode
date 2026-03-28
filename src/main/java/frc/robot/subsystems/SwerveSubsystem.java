@@ -8,14 +8,13 @@
 //     3. Provide pose/speed information so PathPlanner can run autonomous paths
 //     4. Support field-oriented driving (joystick "up" always = away from driver)
 //
-// VISION FALLBACK:
-//   With the USB camera fallback strategy, pose estimation relies on wheel
-//   encoders + Pigeon 2 gyro only (no vision pose correction).  The background
-//   RioVisionThread provides yaw/distance to AlignAndShootCommand directly.
+// VISION:
+//   Arducam OV9281 on Raspberry Pi 4 with PhotonVision. Pose estimation
+//   uses wheel encoders + Pigeon 2 gyro. PhotonVision provides tag yaw/
+//   distance to AlignAndShootCommand via RobotContainer polling.
 // ============================================================================
 package frc.robot.subsystems;
 
-import java.util.concurrent.atomic.AtomicReference;
 
 import com.ctre.phoenix6.CANBus;
 import com.ctre.phoenix6.StatusCode;
@@ -24,6 +23,7 @@ import com.ctre.phoenix6.hardware.Pigeon2;
 import edu.wpi.first.math.estimator.SwerveDrivePoseEstimator;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Rotation2d;
+import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
 import edu.wpi.first.math.kinematics.SwerveDriveKinematics;
 import edu.wpi.first.math.kinematics.SwerveModulePosition;
@@ -38,7 +38,6 @@ import frc.robot.subsystems.swerve.SwerveCalibrationUtil;
 import frc.robot.subsystems.swerve.SwerveCorner;
 import frc.robot.subsystems.swerve.SwerveModule;
 import frc.robot.subsystems.swerve.SwerveValidationMode;
-import frc.robot.vision.VisionSupport;
 
 public class SwerveSubsystem extends SubsystemBase {
     private static final int CTRE_CONFIG_RETRIES = 5;
@@ -109,8 +108,8 @@ public class SwerveSubsystem extends SubsystemBase {
     // No vision pose correction in USB camera fallback mode.
     private final SwerveDrivePoseEstimator poseEstimator;
 
-    // ---- Vision thread heartbeat (for camera connectivity check) ----
-    private final AtomicReference<Double> lastVisionFrameTimestampSec;
+    // ---- Vision pose tracking ----
+    private double lastVisionUpdateSec = Double.NaN;
 
     // ---- Field visualization (appears in Shuffleboard / SmartDashboard) ----
     private final Field2d field = new Field2d();
@@ -144,13 +143,8 @@ public class SwerveSubsystem extends SubsystemBase {
 
     // --------------------------------------------------------------------------
     // Constructor
-    //
-    // Parameters:
-    //   visionResult - shared AtomicReference from RioVisionThread
     // --------------------------------------------------------------------------
-    public SwerveSubsystem(
-            AtomicReference<Double> lastVisionFrameTimestampSec) {
-        this.lastVisionFrameTimestampSec = lastVisionFrameTimestampSec;
+    public SwerveSubsystem() {
 
         // Zero the gyro so "forward" is whatever direction the robot is facing
         // at power-on. If you want the robot to know field orientation from the
@@ -467,17 +461,44 @@ public class SwerveSubsystem extends SubsystemBase {
     }
 
     /**
-     * Returns whether the vision thread is still receiving camera frames.
-     * This tracks frame heartbeat, not whether a tag is currently visible.
+     * Adds a vision-derived pose measurement to the pose estimator.
+     * Called by RobotContainer when PhotonPoseEstimator produces a result.
      */
+    public void addVisionMeasurement(Pose2d visionPose, double timestampSec) {
+        poseEstimator.addVisionMeasurement(visionPose, timestampSec);
+        lastVisionUpdateSec = Timer.getFPGATimestamp();
+    }
+
+    /** Returns true if we've had a vision pose update recently. */
+    public boolean isVisionActive() {
+        if (!Double.isFinite(lastVisionUpdateSec)) return false;
+        return (Timer.getFPGATimestamp() - lastVisionUpdateSec) < Constants.Vision.VISION_STALE_SEC;
+    }
+
+    /** Returns the horizontal distance from the robot to a field point. */
+    public double getDistanceTo(Translation2d fieldPoint) {
+        return getPose().getTranslation().getDistance(fieldPoint);
+    }
+
+    /**
+     * Returns the heading error in degrees to face a field point.
+     * Positive = need to turn CCW (left). Normalized to [-180, 180].
+     */
+    public double getHeadingErrorDegTo(Translation2d fieldPoint) {
+        Pose2d pose = getPose();
+        double dx = fieldPoint.getX() - pose.getX();
+        double dy = fieldPoint.getY() - pose.getY();
+        double desiredRad = Math.atan2(dy, dx);
+        double currentRad = pose.getRotation().getRadians();
+        double errorRad = desiredRad - currentRad;
+        // Normalize to [-pi, pi]
+        errorRad = Math.atan2(Math.sin(errorRad), Math.cos(errorRad));
+        return Math.toDegrees(errorRad);
+    }
+
+    /** Dashboard compatibility — returns true if vision pose is recent. */
     public boolean isCameraConnected() {
-        if (!Constants.Vision.ENABLE_VISION) {
-            return false;
-        }
-        return VisionSupport.isCameraConnected(
-                Timer.getFPGATimestamp(),
-                lastVisionFrameTimestampSec.get(),
-                Constants.Vision.CAMERA_HEARTBEAT_TIMEOUT_SEC);
+        return isVisionActive();
     }
 
     private SwerveModulePosition[] getModulePositions() {
