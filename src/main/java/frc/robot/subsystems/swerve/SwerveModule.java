@@ -141,10 +141,10 @@ public class SwerveModule {
         this.name = moduleName;
         this.cancoderOffsetRot = cancoderOffsetRot;
 
-        // Create the hardware objects — swerve devices live on the CANivore bus
-        driveMotor = new TalonFX(driveId, new CANBus(Constants.CAN.CANIVORE_BUS));
-        steerMotor = new TalonFX(steerId, new CANBus(Constants.CAN.CANIVORE_BUS));
-        cancoder   = new CANcoder(cancoderId, new CANBus(Constants.CAN.CANIVORE_BUS));
+        // Create the hardware objects — swerve devices live on the roboRIO CAN bus
+        driveMotor = new TalonFX(driveId, new CANBus(Constants.CAN.RIO_CAN_BUS));
+        steerMotor = new TalonFX(steerId, new CANBus(Constants.CAN.RIO_CAN_BUS));
+        cancoder   = new CANcoder(cancoderId, new CANBus(Constants.CAN.RIO_CAN_BUS));
 
         // ---- Configure the CANcoder ----------------------------------------
         CANcoderConfiguration ccfg = new CANcoderConfiguration();
