@@ -3,9 +3,10 @@
 //
 // PURPOSE: Controls the intake mechanism.
 //   Hardware:
-//     - TILT motor: REV SparkMax + NEO (rotates intake arm up/down)
-//     - ROLLER motor: TalonFX / Kraken X60 (spins rubber wheels to grab game pieces)
-//     - Limit switch: digital sensor that detects when arm is fully "home" (up)
+//     - SLIDE motor: REV SparkMax + NEO (rack and pinion linear slide)
+//     - ROLLER motors: 2x TalonFX / Kraken X60 (leader + follower, opposite
+//       directions) — spin rubber wheels to grab game pieces
+//     - Hall effect sensor: detects when slide is fully retracted (home)
 //
 // NO BURN FLASH POLICY:
 //   This code does NOT call burnFlash() or restoreFactoryDefaults().
@@ -14,9 +15,9 @@
 //   runtime safety parameters (current limit, brake mode, PID gains).
 //
 // HOMING:
-//   The intake arm needs to find its home position at startup because the
+//   The linear slide needs to find its home position at startup because the
 //   relative encoder loses track when the robot is powered off.
-//   Run IntakeHomeCommand before using setTiltPosition().
+//   Run IntakeHomeCommand before using setSlidePosition().
 // ============================================================================
 package frc.robot.subsystems;
 
@@ -24,6 +25,7 @@ import com.ctre.phoenix6.CANBus;
 import com.ctre.phoenix6.StatusCode;
 import com.ctre.phoenix6.StatusSignal;
 import com.ctre.phoenix6.configs.TalonFXConfiguration;
+import com.ctre.phoenix6.controls.Follower;
 import com.ctre.phoenix6.hardware.TalonFX;
 import com.ctre.phoenix6.signals.InvertedValue;
 import com.ctre.phoenix6.signals.NeutralModeValue;
@@ -48,31 +50,33 @@ import frc.robot.Constants;
 public class IntakeSubsystem extends SubsystemBase {
     private static final int CTRE_CONFIG_RETRIES = 5;
 
-    // ---- Tilt motor (SparkMax + NEO) ----
-    private final SparkMax      tiltMotor   = new SparkMax(Constants.CAN.INTAKE_TILT_NEO, MotorType.kBrushless);
-    private final RelativeEncoder  tiltEncoder = tiltMotor.getEncoder();
-    private final SparkClosedLoopController tiltPID   = tiltMotor.getClosedLoopController();
+    // ---- Slide motor (SparkMax + NEO, rack and pinion) ----
+    private final SparkMax      slideMotor   = new SparkMax(Constants.CAN.INTAKE_SLIDE_NEO, MotorType.kBrushless);
+    private final RelativeEncoder  slideEncoder = slideMotor.getEncoder();
+    private final SparkClosedLoopController slidePID   = slideMotor.getClosedLoopController();
 
-    // ---- Limit switch (detects home position) ----
-    // DigitalInput.get() returns true when switch is OPEN (not pressed)
-    //                             false when switch is CLOSED (pressed)
-    // We negate it in getLimitSwitchPressed() so "true" = pressed.
-    private final DigitalInput homeLimitSwitch = new DigitalInput(Constants.DIO.INTAKE_HOME_SWITCH);
-    private final Debouncer homeLimitSwitchDebouncer =
+    // ---- Hall effect sensor (detects home / fully retracted position) ----
+    // DigitalInput.get() returns true when sensor is OPEN (not triggered)
+    //                             false when sensor is CLOSED (triggered)
+    // We negate it in getLimitSwitchPressed() so "true" = triggered.
+    private final DigitalInput homeSensor = new DigitalInput(Constants.DIO.INTAKE_HOME_SWITCH);
+    private final Debouncer homeSensorDebouncer =
             new Debouncer(Constants.Intake.HOME_SWITCH_DEBOUNCE_SEC, Debouncer.DebounceType.kBoth);
 
-    // ---- Roller motor (TalonFX / Kraken X60) ----
-    private final TalonFX rollerMotor =
-            new TalonFX(Constants.CAN.INTAKE_ROLLER, new CANBus(Constants.CAN.RIO_CAN_BUS));
+    // ---- Roller motors (2x TalonFX / Kraken X60, leader + follower) ----
+    private final TalonFX rollerLeader =
+            new TalonFX(Constants.CAN.INTAKE_ROLLER_LEADER, new CANBus(Constants.CAN.RIO_CAN_BUS));
+    private final TalonFX rollerFollower =
+            new TalonFX(Constants.CAN.INTAKE_ROLLER_FOLLOWER, new CANBus(Constants.CAN.RIO_CAN_BUS));
     @SuppressWarnings("rawtypes")
-    private final StatusSignal rollerStatorCurrent = rollerMotor.getStatorCurrent();
+    private final StatusSignal rollerStatorCurrent = rollerLeader.getStatorCurrent();
 
     // ---- State tracking ----
-    // isHomed is false at startup until IntakeHomeCommand confirms the arm
-    // has touched the limit switch. We refuse position commands until homed.
+    // isHomed is false at startup until IntakeHomeCommand confirms the slide
+    // has reached the Hall effect sensor. We refuse position commands until homed.
     private boolean isHomed = false;
-    private boolean homeLimitSwitchRawPressed = false;
-    private boolean homeLimitSwitchPressed = false;
+    private boolean homeSensorRawPressed = false;
+    private boolean homeSensorPressed = false;
     private boolean minSoftLimitLatched = false;
     private boolean maxSoftLimitLatched = false;
     private double cachedRollerCurrentAmps = 0.0;
@@ -82,43 +86,43 @@ public class IntakeSubsystem extends SubsystemBase {
     // Constructor
     // --------------------------------------------------------------------------
     public IntakeSubsystem() {
-        // ---- Tilt motor (SparkMax) runtime configuration ----
+        // ---- Slide motor (SparkMax) runtime configuration ----
         // NOTE: We do NOT call restoreFactoryDefaults() or burnFlash().
         // The permanent settings (position conversion factor, etc.) must be
         // configured once in the REV Hardware Client, then they persist.
 
-        SparkMaxConfig tiltConfig = new SparkMaxConfig();
+        SparkMaxConfig slideConfig = new SparkMaxConfig();
 
         // Current limit protects the NEO and gearbox during homing stalls
-        tiltConfig.smartCurrentLimit(Constants.Intake.TILT_CURRENT_LIMIT_A);
+        slideConfig.smartCurrentLimit(Constants.Intake.SLIDE_CURRENT_LIMIT_A);
 
-        // Brake mode: arm holds its position when power is removed
-        tiltConfig.idleMode(IdleMode.kBrake);
+        // Brake mode: slide holds its position when power is removed
+        slideConfig.idleMode(IdleMode.kBrake);
 
         // Position conversion: sets what unit the encoder reports.
-        // If gearbox = 96:1, one motor revolution = 1/96 arm revolution = 3.75°
-        // So position in "degrees" = motor_rotations × (360 / gear_ratio)
+        // NEO → 2:1 reduction → 2.5" diameter pinion gear on rack.
+        // One motor revolution = (π × 2.5) / 2.0 ≈ 3.927 inches of travel.
         // IMPORTANT: This MUST also be set in REV Hardware Client via burnFlash!
         //            We set it here as a safety net at runtime.
-        tiltConfig.encoder.positionConversionFactor(Constants.Intake.TILT_POS_CONV_DEG);
-        // Velocity unit in deg/sec so MAXMotion can be tuned in arm units.
-        tiltConfig.encoder.velocityConversionFactor(Constants.Intake.TILT_POS_CONV_DEG / 60.0);
+        slideConfig.encoder.positionConversionFactor(Constants.Intake.SLIDE_POS_CONV_IN);
+        // Velocity unit in inches/sec so MAXMotion can be tuned in slide units.
+        slideConfig.encoder.velocityConversionFactor(Constants.Intake.SLIDE_POS_CONV_IN / 60.0);
 
-        // Tilt position PID (built into SparkMax)
-        tiltConfig.closedLoop.p(Constants.Intake.TILT_kP);
-        tiltConfig.closedLoop.i(0.0);  // no integral — it causes windup in position control
-        tiltConfig.closedLoop.d(Constants.Intake.TILT_kD);
-        tiltConfig.closedLoop.outputRange(
-                -Constants.Intake.TILT_PID_MAX_OUTPUT_DOWN,
-                Constants.Intake.TILT_PID_MAX_OUTPUT_UP);
-        tiltConfig.closedLoop.maxMotion
+        // Slide position PID (built into SparkMax)
+        slideConfig.closedLoop.p(Constants.Intake.SLIDE_kP);
+        slideConfig.closedLoop.i(0.0);  // no integral — it causes windup in position control
+        slideConfig.closedLoop.d(Constants.Intake.SLIDE_kD);
+        slideConfig.closedLoop.outputRange(
+                -Constants.Intake.SLIDE_PID_MAX_OUTPUT_RETRACT,
+                Constants.Intake.SLIDE_PID_MAX_OUTPUT_EXTEND);
+        slideConfig.closedLoop.maxMotion
                 .positionMode(MAXMotionPositionMode.kMAXMotionTrapezoidal)
-                .cruiseVelocity(Constants.Intake.TILT_MAX_MOTION_CRUISE_VEL_DEG_PER_SEC)
-                .maxAcceleration(Constants.Intake.TILT_MAX_MOTION_ACCEL_DEG_PER_SEC2)
-                .allowedProfileError(Constants.Intake.TILT_MAX_MOTION_ALLOWED_ERROR_DEG);
-        tiltMotor.configure(tiltConfig, ResetMode.kNoResetSafeParameters, PersistMode.kNoPersistParameters);
+                .cruiseVelocity(Constants.Intake.SLIDE_MAX_MOTION_CRUISE_VEL_IN_PER_SEC)
+                .maxAcceleration(Constants.Intake.SLIDE_MAX_MOTION_ACCEL_IN_PER_SEC2)
+                .allowedProfileError(Constants.Intake.SLIDE_MAX_MOTION_ALLOWED_ERROR_IN);
+        slideMotor.configure(slideConfig, ResetMode.kNoResetSafeParameters, PersistMode.kNoPersistParameters);
 
-        // ---- Roller motor (TalonFX) configuration ----
+        // ---- Roller leader motor (TalonFX) configuration ----
         TalonFXConfiguration rollerCfg = new TalonFXConfiguration();
 
         // Coast mode: roller can spin freely after power removed (doesn't jam)
@@ -135,21 +139,46 @@ public class IntakeSubsystem extends SubsystemBase {
         rollerCfg.CurrentLimits.SupplyCurrentLimitEnable = true;
 
         applyWithRetry(
-                () -> rollerMotor.getConfigurator().apply(rollerCfg),
-                "Intake roller config (id=" + Constants.CAN.INTAKE_ROLLER + ")");
+                () -> rollerLeader.getConfigurator().apply(rollerCfg),
+                "Intake roller leader config (id=" + Constants.CAN.INTAKE_ROLLER_LEADER + ")");
 
         // Reduce CAN status frame rates — intake roller is low-priority.
         // Stator current at 20 Hz for reliable 300ms stall detection window.
         rollerStatorCurrent.setUpdateFrequency(20);
-        rollerMotor.getVelocity().setUpdateFrequency(4);
-        rollerMotor.getPosition().setUpdateFrequency(4);
-        rollerMotor.getDeviceTemp().setUpdateFrequency(1);
+        rollerLeader.getVelocity().setUpdateFrequency(4);
+        rollerLeader.getPosition().setUpdateFrequency(4);
+        rollerLeader.getDeviceTemp().setUpdateFrequency(1);
         applyWithRetry(
-                rollerMotor::optimizeBusUtilization,
-                "Intake roller bus optimization (id=" + Constants.CAN.INTAKE_ROLLER + ")");
+                rollerLeader::optimizeBusUtilization,
+                "Intake roller leader bus optimization (id=" + Constants.CAN.INTAKE_ROLLER_LEADER + ")");
+
+        // ---- Roller follower motor (TalonFX) configuration ----
+        // Follower config: same current limits, but follower handles its own limits.
+        TalonFXConfiguration followerCfg = new TalonFXConfiguration();
+        followerCfg.MotorOutput.NeutralMode = NeutralModeValue.Coast;
+        followerCfg.CurrentLimits.StatorCurrentLimit       = Constants.Intake.ROLLER_STATOR_LIMIT_A;
+        followerCfg.CurrentLimits.StatorCurrentLimitEnable = true;
+        followerCfg.CurrentLimits.SupplyCurrentLimit       = 40;
+        followerCfg.CurrentLimits.SupplyCurrentLimitEnable = true;
+
+        applyWithRetry(
+                () -> rollerFollower.getConfigurator().apply(followerCfg),
+                "Intake roller follower config (id=" + Constants.CAN.INTAKE_ROLLER_FOLLOWER + ")");
+
+        // Motors point in opposite directions, so follower opposes the leader.
+        // Follower(leaderID, opposeLeader=true) — Phoenix 6 handles the rest.
+        rollerFollower.setControl(new Follower(Constants.CAN.INTAKE_ROLLER_LEADER, true));
+
+        // Minimize CAN traffic on the follower — we only need telemetry from the leader.
+        rollerFollower.getVelocity().setUpdateFrequency(4);
+        rollerFollower.getPosition().setUpdateFrequency(4);
+        rollerFollower.getDeviceTemp().setUpdateFrequency(1);
+        applyWithRetry(
+                rollerFollower::optimizeBusUtilization,
+                "Intake roller follower bus optimization (id=" + Constants.CAN.INTAKE_ROLLER_FOLLOWER + ")");
 
         updateRollerTelemetry();
-        updateHomeLimitSwitchState();
+        updateHomeSensorState();
     }
 
     // --------------------------------------------------------------------------
@@ -157,29 +186,27 @@ public class IntakeSubsystem extends SubsystemBase {
     // --------------------------------------------------------------------------
     @Override
     public void periodic() {
-        updateHomeLimitSwitchState();
+        updateHomeSensorState();
         updateRollerTelemetry();
 
-        // If we boot while already at the home switch, trust that as a valid zero.
+        // If we boot while already at the home sensor, trust that as a valid zero.
         if (!isHomed && getLimitSwitchPressed()) {
             resetEncoderToHome();
         }
 
-        SmartDashboard.putNumber("Intake/TiltPositionDeg",  tiltEncoder.getPosition());
+        SmartDashboard.putNumber("Intake/SlidePositionIn",  slideEncoder.getPosition());
         SmartDashboard.putBoolean("Intake/IsHomed",         isHomed);
-        SmartDashboard.putBoolean("Intake/LimitSwitch",     getLimitSwitchPressed());
-        SmartDashboard.putBoolean("Intake/LimitSwitchRaw",  homeLimitSwitchRawPressed);
+        SmartDashboard.putBoolean("Intake/HomeSensor",      getLimitSwitchPressed());
+        SmartDashboard.putBoolean("Intake/HomeSensorRaw",   homeSensorRawPressed);
     }
 
     // --------------------------------------------------------------------------
     // getLimitSwitchPressed()
     //
-    // Returns true when the tilt arm has reached the home (raised) position.
-    // Most limit switches are "normally open" — DigitalInput.get() = true when
-    // the switch is NOT pressed. We invert this for readability.
+    // Returns true when the slide has reached the home (retracted) position.
     // --------------------------------------------------------------------------
     public boolean getLimitSwitchPressed() {
-        return homeLimitSwitchPressed;  // true = switch pressed = arm is home
+        return homeSensorPressed;  // true = sensor triggered = slide is home
     }
 
     // --------------------------------------------------------------------------
@@ -191,8 +218,14 @@ public class IntakeSubsystem extends SubsystemBase {
         return isHomed;
     }
 
+    public double getSlidePositionIn() {
+        return slideEncoder.getPosition();
+    }
+
+    /** @deprecated Use {@link #getSlidePositionIn()} — kept for RobotContainer telemetry compatibility. */
+    @Deprecated
     public double getTiltPositionDeg() {
-        return tiltEncoder.getPosition();
+        return getSlidePositionIn();
     }
 
     public record RollerCurrentSample(double amps, boolean signalOk) {}
@@ -211,37 +244,55 @@ public class IntakeSubsystem extends SubsystemBase {
     }
 
     // --------------------------------------------------------------------------
-    // setTiltPower()
+    // setSlidePower()
     //
-    // Directly sets tilt motor power (-1.0 to +1.0) with encoder soft limits.
+    // Directly sets slide motor power (-1.0 to +1.0) with encoder soft limits.
     // Used by automated safety-controlled flows. Does NOT use PID.
     // --------------------------------------------------------------------------
+    public void setSlidePower(double power) {
+        setSlidePowerInternal(power, true);
+    }
+
+    /** @deprecated Use {@link #setSlidePower(double)} */
+    @Deprecated
     public void setTiltPower(double power) {
-        setTiltPowerInternal(power, true);
+        setSlidePower(power);
     }
 
     // --------------------------------------------------------------------------
-    // setTiltPowerHoming()
+    // setSlidePowerHoming()
     //
-    // Homing must always be able to drive to the home switch even if encoder
-    // state is stale and soft limits are latched. Home-switch stop logic still
-    // applies, so motion toward home stops when the switch is pressed.
+    // Homing must always be able to drive to the home sensor even if encoder
+    // state is stale and soft limits are latched. Home-sensor stop logic still
+    // applies, so motion toward home stops when the sensor is triggered.
     // --------------------------------------------------------------------------
+    public void setSlidePowerHoming(double power) {
+        setSlidePowerInternal(power, false);
+    }
+
+    /** @deprecated Use {@link #setSlidePowerHoming(double)} */
+    @Deprecated
     public void setTiltPowerHoming(double power) {
-        setTiltPowerInternal(power, false);
+        setSlidePowerHoming(power);
     }
 
     // --------------------------------------------------------------------------
-    // setTiltPowerManual()
+    // setSlidePowerManual()
     //
-    // Manual control bypasses software angle limits for operator authority,
-    // but still honors the home switch when commanding toward home.
+    // Manual control bypasses software position limits for operator authority,
+    // but still honors the home sensor when commanding toward home.
     // --------------------------------------------------------------------------
-    public void setTiltPowerManual(double power) {
-        setTiltPowerInternal(power, false);
+    public void setSlidePowerManual(double power) {
+        setSlidePowerInternal(power, false);
     }
 
-    private void setTiltPowerInternal(double power, boolean enforceSoftLimits) {
+    /** @deprecated Use {@link #setSlidePowerManual(double)} */
+    @Deprecated
+    public void setTiltPowerManual(double power) {
+        setSlidePowerManual(power);
+    }
+
+    private void setSlidePowerInternal(double power, boolean enforceSoftLimits) {
         double clampedPower = Math.max(-1.0, Math.min(1.0, power));
         double homeDirection = Math.signum(Constants.Intake.HOME_POWER);
         boolean commandingTowardHome = homeDirection != 0.0 && (clampedPower * homeDirection) > 0.0;
@@ -251,27 +302,27 @@ public class IntakeSubsystem extends SubsystemBase {
             clampedPower = 0.0;
         }
         if (enforceSoftLimits && isHomed) {
-            double positionDeg = getTiltPositionDeg();
-            double hysteresisDeg = Constants.Intake.TILT_SOFT_LIMIT_HYSTERESIS_DEG;
+            double positionIn = getSlidePositionIn();
+            double hysteresisIn = Constants.Intake.SLIDE_SOFT_LIMIT_HYSTERESIS_IN;
 
-            if (positionDeg <= Constants.Intake.TILT_MIN_DEG) {
+            if (positionIn <= Constants.Intake.SLIDE_MIN_IN) {
                 minSoftLimitLatched = true;
             } else if (minSoftLimitLatched
-                    && positionDeg >= Constants.Intake.TILT_MIN_DEG + hysteresisDeg) {
+                    && positionIn >= Constants.Intake.SLIDE_MIN_IN + hysteresisIn) {
                 minSoftLimitLatched = false;
             }
 
-            if (positionDeg >= Constants.Intake.TILT_MAX_DEG) {
+            if (positionIn >= Constants.Intake.SLIDE_MAX_IN) {
                 maxSoftLimitLatched = true;
             } else if (maxSoftLimitLatched
-                    && positionDeg <= Constants.Intake.TILT_MAX_DEG - hysteresisDeg) {
+                    && positionIn <= Constants.Intake.SLIDE_MAX_IN - hysteresisIn) {
                 maxSoftLimitLatched = false;
             }
 
-            if (commandingAwayFromHome && minSoftLimitLatched) {
+            if (commandingAwayFromHome && maxSoftLimitLatched) {
                 clampedPower = 0.0;
             }
-            if (commandingTowardHome && maxSoftLimitLatched) {
+            if (commandingTowardHome && minSoftLimitLatched) {
                 clampedPower = 0.0;
             }
         } else {
@@ -279,62 +330,66 @@ public class IntakeSubsystem extends SubsystemBase {
             maxSoftLimitLatched = false;
         }
 
-        tiltMotor.set(clampedPower);
+        slideMotor.set(clampedPower);
     }
 
     // --------------------------------------------------------------------------
     // setRollerPower()
     //
-    // Spins the intake roller at the given power (-1.0 to +1.0).
+    // Spins the intake rollers at the given power (-1.0 to +1.0).
     // Positive = intake direction, negative = eject.
+    // The follower motor automatically mirrors the leader (opposite direction).
     // --------------------------------------------------------------------------
     public void setRollerPower(double power) {
-        rollerMotor.set(power);
+        rollerLeader.set(power);
     }
 
     // --------------------------------------------------------------------------
     // resetEncoderToHome()
     //
-    // Marks the current position as 0 degrees (home/raised).
-    // Called by IntakeHomeCommand when the limit switch is triggered.
+    // Marks the current position as 0 inches (home/retracted).
+    // Called by IntakeHomeCommand when the Hall effect sensor is triggered.
     // --------------------------------------------------------------------------
     public void resetEncoderToHome() {
-        tiltEncoder.setPosition(0.0);
+        slideEncoder.setPosition(0.0);
         isHomed = true;
     }
 
     // --------------------------------------------------------------------------
-    // setTiltPosition()
+    // setSlidePosition()
     //
-    // Commands the tilt arm to move to a specific angle (in degrees).
+    // Commands the linear slide to move to a specific position (in inches).
     // Only works after homing — if the encoder isn't zeroed, we don't know
-    // where "45 degrees" actually is relative to the arm's true position.
+    // where "6 inches" actually is relative to the slide's true position.
     //
-    // The target is clamped to [TILT_MIN_DEG, TILT_MAX_DEG] to prevent
-    // commanding the arm into the chassis or past its mechanical travel.
+    // The target is clamped to [SLIDE_MIN_IN, SLIDE_MAX_IN] to prevent
+    // commanding the slide past its mechanical travel.
     // --------------------------------------------------------------------------
-    public void setTiltPosition(double targetDegrees) {
+    public void setSlidePosition(double targetInches) {
         if (isHomed) {
-            double clamped = Math.max(Constants.Intake.TILT_MIN_DEG,
-                    Math.min(Constants.Intake.TILT_MAX_DEG, targetDegrees));
-            // Position control is broadly reliable across firmware versions.
-            tiltPID.setSetpoint(clamped, ControlType.kPosition);
+            double clamped = Math.max(Constants.Intake.SLIDE_MIN_IN,
+                    Math.min(Constants.Intake.SLIDE_MAX_IN, targetInches));
+            slidePID.setSetpoint(clamped, ControlType.kPosition);
         } else {
-            // Safety: refuse to move if we haven't homed yet.
-            // Log a warning so the student knows why it's not moving.
-            System.out.println("[IntakeSubsystem] WARNING: setTiltPosition called before homing!");
+            System.out.println("[IntakeSubsystem] WARNING: setSlidePosition called before homing!");
         }
+    }
+
+    /** @deprecated Use {@link #setSlidePosition(double)} */
+    @Deprecated
+    public void setTiltPosition(double target) {
+        setSlidePosition(target);
     }
 
     // --------------------------------------------------------------------------
     // stop()
     //
-    // Immediately stops both tilt and roller motors.
-    // Every subsystem should have a stop() for safety and cleanup consistency.
+    // Immediately stops both slide and roller motors.
     // --------------------------------------------------------------------------
     public void stop() {
-        tiltMotor.stopMotor();
-        rollerMotor.stopMotor();
+        slideMotor.stopMotor();
+        rollerLeader.stopMotor();
+        // Follower automatically stops when leader stops.
     }
 
     @FunctionalInterface
@@ -359,8 +414,8 @@ public class IntakeSubsystem extends SubsystemBase {
                 + CTRE_CONFIG_RETRIES + " attempts. Last status: " + lastCode.getName());
     }
 
-    private void updateHomeLimitSwitchState() {
-        homeLimitSwitchRawPressed = !homeLimitSwitch.get();
-        homeLimitSwitchPressed = homeLimitSwitchDebouncer.calculate(homeLimitSwitchRawPressed);
+    private void updateHomeSensorState() {
+        homeSensorRawPressed = !homeSensor.get();
+        homeSensorPressed = homeSensorDebouncer.calculate(homeSensorRawPressed);
     }
 }
