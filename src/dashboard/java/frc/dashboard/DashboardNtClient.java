@@ -73,7 +73,7 @@ public class DashboardNtClient implements AutoCloseable {
 
     private final BooleanSubscriber intakeHomedSub = table.getBooleanTopic("intake/homed").subscribe(false);
     private final BooleanSubscriber intakeLimitSub = table.getBooleanTopic("intake/limit_switch_pressed").subscribe(false);
-    private final DoubleSubscriber intakeTiltSub = table.getDoubleTopic("intake/tilt_deg").subscribe(0.0);
+    private final DoubleSubscriber intakeSlideSub = table.getDoubleTopic("intake/slide_in").subscribe(0.0);
     private final DoubleSubscriber intakeRollerCurrentSub =
             table.getDoubleTopic("intake/roller_current_amps").subscribe(0.0);
 
@@ -321,7 +321,7 @@ public class DashboardNtClient implements AutoCloseable {
                 shooterAtSpeedSub.get(),
                 intakeHomedSub.get(),
                 intakeLimitSub.get(),
-                intakeTiltSub.get(),
+                intakeSlideSub.get(),
                 intakeRollerCurrentSub.get(),
                 feederCurrentSub.get(),
                 hopperCurrentSub.get(),

@@ -39,7 +39,7 @@ public final class Constants {
         public static final String CANIVORE_BUS = "canivore";
 
         // roboRIO built-in CAN: shooter TalonFXs, intake roller TalonFX, and all
-        // REV SparkMax motors (feeder, hopper, intake tilt). REV devices MUST stay
+        // REV SparkMax motors (feeder, hopper, intake slide). REV devices MUST stay
         // on the roboRIO CAN bus — they don't support CANivore.
         public static final String RIO_CAN_BUS = "rio";
 
@@ -132,7 +132,7 @@ public final class Constants {
     // DIGITAL I/O PORTS (on the roboRIO)
     // =========================================================================
     public static final class DIO {
-        // Intake tilt home limit switch — plugs into DIO port 0
+        // Intake slide home limit switch — plugs into DIO port 0
         public static final int INTAKE_HOME_SWITCH = 0;
     }
 

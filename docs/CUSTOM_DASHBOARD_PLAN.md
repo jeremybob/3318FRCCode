@@ -74,17 +74,19 @@ Optional connection arguments:
 ./gradlew runDashboard --args="--host 10.33.18.2"
 ```
 
-## Phase 4: Competition Hardening (next)
+## Phase 4: Competition Hardening (partial)
 
-1. Add trend plots (battery, loop timing, shooter spin-up latency).
-2. Add autonomous visual chooser on dashboard (with disabled-mode apply).
-3. Add event replay mode from logged CSV/NT snapshots.
-4. Add UI integration tests for command button -> ack behavior.
-
-Implemented in this pass:
+### Completed
 
 - Competition-focused UI refresh for readability and reduced clutter.
 - Driver shot checklist + "next action" guidance from readiness reason.
 - Command pre-check lockouts/tooltips to prevent invalid requests before ack rejection.
 - Telemetry freshness indicator using `robot/timestamp_sec`.
 - Event feed for connection/ack/readiness state transitions.
+
+### Remaining
+
+1. Add trend plots (battery, loop timing, shooter spin-up latency).
+2. Add autonomous visual chooser on dashboard (with disabled-mode apply).
+3. Add event replay mode from logged CSV/NT snapshots.
+4. Add UI integration tests for command button -> ack behavior.

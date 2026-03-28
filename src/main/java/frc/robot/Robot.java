@@ -147,7 +147,7 @@ public class Robot extends TimedRobot {
     public void simulationInit() {
         // Called once when the simulation GUI starts.
         // Add physics simulation models here if needed (e.g., FlywheelSim,
-        // SingleJointedArmSim for the intake tilt).
+        // ElevatorSim for the intake linear slide).
     }
 
     @Override

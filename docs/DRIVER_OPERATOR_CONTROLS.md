@@ -20,16 +20,17 @@ Controller ports (`Constants.OI`):
 
 ## Operator controls (Port 1)
 
-- Right Stick Y: manual intake tilt (open-loop power)
-- Left Stick Y: manual hopper jog
+- Right Stick Y: manual intake slide (extend/retract, open-loop power)
+- Left Stick Y: manual shooter speed jog
 - A (press): AlignOnly command (vision yaw alignment test, no shot)
 - Right Trigger (>= 0.20, hold): AlignAndShoot command
 - Right Bumper (hold): fallback shoot routine (no vision alignment)
+- Y (hold): manual distance shoot (vision-calculated speed, no alignment turn)
 - Left Trigger (hold): intake roller forward with stall protection
 - Left Bumper (hold): intake roller reverse/eject
-- B (press): intake tilt down/deploy (pickup position)
+- B (press): intake slide extend/deploy (pickup position)
 - X (press): intake home command
-- Y (press): intake tilt up/stow (home angle)
+- D-pad Up: intake slide retract/stow (home position)
 
 ## Disabled controls
 
@@ -38,4 +39,4 @@ Controller ports (`Constants.OI`):
 ## Notes
 
 - Teleop start schedules intake homing if needed.
-- Intake tilt manual input deadband hysteresis: engage when `|rightY| > 0.12`, return to idle when `|rightY| < 0.08`.
+- Intake slide manual input deadband hysteresis: engage when `|rightY| > 0.12`, return to idle when `|rightY| < 0.08`.

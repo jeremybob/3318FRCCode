@@ -1,3 +1,18 @@
+// ============================================================================
+// FILE: src/dashboard/java/frc/dashboard/DashboardMain.java
+//
+// PURPOSE: Entry point for the custom dashboard application.
+//   This is a standalone Java Swing app (not deployed to the robot) that
+//   connects to the robot via NetworkTables to display real-time telemetry.
+//
+// USAGE:
+//   ./run-dashboard.sh              (default: connect to team 3318)
+//   ./run-dashboard.sh --host IP    (connect to a specific robot IP)
+//   ./run-dashboard.sh --team 3318  (connect by team number)
+//
+// The dashboard shows shooter speed, intake status, alignment state,
+// vision info, and provides buttons for operator commands.
+// ============================================================================
 package frc.dashboard;
 
 import javax.swing.SwingUtilities;

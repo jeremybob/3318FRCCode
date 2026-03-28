@@ -64,7 +64,7 @@ public class RobotDashboardService {
 
     private final BooleanPublisher intakeHomedPub;
     private final BooleanPublisher intakeLimitPub;
-    private final DoublePublisher intakeTiltPub;
+    private final DoublePublisher intakeSlidePub;
     private final DoublePublisher intakeRollerCurrentPub;
 
     private final DoublePublisher feederCurrentPub;
@@ -250,7 +250,7 @@ public class RobotDashboardService {
 
         intakeHomedPub = table.getBooleanTopic("intake/homed").publish();
         intakeLimitPub = table.getBooleanTopic("intake/limit_switch_pressed").publish();
-        intakeTiltPub = table.getDoubleTopic("intake/tilt_deg").publish();
+        intakeSlidePub = table.getDoubleTopic("intake/slide_in").publish();
         intakeRollerCurrentPub = table.getDoubleTopic("intake/roller_current_amps").publish();
 
         feederCurrentPub = table.getDoubleTopic("feeder/current_amps").publish();
@@ -437,7 +437,7 @@ public class RobotDashboardService {
 
         intakeHomedPub.set(snapshot.intakeHomed());
         intakeLimitPub.set(snapshot.intakeLimitSwitchPressed());
-        intakeTiltPub.set(snapshot.intakeTiltDeg());
+        intakeSlidePub.set(snapshot.intakeSlideIn());
         intakeRollerCurrentPub.set(snapshot.intakeRollerCurrentAmps());
 
         feederCurrentPub.set(snapshot.feederCurrentAmps());

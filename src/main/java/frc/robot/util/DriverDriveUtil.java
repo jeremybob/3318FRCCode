@@ -1,3 +1,15 @@
+// ============================================================================
+// FILE: src/main/java/frc/robot/util/DriverDriveUtil.java
+//
+// PURPOSE: Converts raw joystick inputs into a DriveRequest that the swerve
+//   subsystem can use. Handles:
+//     - Deadband filtering (ignoring tiny stick drifts near center)
+//     - Speed scaling for precision mode (right trigger)
+//     - Converting joystick [-1, 1] values to actual m/s and rad/s
+//
+// This is a stateless utility class — all methods are static. No instances
+// are created; it just does math.
+// ============================================================================
 package frc.robot.util;
 
 import edu.wpi.first.math.MathUtil;

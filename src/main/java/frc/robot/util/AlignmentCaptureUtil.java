@@ -1,3 +1,22 @@
+// ============================================================================
+// FILE: src/main/java/frc/robot/util/AlignmentCaptureUtil.java
+//
+// PURPOSE: Decides the exact moment to "capture" alignment and declare the
+//   robot is aimed at the target. Used by AlignAndShootCommand and
+//   AlignOnlyCommand.
+//
+// WHY NOT JUST USE A THRESHOLD?
+//   A simple "error < tolerance" check has two problems:
+//   1. It can latch too early while the robot is swinging through quickly.
+//   2. It can latch on noise spikes (brief jumps below threshold).
+//
+//   This utility additionally checks that:
+//   - The error is DECREASING (converging, not overshooting outward)
+//   - The PREVIOUS error was already close (we didn't jump from far away)
+//   - OR the error just crossed zero (passed through the target)
+//
+// This prevents false captures and makes shooting more reliable.
+// ============================================================================
 package frc.robot.util;
 
 public final class AlignmentCaptureUtil {

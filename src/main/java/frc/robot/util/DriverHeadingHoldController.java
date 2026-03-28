@@ -1,3 +1,20 @@
+// ============================================================================
+// FILE: src/main/java/frc/robot/util/DriverHeadingHoldController.java
+//
+// PURPOSE: Prevents the robot from slowly drifting/rotating when the driver
+//   is driving straight (translating without turning). Without this, slight
+//   mechanical imbalances or wheel scrub cause unwanted rotation.
+//
+// HOW IT WORKS:
+//   1. When the driver starts translating without any turn input, this
+//      controller "captures" the current heading as the target.
+//   2. A PID loop applies small rotational corrections to hold that heading.
+//   3. When the driver commands a turn (right stick X), the controller
+//      releases and lets the driver rotate freely.
+//   4. When the driver stops translating, the controller resets.
+//
+// The Pigeon 2 gyro provides the heading measurement.
+// ============================================================================
 package frc.robot.util;
 
 import edu.wpi.first.math.MathUtil;

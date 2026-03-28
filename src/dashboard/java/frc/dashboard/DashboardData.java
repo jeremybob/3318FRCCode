@@ -29,7 +29,7 @@ public record DashboardData(
         boolean shooterAtSpeed,
         boolean intakeHomed,
         boolean intakeLimitSwitchPressed,
-        double intakeTiltDeg,
+        double intakeSlideIn,
         double intakeRollerCurrentAmps,
         double feederCurrentAmps,
         double hopperCurrentAmps,

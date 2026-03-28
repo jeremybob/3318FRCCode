@@ -222,12 +222,6 @@ public class IntakeSubsystem extends SubsystemBase {
         return slideEncoder.getPosition();
     }
 
-    /** @deprecated Use {@link #getSlidePositionIn()} — kept for RobotContainer telemetry compatibility. */
-    @Deprecated
-    public double getTiltPositionDeg() {
-        return getSlidePositionIn();
-    }
-
     public record RollerCurrentSample(double amps, boolean signalOk) {}
 
     public RollerCurrentSample sampleRollerCurrent() {
