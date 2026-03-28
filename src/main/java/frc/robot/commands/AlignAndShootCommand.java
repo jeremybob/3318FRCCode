@@ -33,6 +33,7 @@ import frc.robot.util.AlignmentCaptureUtil;
 import frc.robot.vision.VisionResult;
 import frc.robot.vision.VisionSupport;
 
+
 public class AlignAndShootCommand extends Command {
 
     public record TelemetrySnapshot(
@@ -645,21 +646,7 @@ public class AlignAndShootCommand extends Command {
     }
 
     private double estimateDistanceM(VisionResult result) {
-        double distanceM = result.estimateDistanceM(
-                Constants.Vision.TAG_HEIGHT_M,
-                Constants.Vision.FOCAL_LENGTH_PIXELS);
-        if (!Double.isFinite(distanceM) || distanceM <= 0.0) {
-            double pitchFallbackM = estimateDistanceFromPitch(result.pitchDeg());
-            System.out.println("[AlignAndShoot] Primary distance invalid ("
-                    + String.format("%.2f", distanceM)
-                    + "m), using pitch-based fallback: "
-                    + String.format("%.2f", pitchFallbackM) + "m");
-            distanceM = pitchFallbackM;
-        }
-        if (Double.isFinite(distanceM)) {
-            distanceM = VisionSupport.calibrateDistanceM(distanceM);
-        }
-        return distanceM;
+        return result.distanceM();
     }
 
     private boolean isResultFresh(VisionResult result) {
@@ -904,17 +891,6 @@ public class AlignAndShootCommand extends Command {
     private static boolean isWithinTrackingYaw(double yawDeg) {
         return Double.isFinite(yawDeg)
                 && Math.abs(yawDeg) <= Constants.AlignShoot.ACQUIRE_YAW_MAX_DEG;
-    }
-
-    private double estimateDistanceFromPitch(double targetPitchDeg) {
-        double totalPitchRad = Constants.Vision.CAMERA_PITCH_RAD
-                + Math.toRadians(targetPitchDeg);
-        double heightDiff = Constants.Shooter.HUB_SCORING_HEIGHT_M - Constants.Vision.CAMERA_UP_M;
-        double tanPitch = Math.tan(totalPitchRad);
-        if (Math.abs(tanPitch) < 1e-6) {
-            return Double.NaN;
-        }
-        return heightDiff / tanPitch;
     }
 
     public static TelemetrySnapshot getTelemetrySnapshot() { return telemetrySnapshot; }

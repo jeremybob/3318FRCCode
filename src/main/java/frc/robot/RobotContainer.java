@@ -36,10 +36,6 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.concurrent.atomic.AtomicReference;
 
-import edu.wpi.first.cameraserver.CameraServer;
-import edu.wpi.first.cscore.UsbCamera;
-import edu.wpi.first.cscore.UsbCameraInfo;
-import edu.wpi.first.cscore.VideoSource;
 import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.system.plant.DCMotor;
 import edu.wpi.first.wpilibj.DriverStation;
@@ -63,31 +59,32 @@ import frc.robot.dashboard.ReadyToScoreEvaluator;
 import frc.robot.dashboard.ReadyToScoreResult;
 import frc.robot.dashboard.RobotDashboardService;
 import frc.robot.subsystems.*;
-import frc.robot.vision.CameraDebugInfo;
 import frc.robot.subsystems.swerve.SwerveCorner;
 import frc.robot.subsystems.swerve.SwerveValidationMode;
 import frc.robot.util.DriverDriveUtil;
 import frc.robot.util.DriverHeadingHoldController;
-import frc.robot.vision.RioVisionThread;
 import frc.robot.vision.VisionResult;
 import frc.robot.vision.VisionSupport;
+
+import org.photonvision.PhotonCamera;
+import org.photonvision.targeting.PhotonPipelineResult;
+import org.photonvision.targeting.PhotonTrackedTarget;
+
+import edu.wpi.first.math.geometry.Transform3d;
 
 public class RobotContainer implements RobotRuntimeContainer {
 
     // =========================================================================
-    // VISION — background thread running AprilTag detection on USB camera
-    // Publishes VisionResult via AtomicReference (thread-safe, lock-free).
-    // See docs/RIO_CAMERA_FALLBACK_PLAN.md for architecture details.
+    // VISION — Arducam OV9281 on Raspberry Pi 4, processed by PhotonVision.
+    // Robot code reads results via PhotonLib (NetworkTables).
     // =========================================================================
     private final AtomicReference<VisionResult> visionResult = new AtomicReference<>();
-    private final AtomicReference<Double> lastVisionFrameTimestampSec = new AtomicReference<>(Double.NaN);
-    private final AtomicReference<CameraDebugInfo> cameraDebugInfo =
-            new AtomicReference<>(CameraDebugInfo.defaultState());
+    private PhotonCamera photonCamera;
 
     // =========================================================================
     // SUBSYSTEMS — created once here, shared with commands
     // =========================================================================
-    private final SwerveSubsystem  swerve  = new SwerveSubsystem(lastVisionFrameTimestampSec);
+    private final SwerveSubsystem  swerve  = new SwerveSubsystem();
     private final IntakeSubsystem  intake  = new IntakeSubsystem();
     private final HopperSubsystem  hopper  = new HopperSubsystem();
     private final FeederSubsystem  feeder  = new FeederSubsystem();
@@ -150,15 +147,9 @@ public class RobotContainer implements RobotRuntimeContainer {
         configureBindings();
         configureCommandEventLogging();
 
-        // Start the background vision thread (USB camera AprilTag detection).
+        // Connect to PhotonVision on the Raspberry Pi 4 via NetworkTables.
         if (Constants.Vision.ENABLE_VISION) {
-            UsbCamera visionCamera = startVisionCamera();
-            if (visionCamera != null) {
-                new RioVisionThread(visionCamera, visionResult, lastVisionFrameTimestampSec, cameraDebugInfo).start();
-            } else {
-                System.err.println("[RobotContainer] Vision camera failed to open. "
-                        + "Vision-based shooting is UNAVAILABLE this match.");
-            }
+            photonCamera = new PhotonCamera(Constants.Vision.PHOTON_CAMERA_NAME);
         }
 
         // Intake homing is handled by:
@@ -224,25 +215,70 @@ public class RobotContainer implements RobotRuntimeContainer {
         });
     }
 
-    private UsbCamera startVisionCamera() {
-        try {
-            UsbCamera camera = CameraServer.startAutomaticCapture(Constants.Vision.CAMERA_DEVICE_ID);
-            camera.setConnectionStrategy(VideoSource.ConnectionStrategy.kKeepOpen);
-            camera.setResolution(Constants.Vision.CAMERA_WIDTH, Constants.Vision.CAMERA_HEIGHT);
-            camera.setFPS(Constants.Vision.CAMERA_FPS);
-            CameraDebugInfo nextDebug = cameraDebugInfo.get().withStatus("CAPTURE_OPEN");
-            UsbCameraInfo info = camera.getInfo();
-            if (info != null) {
-                nextDebug = nextDebug.withActiveCamera(info.dev, info.name, info.path);
+    /**
+     * Polls PhotonVision for the latest pipeline result, filters for alliance
+     * HUB tags, and publishes the best target as a VisionResult.
+     */
+    private void updateVision() {
+        if (photonCamera == null) return;
+
+        PhotonPipelineResult result = photonCamera.getLatestResult();
+        if (!result.hasTargets()) return;
+
+        int[] hubTagIds = getAllianceHubTagIds();
+        PhotonTrackedTarget bestTarget = null;
+        double bestDistance = Double.MAX_VALUE;
+        int hubTagCount = 0;
+
+        for (PhotonTrackedTarget target : result.getTargets()) {
+            if (!isHubTag(target.getFiducialId(), hubTagIds)) continue;
+            hubTagCount++;
+            Transform3d camToTarget = target.getBestCameraToTarget();
+            double dist = Math.hypot(camToTarget.getX(), camToTarget.getY());
+            if (dist < bestDistance) {
+                bestDistance = dist;
+                bestTarget = target;
             }
-            cameraDebugInfo.set(nextDebug);
-            return camera;
-        } catch (Exception ex) {
-            cameraDebugInfo.set(cameraDebugInfo.get().withError("CAPTURE_OPEN_FAILED", ex.getMessage()));
-            System.err.println("[RobotContainer] Failed to open USB camera: " + ex.getMessage());
-            ex.printStackTrace();
-            return null;
         }
+
+        if (bestTarget == null) return;
+
+        Transform3d camToTarget = bestTarget.getBestCameraToTarget();
+        double distanceM = Math.hypot(camToTarget.getX(), camToTarget.getY());
+
+        visionResult.set(new VisionResult(
+                bestTarget.getFiducialId(),
+                bestTarget.getYaw(),
+                bestTarget.getPitch(),
+                distanceM,
+                Timer.getFPGATimestamp(),
+                hubTagCount));
+    }
+
+    private static int[] getAllianceHubTagIds() {
+        var alliance = DriverStation.getAlliance();
+        if (alliance.isPresent()) {
+            return alliance.get() == DriverStation.Alliance.Red
+                    ? Constants.Vision.RED_HUB_TAG_IDS
+                    : Constants.Vision.BLUE_HUB_TAG_IDS;
+        }
+        return null;
+    }
+
+    private static boolean isHubTag(int fiducialId, int[] hubTagIds) {
+        if (hubTagIds == null) {
+            for (int id : Constants.Vision.RED_HUB_TAG_IDS) {
+                if (id == fiducialId) return true;
+            }
+            for (int id : Constants.Vision.BLUE_HUB_TAG_IDS) {
+                if (id == fiducialId) return true;
+            }
+            return false;
+        }
+        for (int id : hubTagIds) {
+            if (id == fiducialId) return true;
+        }
+        return false;
     }
 
     private void configureCommandEventLogging() {
@@ -774,6 +810,9 @@ public class RobotContainer implements RobotRuntimeContainer {
     }
 
     public void periodicDashboard() {
+        if (Constants.Vision.ENABLE_VISION) {
+            updateVision();
+        }
         dashboardService.periodic(buildDashboardSnapshot());
     }
 
@@ -802,7 +841,6 @@ public class RobotContainer implements RobotRuntimeContainer {
                         AlignAndShootCommand.telemetryFeedGateReady()));
 
         VisionResult latestVision = visionResult.get();
-        CameraDebugInfo latestCameraDebug = cameraDebugInfo.get();
         boolean visionHasTarget = VisionSupport.isResultFresh(
                 latestVision,
                 nowSec,
@@ -810,21 +848,10 @@ public class RobotContainer implements RobotRuntimeContainer {
         int visionTagId = latestVision != null ? latestVision.tagId() : -1;
         double visionYawDeg = latestVision != null ? latestVision.yawDeg() : Double.NaN;
         double visionPitchDeg = latestVision != null ? latestVision.pitchDeg() : Double.NaN;
-        double visionBestTagYawDeg = latestVision != null ? latestVision.bestTagYawDeg() : Double.NaN;
-        double visionBestTagPitchDeg = latestVision != null ? latestVision.bestTagPitchDeg() : Double.NaN;
-        double visionDistanceM = latestVision != null
-                ? latestVision.estimateDistanceM(
-                        Constants.Vision.TAG_HEIGHT_M,
-                        Constants.Vision.FOCAL_LENGTH_PIXELS)
-                : Double.NaN;
-        if (Double.isFinite(visionDistanceM)) {
-            visionDistanceM = VisionSupport.calibrateDistanceM(visionDistanceM);
-        }
-        double visionTagPixelHeightPx = latestVision != null ? latestVision.tagPixelHeight() : Double.NaN;
+        double visionDistanceM = latestVision != null ? latestVision.distanceM() : Double.NaN;
         int visionHubTagCount = latestVision != null ? latestVision.hubTagCount() : 0;
-        int visionHubFaceCount = latestVision != null ? latestVision.hubFaceCount() : 0;
-        double visionHubSpanPx = latestVision != null ? latestVision.hubSpanPx() : Double.NaN;
         double visionTargetTimestampSec = latestVision != null ? latestVision.timestampSec() : Double.NaN;
+        boolean photonConnected = photonCamera != null && photonCamera.isConnected();
 
         double batteryVoltage = RobotController.getBatteryVoltage();
         var canStatus = RobotController.getCANStatus();
@@ -909,27 +936,27 @@ public class RobotContainer implements RobotRuntimeContainer {
                 // Match info
                 DriverStation.getMatchNumber(),
                 DriverStation.getEventName(),
-                // Camera
-                swerve.isCameraConnected(),
-                latestCameraDebug.status(),
-                latestCameraDebug.activeDeviceId(),
-                latestCameraDebug.activeCameraName(),
-                latestCameraDebug.activeCameraPath(),
-                latestCameraDebug.enumeratedCameras(),
-                latestCameraDebug.lastError(),
-                latestCameraDebug.frameCount(),
-                latestCameraDebug.lastFrameTimestampSec(),
+                // Camera (PhotonVision on Pi 4)
+                photonConnected,
+                photonConnected ? "PHOTON_CONNECTED" : "PHOTON_DISCONNECTED",
+                0,                  // no local device ID
+                Constants.Vision.PHOTON_CAMERA_NAME,
+                "",                 // no local path
+                "",                 // no local enumeration
+                "",                 // no local error
+                0,                  // frame count not tracked locally
+                Double.NaN,         // frame timestamp not tracked locally
                 visionTagId,
                 visionHasTarget,
                 visionYawDeg,
                 visionPitchDeg,
-                visionBestTagYawDeg,
-                visionBestTagPitchDeg,
+                visionYawDeg,       // bestTagYaw = yaw (PhotonVision gives tag yaw directly)
+                visionPitchDeg,     // bestTagPitch = pitch
                 visionDistanceM,
-                visionTagPixelHeightPx,
+                0.0,                // no pixel height from PhotonVision
                 visionHubTagCount,
-                visionHubFaceCount,
-                visionHubSpanPx,
+                0,                  // hub face count not tracked
+                0.0,                // hub span not tracked
                 visionTargetTimestampSec,
                 // CAN health
                 canStatus.percentBusUtilization,
@@ -1157,16 +1184,13 @@ public class RobotContainer implements RobotRuntimeContainer {
             return Constants.Shooter.TARGET_RPS;
         }
 
-        double distanceM = latestVision.estimateDistanceM(
-                Constants.Vision.TAG_HEIGHT_M,
-                Constants.Vision.FOCAL_LENGTH_PIXELS);
+        double distanceM = latestVision.distanceM();
         if (!Double.isFinite(distanceM) || distanceM <= 0.0) {
             return Constants.Shooter.TARGET_RPS;
         }
 
-        double calibratedDistanceM = VisionSupport.calibrateDistanceM(distanceM);
         ShooterSubsystem.ShotSolution stationarySolution =
-                ShooterSubsystem.calculateMovingShotSolution(calibratedDistanceM, 0.0, 0.0);
+                ShooterSubsystem.calculateMovingShotSolution(distanceM, 0.0, 0.0);
         double targetRps = stationarySolution.targetRps();
         if (!stationarySolution.feasible() || !Double.isFinite(targetRps) || targetRps <= 0.0) {
             return Constants.Shooter.TARGET_RPS;

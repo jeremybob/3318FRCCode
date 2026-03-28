@@ -14,6 +14,7 @@ import frc.robot.util.AlignmentCaptureUtil;
 import frc.robot.vision.VisionResult;
 import frc.robot.vision.VisionSupport;
 
+
 /**
  * Rotates the robot to center the active vision target yaw without running any
  * shooter/feed/intake motors. Intended for alignment-direction bring-up.
@@ -208,26 +209,6 @@ public class AlignOnlyCommand extends Command {
     }
 
     private double estimateDistanceM(VisionResult result) {
-        double distanceM = result.estimateDistanceM(
-                Constants.Vision.TAG_HEIGHT_M,
-                Constants.Vision.FOCAL_LENGTH_PIXELS);
-        if (!Double.isFinite(distanceM) || distanceM <= 0.0) {
-            distanceM = estimateDistanceFromPitch(result.pitchDeg());
-        }
-        if (Double.isFinite(distanceM)) {
-            distanceM = VisionSupport.calibrateDistanceM(distanceM);
-        }
-        return distanceM;
-    }
-
-    private double estimateDistanceFromPitch(double targetPitchDeg) {
-        double totalPitchRad = Constants.Vision.CAMERA_PITCH_RAD
-                + Math.toRadians(targetPitchDeg);
-        double heightDiff = Constants.Shooter.HUB_SCORING_HEIGHT_M - Constants.Vision.CAMERA_UP_M;
-        double tanPitch = Math.tan(totalPitchRad);
-        if (Math.abs(tanPitch) < 1e-6) {
-            return Double.NaN;
-        }
-        return heightDiff / tanPitch;
+        return result.distanceM();
     }
 }
