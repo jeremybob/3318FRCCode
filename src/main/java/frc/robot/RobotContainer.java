@@ -61,6 +61,7 @@ import frc.robot.subsystems.swerve.SwerveCorner;
 import frc.robot.subsystems.swerve.SwerveValidationMode;
 import frc.robot.util.DriverDriveUtil;
 import frc.robot.util.DriverHeadingHoldController;
+import frc.robot.util.ShotSolver;
 import edu.wpi.first.math.geometry.Translation2d;
 
 import org.photonvision.PhotonCamera;
@@ -1146,28 +1147,20 @@ public class RobotContainer implements RobotRuntimeContainer {
                 : 0.0;
     }
 
+    private ShotSolver.Solution getManualDistanceShotSolution() {
+        Translation2d hubCenter = getAllianceHubCenter();
+        double distanceM = swerve.getDistanceTo(hubCenter);
+        return ShotSolver.solve(distanceM);
+    }
+
     private double getManualDistanceShotTargetRps() {
-        return getAlignAndShootTargetRps();
+        ShotSolver.Solution solution = getManualDistanceShotSolution();
+        return solution.feasible() ? solution.motorRps() : Constants.Shooter.TARGET_RPS;
     }
 
     private double getManualDistanceShotHoodAngle() {
-        Translation2d hubCenter = getAllianceHubCenter();
-        double distanceM = swerve.getDistanceTo(hubCenter);
-        return HoodSubsystem.calculateTargetAngle(distanceM);
-    }
-
-    private double getAlignAndShootTargetRps() {
-        Translation2d hubCenter = getAllianceHubCenter();
-        double distanceM = swerve.getDistanceTo(hubCenter);
-        if (!Double.isFinite(distanceM) || distanceM <= 0.0) {
-            return Constants.Shooter.TARGET_RPS;
-        }
-
-        double targetRps = ShooterSubsystem.calculateTargetRPS(distanceM);
-        if (!Double.isFinite(targetRps) || targetRps <= 0.0) {
-            return Constants.Shooter.TARGET_RPS;
-        }
-        return targetRps;
+        ShotSolver.Solution solution = getManualDistanceShotSolution();
+        return solution.angleDeg();
     }
 
     private Command buildIntakeTiltMoveCommand(double targetDegrees, String commandName) {

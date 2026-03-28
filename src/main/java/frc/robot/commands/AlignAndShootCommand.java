@@ -32,6 +32,7 @@ import frc.robot.subsystems.HopperSubsystem;
 import frc.robot.subsystems.IntakeSubsystem;
 import frc.robot.subsystems.ShooterSubsystem;
 import frc.robot.subsystems.SwerveSubsystem;
+import frc.robot.util.ShotSolver;
 import frc.robot.util.AlignmentCaptureUtil;
 
 
@@ -283,11 +284,11 @@ public class AlignAndShootCommand extends Command {
         // Pre-spin the shooter and set hood angle as soon as we have a valid
         // target so spin-up and hood travel happen in parallel with heading
         // alignment instead of after it.
-        double targetRps = ShooterSubsystem.calculateTargetRPS(distanceM);
-        if (Double.isFinite(targetRps) && targetRps > 0.0) {
-            shooter.setShooterVelocity(targetRps);
-            hood.setAngle(HoodSubsystem.calculateTargetAngle(distanceM));
-            workTargetRps = targetRps;
+        ShotSolver.Solution preSolution = ShotSolver.solve(distanceM);
+        if (preSolution.feasible()) {
+            shooter.setShooterVelocity(preSolution.motorRps());
+            hood.setAngle(preSolution.angleDeg());
+            workTargetRps = preSolution.motorRps();
         }
 
         if (!isWithinTrackingHeading(aimErrorDeg)) {
@@ -486,9 +487,10 @@ public class AlignAndShootCommand extends Command {
 
     private ShotTracking buildStationaryTracking(double filteredErrorDeg, double distanceM) {
         double aimErrorDeg = filteredErrorDeg;
-        double targetRps = ShooterSubsystem.calculateTargetRPS(distanceM);
-        boolean feasible = Double.isFinite(targetRps) && targetRps > 0.0
-                && isShotDistanceFeasible(distanceM);
+        ShotSolver.Solution solution = ShotSolver.solve(distanceM);
+        boolean feasible = solution.feasible() && isShotDistanceFeasible(distanceM);
+        double targetRps = feasible ? solution.motorRps() : 0.0;
+        double hoodAngleDeg = solution.angleDeg();
 
         boolean holdingAlignment = shouldHoldAlignment(aimErrorDeg);
         double rotCmd = 0.0;
@@ -512,6 +514,7 @@ public class AlignAndShootCommand extends Command {
                 aimErrorDeg,
                 distanceM,
                 targetRps,
+                hoodAngleDeg,
                 new ChassisSpeeds(0.0, 0.0, 0.0),
                 rotCmd,
                 feasible,
@@ -528,7 +531,7 @@ public class AlignAndShootCommand extends Command {
         workFeedGateReady = tracking.feedGateReady();
         workTargetRps = tracking.targetRps();
         shooter.setShooterVelocity(workTargetRps);
-        hood.setAngle(HoodSubsystem.calculateTargetAngle(tracking.distanceM()));
+        hood.setAngle(tracking.hoodAngleDeg());
 
         SmartDashboard.putNumber("AlignShoot/EstDistanceM", tracking.distanceM());
     }
@@ -848,6 +851,7 @@ public class AlignAndShootCommand extends Command {
             double aimErrorDeg,
             double distanceM,
             double targetRps,
+            double hoodAngleDeg,
             ChassisSpeeds translationCmd,
             double rotCmdRadPerSec,
             boolean feasible,

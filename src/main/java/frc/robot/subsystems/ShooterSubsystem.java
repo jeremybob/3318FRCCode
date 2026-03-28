@@ -27,6 +27,7 @@ import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 
 import frc.robot.Constants;
+import frc.robot.util.ShotSolver;
 
 public class ShooterSubsystem extends SubsystemBase {
     private final TalonFX leftShooter =
@@ -187,14 +188,22 @@ public class ShooterSubsystem extends SubsystemBase {
     // --------------------------------------------------------------------------
     // calculateTargetRPS()
     //
-    // Uses the robot's measured close shot and the existing 60 RPS warmup value
-    // as anchors for an empirical distance-to-speed curve.
+    // Returns the motor RPS required to reach the target at the given distance.
+    // Delegates to ShotSolver which uses projectile physics to compute a
+    // coupled (angle, speed) pair — the speed component is returned here.
     // --------------------------------------------------------------------------
     public static double calculateTargetRPS(double distanceM) {
         if (!Double.isFinite(distanceM) || distanceM <= 0.0) {
             return Constants.Shooter.TARGET_RPS;
         }
-        return calculateEmpiricalTargetRps(distanceM);
+        ShotSolver.Solution solution = ShotSolver.solve(distanceM);
+        if (!solution.feasible()) {
+            return Constants.Shooter.TARGET_RPS;
+        }
+        return MathUtil.clamp(
+                solution.motorRps(),
+                Constants.Shooter.MIN_SHOT_RPS,
+                Constants.Shooter.MAX_SHOT_RPS);
     }
 
     public static ShotSolution calculateMovingShotSolution(
@@ -205,14 +214,14 @@ public class ShooterSubsystem extends SubsystemBase {
             return fallbackShotSolution();
         }
 
-        double stationaryTargetRps = calculateTargetRPS(distanceM);
-        if (!Double.isFinite(stationaryTargetRps) || stationaryTargetRps <= 0.0) {
+        // Get the physics-based stationary solution (coupled angle + speed)
+        ShotSolver.Solution base = ShotSolver.solve(distanceM);
+        if (!base.feasible()) {
             return fallbackShotSolution();
         }
 
-        double angleRad = Math.toRadians(Constants.Shooter.SHOT_ANGLE_DEG);
-        double stationaryLaunchSpeedMps = motorRpsToLaunchSpeed(stationaryTargetRps);
-        double stationaryHorizontalSpeedMps = stationaryLaunchSpeedMps * Math.cos(angleRad);
+        double angleRad = Math.toRadians(base.angleDeg());
+        double stationaryHorizontalSpeedMps = base.launchSpeedMps() * Math.cos(angleRad);
         double requiredShotLineSpeedMps = stationaryHorizontalSpeedMps + radialVelocityMps;
         if (!Double.isFinite(requiredShotLineSpeedMps) || requiredShotLineSpeedMps <= 1e-6) {
             return fallbackShotSolution();
@@ -222,7 +231,7 @@ public class ShooterSubsystem extends SubsystemBase {
         if (!Double.isFinite(solvedLaunchSpeedMps) || solvedLaunchSpeedMps <= 0.0) {
             return fallbackShotSolution();
         }
-        double targetRps = launchSpeedToMotorRps(solvedLaunchSpeedMps);
+        double targetRps = ShotSolver.launchSpeedToMotorRps(solvedLaunchSpeedMps);
 
         return new ShotSolution(
                 targetRps,
@@ -270,38 +279,12 @@ public class ShooterSubsystem extends SubsystemBase {
                 + CONFIG_APPLY_RETRIES + " attempts. Last status: " + lastCode.getName());
     }
 
-    private static double calculateEmpiricalTargetRps(double distanceM) {
-        double extraDistanceM = Math.max(
-                0.0,
-                distanceM - Constants.Shooter.MEASURED_CLOSE_SHOT_DISTANCE_M);
-        double targetRps = Constants.Shooter.FALLBACK_RPS
-                + extraDistanceM * Constants.Shooter.EMPIRICAL_SHOT_SLOPE_RPS_PER_M;
-        return MathUtil.clamp(
-                targetRps,
-                Constants.Shooter.MIN_SHOT_RPS,
-                Constants.Shooter.MAX_SHOT_RPS);
-    }
-
-    private static double launchSpeedToMotorRps(double launchSpeedMps) {
-        double wheelRps = launchSpeedMps / Constants.Shooter.WHEEL_CIRCUMFERENCE_M;
-        double motorRps = wheelRps * Constants.Shooter.GEAR_RATIO;
-        return MathUtil.clamp(
-                motorRps,
-                Constants.Shooter.MIN_SHOT_RPS,
-                Constants.Shooter.MAX_SHOT_RPS);
-    }
-
-    private static double motorRpsToLaunchSpeed(double motorRps) {
-        return motorRps / Constants.Shooter.GEAR_RATIO
-                * Constants.Shooter.WHEEL_CIRCUMFERENCE_M;
-    }
-
     private static ShotSolution fallbackShotSolution() {
+        double launchSpeed = ShotSolver.motorRpsToLaunchSpeed(Constants.Shooter.TARGET_RPS);
         return new ShotSolution(
                 Constants.Shooter.TARGET_RPS,
-                motorRpsToLaunchSpeed(Constants.Shooter.TARGET_RPS),
-                motorRpsToLaunchSpeed(Constants.Shooter.TARGET_RPS)
-                        * Math.cos(Math.toRadians(Constants.Shooter.SHOT_ANGLE_DEG)),
+                launchSpeed,
+                launchSpeed * Math.cos(Math.toRadians(Constants.Hood.DEFAULT_ANGLE_DEG)),
                 Double.NaN,
                 false);
     }

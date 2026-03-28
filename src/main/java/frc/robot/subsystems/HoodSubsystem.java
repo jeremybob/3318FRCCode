@@ -9,8 +9,8 @@
 //   - A linear servo (PWM) moves the hood between min and max angles.
 //   - Servo position 0.0 corresponds to MIN_ANGLE_DEG (flat/close).
 //   - Servo position 1.0 corresponds to MAX_ANGLE_DEG (steep/far).
-//   - calculateTargetAngle() provides a distance-based angle curve that
-//     mirrors the shooter's distance-based RPS curve.
+//   - calculateTargetAngle() delegates to ShotSolver which uses projectile
+//     physics to compute a coupled (angle, speed) pair.
 // ============================================================================
 package frc.robot.subsystems;
 
@@ -20,6 +20,7 @@ import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 
 import frc.robot.Constants;
+import frc.robot.util.ShotSolver;
 
 public class HoodSubsystem extends SubsystemBase {
     private final Servo hoodServo = new Servo(Constants.PWM.HOOD_SERVO);
@@ -77,22 +78,16 @@ public class HoodSubsystem extends SubsystemBase {
     // --------------------------------------------------------------------------
     // calculateTargetAngle()
     //
-    // Distance-based angle curve, mirroring the shooter RPS curve.
-    // Close shots use a flatter angle; far shots use a steeper angle.
+    // Returns the optimal hood angle for the given distance, computed by
+    // ShotSolver using projectile physics.  The angle and shooter RPS are
+    // derived from the same trajectory equation, so they are always coupled.
     // --------------------------------------------------------------------------
     public static double calculateTargetAngle(double distanceM) {
         if (!Double.isFinite(distanceM) || distanceM <= 0.0) {
             return Constants.Hood.DEFAULT_ANGLE_DEG;
         }
-        double extraDistanceM = Math.max(
-                0.0,
-                distanceM - Constants.Shooter.MEASURED_CLOSE_SHOT_DISTANCE_M);
-        double angleDeg = Constants.Hood.CLOSE_SHOT_ANGLE_DEG
-                + extraDistanceM * Constants.Hood.EMPIRICAL_ANGLE_SLOPE_DEG_PER_M;
-        return MathUtil.clamp(
-                angleDeg,
-                Constants.Hood.MIN_ANGLE_DEG,
-                Constants.Hood.MAX_ANGLE_DEG);
+        ShotSolver.Solution solution = ShotSolver.solve(distanceM);
+        return solution.angleDeg();
     }
 
     // --------------------------------------------------------------------------
