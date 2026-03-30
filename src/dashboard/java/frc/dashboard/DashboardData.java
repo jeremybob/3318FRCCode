@@ -69,10 +69,11 @@ public record DashboardData(
         // Match info
         long matchNumber,
         String eventName,
-        // Camera / vision connection (PhotonVision on Raspberry Pi 4)
+        // Camera / vision connection
         boolean cameraConnected,
         String cameraStatus,
         String cameraName,
+        String activeCameraType,
         // Vision pose estimation
         int visionTagId,
         boolean visionHasTarget,

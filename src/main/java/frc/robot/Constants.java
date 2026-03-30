@@ -543,19 +543,38 @@ public final class Constants {
         // Set false for electrical bring-up when no camera is present.
         public static final boolean ENABLE_VISION = true;
 
+        // ---- Camera selection ----
+        // Switch between PhotonVision (Arducam OV9281 on Pi 4) and Limelight 2+.
+        public enum CameraType { PHOTONVISION, LIMELIGHT }
+        public static final CameraType ACTIVE_CAMERA = CameraType.PHOTONVISION;
+
         // ---- PhotonVision camera name (configured in PhotonVision UI) ----
         public static final String PHOTON_CAMERA_NAME = "OV9281";
 
-        // ---- Camera mount → robot-to-camera transform ----
+        // ---- Limelight NetworkTables hostname ----
+        // Must match the hostname configured in the Limelight web UI.
+        public static final String LIMELIGHT_NAME = "limelight";
+
+        // ---- PhotonVision camera mount → robot-to-camera transform ----
         // Same mount location as the previous Logitech camera.
         // Robot frame: +X forward, +Y left, +Z up.
         // Camera: 16.5 in high, 9 in to the RIGHT, pitched up 10.5 deg.
-        public static final Transform3d ROBOT_TO_CAMERA = new Transform3d(
+        public static final Transform3d PHOTON_ROBOT_TO_CAMERA = new Transform3d(
                 new Translation3d(
                         0.0,                          // forward offset (approx centered)
                         -Units.inchesToMeters(9.0),   // lateral: 9 in right = negative Y
                         Units.inchesToMeters(16.5)),  // height
                 new Rotation3d(0, Math.toRadians(-10.5), 0)); // pitched up
+
+        // ---- Limelight 2+ camera mount → robot-to-camera transform ----
+        // TUNE ME — measure the Limelight's physical mount position on the robot.
+        // These values must also be entered into the Limelight web UI.
+        public static final Transform3d LIMELIGHT_ROBOT_TO_CAMERA = new Transform3d(
+                new Translation3d(
+                        0.0,                          // forward offset  TUNE ME
+                        0.0,                          // lateral offset  TUNE ME
+                        Units.inchesToMeters(20.0)),  // height          TUNE ME
+                new Rotation3d(0, Math.toRadians(-15.0), 0)); // pitch   TUNE ME
 
         // ---- HUB center field coordinates (meters, blue-origin) ----
         // These are the scoring target centers. TUNE ME — measure on your field.
