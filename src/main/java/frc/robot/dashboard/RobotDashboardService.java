@@ -44,6 +44,8 @@ public class RobotDashboardService {
         void requestSwerveValidation(String moduleName, String modeName);
         void stopSwerveValidation();
         void selectAutoByName(String autoName);
+        void selectCamera(String cameraTypeName);
+        String getActiveCameraTypeName();
     }
 
     private static final String CONTRACT_VERSION = "2026.16.0";
@@ -129,10 +131,11 @@ public class RobotDashboardService {
     private final IntegerPublisher matchNumberPub;
     private final StringPublisher eventNamePub;
 
-    // Camera / vision connection (PhotonVision on Raspberry Pi 4)
+    // Camera / vision connection
     private final BooleanPublisher cameraConnectedPub;
     private final StringPublisher cameraStatusPub;
     private final StringPublisher cameraNamePub;
+    private final StringPublisher activeCameraTypePub;
     // Vision pose estimation
     private final IntegerPublisher visionTagIdPub;
     private final BooleanPublisher visionHasTargetPub;
@@ -213,6 +216,8 @@ public class RobotDashboardService {
     private final IntegerSubscriber stopSwerveValidationCmdSub;
     private final StringSubscriber selectAutoNameCmdSub;
     private final IntegerSubscriber selectAutoCmdSub;
+    private final StringSubscriber selectCameraNameCmdSub;
+    private final IntegerSubscriber selectCameraCmdSub;
 
     private long zeroHeadingSeqSeen = 0;
     private long stopDriveSeqSeen = 0;
@@ -225,6 +230,7 @@ public class RobotDashboardService {
     private long swerveValidationSeqSeen = 0;
     private long stopSwerveValidationSeqSeen = 0;
     private long selectAutoSeqSeen = 0;
+    private long selectCameraSeqSeen = 0;
     private double lastSnapshotPublishTimestampSec = Double.NEGATIVE_INFINITY;
 
     public RobotDashboardService(Actions actions) {
@@ -315,10 +321,11 @@ public class RobotDashboardService {
         matchNumberPub = table.getIntegerTopic("match/number").publish();
         eventNamePub = table.getStringTopic("match/event_name").publish();
 
-        // Camera / vision connection (PhotonVision on Raspberry Pi 4)
+        // Camera / vision connection
         cameraConnectedPub = table.getBooleanTopic("vision/camera_connected").publish();
         cameraStatusPub = table.getStringTopic("vision/camera_status").publish();
         cameraNamePub = table.getStringTopic("vision/camera_name").publish();
+        activeCameraTypePub = table.getStringTopic("vision/active_camera").publish();
         // Vision pose estimation
         visionTagIdPub = table.getIntegerTopic("vision/tag_id").publish();
         visionHasTargetPub = table.getBooleanTopic("vision/has_target").publish();
@@ -399,6 +406,8 @@ public class RobotDashboardService {
         stopSwerveValidationCmdSub = table.getIntegerTopic("cmd/stop_swerve_validation_seq").subscribe(0);
         selectAutoNameCmdSub = table.getStringTopic("cmd/select_auto_name").subscribe("");
         selectAutoCmdSub = table.getIntegerTopic("cmd/select_auto_seq").subscribe(0);
+        selectCameraNameCmdSub = table.getStringTopic("cmd/select_camera_name").subscribe("");
+        selectCameraCmdSub = table.getIntegerTopic("cmd/select_camera_seq").subscribe(0);
 
         // Ignore any stale sequence values already present when robot code starts.
         zeroHeadingSeqSeen = zeroHeadingCmdSub.get();
@@ -412,6 +421,7 @@ public class RobotDashboardService {
         swerveValidationSeqSeen = swerveValidationCmdSub.get();
         stopSwerveValidationSeqSeen = stopSwerveValidationCmdSub.get();
         selectAutoSeqSeen = selectAutoCmdSub.get();
+        selectCameraSeqSeen = selectCameraCmdSub.get();
     }
 
     public void periodic(DashboardSnapshot snapshot) {
@@ -506,6 +516,7 @@ public class RobotDashboardService {
         cameraConnectedPub.set(snapshot.cameraConnected());
         cameraStatusPub.set(snapshot.cameraStatus());
         cameraNamePub.set(snapshot.cameraName());
+        activeCameraTypePub.set(actions.getActiveCameraTypeName());
         // Vision pose estimation
         visionTagIdPub.set(snapshot.visionTagId());
         visionHasTargetPub.set(snapshot.visionHasTarget());
@@ -673,6 +684,12 @@ public class RobotDashboardService {
                 selectAutoSeqSeen,
                 snapshot.timestampSec(),
                 disabled);
+
+        selectCameraSeqSeen = runCameraSelectionIfNew(
+                selectCameraCmdSub,
+                selectCameraNameCmdSub,
+                selectCameraSeqSeen,
+                snapshot.timestampSec());
     }
 
     private long runCommandIfNew(
@@ -763,6 +780,32 @@ public class RobotDashboardService {
 
         actions.selectAutoByName(normalizedAutoName);
         publishAck("select_auto", "OK", seq, "Selected " + normalizedAutoName, timestampSec);
+        return seq;
+    }
+
+    private long runCameraSelectionIfNew(
+            IntegerSubscriber sequenceSubscriber,
+            StringSubscriber nameSubscriber,
+            long lastSeen,
+            double timestampSec) {
+        long seq = sequenceSubscriber.get();
+        if (seq <= lastSeen) {
+            return lastSeen;
+        }
+
+        String requestedCamera = nameSubscriber.get();
+        String normalized = requestedCamera == null ? "" : requestedCamera.trim().toUpperCase();
+        if (normalized.isEmpty()) {
+            publishAck("select_camera", "REJECTED", seq, "No camera name provided", timestampSec);
+            return seq;
+        }
+        if (!"PHOTONVISION".equals(normalized) && !"LIMELIGHT".equals(normalized)) {
+            publishAck("select_camera", "REJECTED", seq, "Unknown camera: " + normalized, timestampSec);
+            return seq;
+        }
+
+        actions.selectCamera(normalized);
+        publishAck("select_camera", "OK", seq, "Switched to " + normalized, timestampSec);
         return seq;
     }
 

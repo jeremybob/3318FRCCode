@@ -153,6 +153,7 @@ public class DashboardFrame extends JFrame {
     private final JLabel canHealthLabel = new JLabel("CAN: --");
     private final JLabel cameraStatusLabel = new JLabel("Camera: --");
     private final JLabel cameraDebugLabel = new JLabel("Debug: --");
+    private JComboBox<String> cameraSelectCombo;
     private final JLabel cameraErrorLabel = new JLabel("Error: --");
     private final JLabel pigeonLabel = new JLabel("Pigeon: Y -- P -- R --");
     private final JLabel driveDebugLabel = new JLabel("Drive dbg: turn --  cmd w --  meas w --  field --");
@@ -509,6 +510,24 @@ public class DashboardFrame extends JFrame {
         controls.add(visionStreamModeCombo);
         controls.add(Box.createHorizontalStrut(10));
         controls.add(visionStreamEnabledToggle);
+        controls.add(Box.createHorizontalStrut(20));
+        controls.add(infoLabel("Camera"));
+        controls.add(Box.createHorizontalStrut(8));
+        cameraSelectCombo = new JComboBox<>(new String[] {"PhotonVision (Pi 4)", "Limelight 2+"});
+        cameraSelectCombo.setFont(ACTION_FONT);
+        cameraSelectCombo.setBackground(CARD_ALT);
+        cameraSelectCombo.setForeground(TEXT);
+        cameraSelectCombo.setFocusable(false);
+        cameraSelectCombo.setRenderer(createDarkComboRenderer());
+        cameraSelectCombo.addActionListener(e -> {
+            String selected = (String) cameraSelectCombo.getSelectedItem();
+            if ("Limelight 2+".equals(selected)) {
+                client.sendCameraSelection("LIMELIGHT");
+            } else {
+                client.sendCameraSelection("PHOTONVISION");
+            }
+        });
+        controls.add(cameraSelectCombo);
         controls.add(Box.createHorizontalGlue());
         controls.add(infoLabel("Overlay uses roboRIO AprilTag detections"));
 
@@ -1149,12 +1168,30 @@ public class DashboardFrame extends JFrame {
                 + "% util, " + canErrors + " errors");
         canHealthLabel.setForeground(canErrors > 0 ? BAD : OK);
 
-        cameraStatusLabel.setText("Camera: " + (data.cameraConnected() ? "CONNECTED" : "DISCONNECTED"));
+        cameraStatusLabel.setText("Camera: " + (data.cameraConnected() ? "CONNECTED" : "DISCONNECTED")
+                + " [" + sanitize(data.activeCameraType()) + "]");
         cameraStatusLabel.setForeground(data.cameraConnected() ? OK : BAD);
         cameraDebugLabel.setText("Debug: " + buildCameraDebugSummary(data));
         cameraDebugLabel.setForeground(data.cameraConnected() ? TEXT : WARN);
         cameraErrorLabel.setText("Camera: " + sanitize(data.cameraName()));
         cameraErrorLabel.setForeground(MUTED);
+        // Sync the camera selector combo with the robot's active camera (without firing action).
+        if (cameraSelectCombo != null) {
+            String expected = "LIMELIGHT".equals(data.activeCameraType())
+                    ? "Limelight 2+" : "PhotonVision (Pi 4)";
+            if (!expected.equals(cameraSelectCombo.getSelectedItem())) {
+                cameraSelectCombo.removeActionListener(cameraSelectCombo.getActionListeners()[0]);
+                cameraSelectCombo.setSelectedItem(expected);
+                cameraSelectCombo.addActionListener(e -> {
+                    String selected = (String) cameraSelectCombo.getSelectedItem();
+                    if ("Limelight 2+".equals(selected)) {
+                        client.sendCameraSelection("LIMELIGHT");
+                    } else {
+                        client.sendCameraSelection("PHOTONVISION");
+                    }
+                });
+            }
+        }
         pigeonLabel.setText("Pigeon: Y " + formatMaybe(data.pigeonYawDeg())
                 + "  P " + formatMaybe(data.pigeonPitchDeg())
                 + "  R " + formatMaybe(data.pigeonRollDeg()) + " deg");

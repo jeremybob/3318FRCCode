@@ -19,35 +19,44 @@ class MatchCsvLoggerTest {
 
     private static DashboardData sampleData(double timestamp, double battery, String mode) {
         return new DashboardData(
-                true, mode, true, "RED", 120.0, timestamp,
-                1.5, 2.5, 45.0,
-                Double.NaN, Double.NaN, Double.NaN,
-                0.05, 1.2, 0.3, 0.4, true,
-                false, Double.NaN, Double.NaN, Double.NaN,
-                80.0, 79.0, true,
-                true, false, 30.0, 5.0, 3.0, 2.0,
-                false, 0.0, 0.0,
-                "TRACKING", true, true, true, true, 1.2, 0.3, 0.9, -0.5,
-                74.0, 0.2, -0.3, 0.4, -0.1, 0.8, 0.45, true, "",
-                true, "All conditions met",
-                true, 10.0,
-                battery, false, false,
-                "TwoNoteCenter", "CUSTOM DASHBOARD", new String[]{"TwoNoteCenter"}, false,
-                Double.NaN, Double.NaN, Double.NaN,
-                1, "TestEvent",
-                true, "OK", 0, "cam", "/dev/video0", "", "", 100, 10.0,
-                1, true, 1.2, -0.5, 1.8, -0.6, 2.5, 48.0, 3, 2, 120.0, 10.0,
-                0.5, 0, 0,
-                10.0, 20.0, 30.0, 40.0,
+                true, mode, true, "RED", 120.0, timestamp, // connected, mode, enabled, alliance, matchTimeSec, robotTimestampSec
+                1.5, 2.5, 45.0,                            // poseX_m, poseY_m, headingDeg
+                Double.NaN, Double.NaN, Double.NaN,        // pigeonYawDeg, pigeonPitchDeg, pigeonRollDeg
+                0.05, 1.2, 0.3, 0.4, true,                // driver turn + fieldRelativeEnabled
+                false, Double.NaN, Double.NaN, Double.NaN, // heading hold
+                80.0, 79.0, true,                           // shooterLeftRps, shooterRightRps, shooterAtSpeed
+                true, false, 30.0, 5.0, 3.0, 2.0,         // intake + feeder + hopper
+                false, 0.0, 0.0,                            // climber
+                // Alignment pipeline
+                "TRACKING", true, true, true, true,        // alignState, alignCommandActive, alignHasTarget, alignGeometryFeasible, alignHasShootableTarget
+                1.2, 0.3, 0.9, -0.5,                      // alignHeadingErrorDeg, alignAimErrorDeg, alignDistanceM, alignTargetRps
+                true, "",                                   // alignFeedGateReady, alignAbortReason
+                true, "All conditions met",                // readyToScore, readyReason
+                true, 10.0,                                 // hubActive, hubSecondsToNextShift
+                battery, false, false,                      // batteryVoltage, brownoutAlert, isBrownout
+                "TwoNoteCenter", "CUSTOM DASHBOARD", new String[]{"TwoNoteCenter"}, false, // auto
+                Double.NaN, Double.NaN, Double.NaN,        // autoStart pose
+                1, "TestEvent",                             // matchNumber, eventName
+                // Camera / vision
+                true, "PHOTON_CONNECTED", "OV9281", "PHOTONVISION", // cameraConnected, cameraStatus, cameraName, activeCameraType
+                1, true, 1.2, 2.5, 3, 120.0,              // visionTagId, visionHasTarget, visionHeadingErrorDeg, visionDistanceM, visionHubTagCount, visionTargetTimestampSec
+                0.5, 0, 0,                                  // canBusUtilization, canReceiveErrorCount, canTransmitErrorCount
+                10.0, 20.0, 30.0, 40.0,                    // swerve angles
+                // CANCoder raw + offset (8 fields)
                 Double.NaN, Double.NaN, Double.NaN, Double.NaN,
                 Double.NaN, Double.NaN, Double.NaN, Double.NaN,
+                // CANCoder pos + absRaw + ok (12 fields)
                 Double.NaN, Double.NaN, Double.NaN, Double.NaN,
                 Double.NaN, Double.NaN, Double.NaN, Double.NaN,
                 true, true, true, true,
+                // Motor temps
                 40.0, 41.0, 42.0, 43.0, 50.0, 51.0,
+                // Controller diagnostics
                 "", "", 0, 0.0, "",
+                // Swerve validation
                 false, "NONE", "--", "IDLE", "Idle", 0.0, 0.0,
                 Double.NaN, Double.NaN, Double.NaN, Double.NaN,
+                // Ack
                 "ZERO_HEADING", "OK", 1, "Done", 10.0);
     }
 

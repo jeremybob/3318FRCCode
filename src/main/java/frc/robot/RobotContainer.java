@@ -78,14 +78,20 @@ import edu.wpi.first.wpilibj.Filesystem;
 public class RobotContainer implements RobotRuntimeContainer {
 
     // =========================================================================
-    // VISION — Arducam OV9281 on Raspberry Pi 4, processed by PhotonVision.
+    // VISION — supports PhotonVision (Arducam OV9281 on Pi 4) or Limelight 2+.
     // Tag sightings correct the robot's pose estimate. Alignment to the HUB
     // is calculated from the corrected pose, not from raw tag yaw.
+    // Switch between cameras via Constants.Vision.ACTIVE_CAMERA.
     // =========================================================================
     private PhotonCamera photonCamera;
     private PhotonPoseEstimator photonPoseEstimator;
+    private edu.wpi.first.networktables.NetworkTable limelightTable;
+    private Constants.Vision.CameraType activeCameraType = Constants.Vision.CameraType.PHOTONVISION;
+    private Constants.Vision.CameraType previousCameraType = Constants.Vision.CameraType.PHOTONVISION;
     private int lastVisionTagId = -1;
     private int lastVisionTagCount = 0;
+    private long lastLimelightNtTimestamp = 0;
+    private double lastLimelightFpgaSec = 0.0;
 
     // =========================================================================
     // SUBSYSTEMS — created once here, shared with commands
@@ -154,21 +160,29 @@ public class RobotContainer implements RobotRuntimeContainer {
         configureBindings();
         configureCommandEventLogging();
 
-        // Connect to PhotonVision on the Raspberry Pi 4 via NetworkTables.
-        // Tag detections are used to correct the robot's pose estimate.
+        // Initialize both vision cameras so live switching is possible.
+        // The dashboard chooser selects which one is actively used.
         if (Constants.Vision.ENABLE_VISION) {
+            // PhotonVision (Arducam OV9281 on Raspberry Pi 4)
             photonCamera = new PhotonCamera(Constants.Vision.PHOTON_CAMERA_NAME);
             try {
                 AprilTagFieldLayout fieldLayout = AprilTagFieldLayout.loadField(AprilTagFields.kDefaultField);
                 photonPoseEstimator = new PhotonPoseEstimator(
                         fieldLayout,
                         PoseStrategy.MULTI_TAG_PNP_ON_COPROCESSOR,
-                        Constants.Vision.ROBOT_TO_CAMERA);
+                        Constants.Vision.PHOTON_ROBOT_TO_CAMERA);
                 photonPoseEstimator.setMultiTagFallbackStrategy(PoseStrategy.LOWEST_AMBIGUITY);
             } catch (Exception ex) {
                 System.err.println("[Vision] Failed to load field layout: " + ex.getMessage());
                 System.err.println("[Vision] Pose estimation DISABLED — alignment will use odometry only.");
             }
+
+            // Limelight 2+ (communicates via NetworkTables)
+            limelightTable = edu.wpi.first.networktables.NetworkTableInstance.getDefault()
+                    .getTable(Constants.Vision.LIMELIGHT_NAME);
+
+            // Default to PhotonVision (Pi 4); switchable from the custom dashboard.
+            activeCameraType = Constants.Vision.CameraType.PHOTONVISION;
         }
 
         // Intake homing is handled by:
@@ -231,25 +245,47 @@ public class RobotContainer implements RobotRuntimeContainer {
             public void selectAutoByName(String autoName) {
                 RobotContainer.this.selectAutoByName(autoName, "CUSTOM DASHBOARD");
             }
+
+            @Override
+            public void selectCamera(String cameraTypeName) {
+                RobotContainer.this.selectCamera(cameraTypeName);
+            }
+
+            @Override
+            public String getActiveCameraTypeName() {
+                return RobotContainer.this.getActiveCameraTypeName();
+            }
         });
     }
 
     /**
-     * Polls PhotonVision for the latest result and feeds any pose estimate
+     * Polls the active vision camera and feeds any pose estimate
      * into the swerve drive pose estimator to correct odometry drift.
      */
     private void updateVision() {
+        Constants.Vision.CameraType current = getActiveCameraType();
+        // Clear stale telemetry when the camera source changes.
+        if (current != previousCameraType) {
+            lastVisionTagId = -1;
+            lastVisionTagCount = 0;
+            previousCameraType = current;
+        }
+        switch (current) {
+            case PHOTONVISION -> updatePhotonVision();
+            case LIMELIGHT    -> updateLimelight();
+        }
+    }
+
+    private void updatePhotonVision() {
         if (photonCamera == null || photonPoseEstimator == null) return;
 
         PhotonPipelineResult result = photonCamera.getLatestResult();
 
-        // Track which tags are visible for telemetry
         if (result.hasTargets()) {
             lastVisionTagId = result.getBestTarget().getFiducialId();
             lastVisionTagCount = result.getTargets().size();
         }
 
-        // Use PhotonPoseEstimator to compute robot field pose from tag sightings
         photonPoseEstimator.setReferencePose(swerve.getPose());
         var poseResult = photonPoseEstimator.update(result);
         if (poseResult.isPresent()) {
@@ -257,6 +293,66 @@ public class RobotContainer implements RobotRuntimeContainer {
             swerve.addVisionMeasurement(
                     estimated.estimatedPose.toPose2d(),
                     estimated.timestampSeconds);
+        }
+    }
+
+    private void updateLimelight() {
+        if (limelightTable == null) return;
+
+        // Track when the Limelight last published a fresh value (for connection detection).
+        // Compare NT timestamps across cycles: if the NT timestamp changed, the Limelight
+        // is still publishing, and we record the FPGA time of that observation.
+        long tvTimestamp = limelightTable.getEntry("tv").getLastChange();
+        if (tvTimestamp > lastLimelightNtTimestamp) {
+            lastLimelightNtTimestamp = tvTimestamp;
+            lastLimelightFpgaSec = Timer.getFPGATimestamp();
+        }
+
+        double tv = limelightTable.getEntry("tv").getDouble(0.0);
+        if (tv < 1.0) return; // no target visible
+
+        lastVisionTagId = (int) limelightTable.getEntry("tid").getDouble(-1);
+        // Limelight does not report a tag count in a single entry; use 1 when target valid.
+        lastVisionTagCount = 1;
+
+        // botpose_wpiblue: [x, y, z, roll, pitch, yaw, latencyMs, tagCount, tagSpan, avgDist, avgArea]
+        double[] botpose = limelightTable.getEntry("botpose_wpiblue").getDoubleArray(new double[0]);
+        if (botpose.length < 7) return;
+
+        // Limelight returns all-zeros when it has no valid 3D solution.
+        // Feeding (0, 0) into the pose estimator would corrupt odometry.
+        if (botpose[0] == 0.0 && botpose[1] == 0.0 && botpose[5] == 0.0) return;
+
+        Pose2d visionPose = new Pose2d(
+                botpose[0], botpose[1],
+                edu.wpi.first.math.geometry.Rotation2d.fromDegrees(botpose[5]));
+        double latencySec = botpose[6] / 1000.0;
+        double timestampSec = Timer.getFPGATimestamp() - latencySec;
+
+        swerve.addVisionMeasurement(visionPose, timestampSec);
+
+        if (botpose.length >= 8) {
+            lastVisionTagCount = (int) botpose[7];
+        }
+    }
+
+    /** Returns which camera type is currently selected on the dashboard. */
+    private Constants.Vision.CameraType getActiveCameraType() {
+        return activeCameraType;
+    }
+
+    /** Returns the active camera type name for telemetry. */
+    String getActiveCameraTypeName() {
+        return activeCameraType.name();
+    }
+
+    /** Switches the active vision camera. Called from the dashboard command. */
+    void selectCamera(String cameraTypeName) {
+        try {
+            activeCameraType = Constants.Vision.CameraType.valueOf(cameraTypeName);
+            System.out.println("[Vision] Camera switched to: " + activeCameraType);
+        } catch (IllegalArgumentException ex) {
+            System.err.println("[Vision] Unknown camera type: " + cameraTypeName);
         }
     }
 
@@ -834,7 +930,24 @@ public class RobotContainer implements RobotRuntimeContainer {
                         Constants.AlignShoot.YAW_TOLERANCE_DEG,
                         AlignAndShootCommand.telemetryFeedGateReady()));
 
-        boolean photonConnected = photonCamera != null && photonCamera.isConnected();
+        boolean cameraConnected;
+        String cameraStatus;
+        String cameraName;
+        switch (getActiveCameraType()) {
+            case LIMELIGHT:
+                // Consider connected if Limelight published within the last 2 seconds.
+                cameraConnected = limelightTable != null
+                        && lastLimelightFpgaSec > 0
+                        && (Timer.getFPGATimestamp() - lastLimelightFpgaSec) < 2.0;
+                cameraStatus = cameraConnected ? "LIMELIGHT_CONNECTED" : "LIMELIGHT_DISCONNECTED";
+                cameraName = Constants.Vision.LIMELIGHT_NAME;
+                break;
+            default: // PHOTONVISION
+                cameraConnected = photonCamera != null && photonCamera.isConnected();
+                cameraStatus = cameraConnected ? "PHOTON_CONNECTED" : "PHOTON_DISCONNECTED";
+                cameraName = Constants.Vision.PHOTON_CAMERA_NAME;
+                break;
+        }
         boolean visionActive = swerve.isVisionActive();
         Translation2d hubCenter = getAllianceHubCenter();
         double visionHeadingErrorDeg = swerve.getHeadingErrorDegTo(hubCenter);
@@ -916,10 +1029,10 @@ public class RobotContainer implements RobotRuntimeContainer {
                 // Match info
                 DriverStation.getMatchNumber(),
                 DriverStation.getEventName(),
-                // Camera (PhotonVision on Pi 4)
-                photonConnected,
-                photonConnected ? "PHOTON_CONNECTED" : "PHOTON_DISCONNECTED",
-                Constants.Vision.PHOTON_CAMERA_NAME,
+                // Camera (selected via dashboard chooser)
+                cameraConnected,
+                cameraStatus,
+                cameraName,
                 // Vision pose estimation
                 lastVisionTagId,
                 visionActive,

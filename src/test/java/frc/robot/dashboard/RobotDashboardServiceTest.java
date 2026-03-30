@@ -571,103 +571,49 @@ class RobotDashboardServiceTest {
             double headingHoldErrorDeg,
             double headingHoldCorrectionOmegaRadPerSec) {
         return new DashboardSnapshot(
-                timestampSec,
-                mode,
-                enabled,
-                "BLUE",
-                135.0,
-                0.0,
-                0.0,
-                0.0,
-                0.0,
-                0.0,
-                0.0,
-                driverRawTurnInput,
-                driverCommandedTranslationMps,
-                driverCommandedOmegaRadPerSec,
-                measuredOmegaRadPerSec,
-                driverFieldRelativeEnabled,
-                headingHoldActive,
-                headingHoldTargetDeg,
-                headingHoldErrorDeg,
-                headingHoldCorrectionOmegaRadPerSec,
-                0.0,
-                0.0,
-                false,
-                false,
-                false,
-                0.0,
-                0.0,
-                0.0,
-                0.0,
-                climberArmed,
-                0.0,
-                0.0,
-                "IDLE",
-                false,
-                false,
-                false,
-                false,
-                Double.NaN,
-                Double.NaN,
-                Double.NaN,
-                Double.NaN,
-                Double.NaN,
-                Double.NaN,
-                Double.NaN,
-                Double.NaN,
-                Double.NaN,
-                Double.NaN,
-                Double.NaN,
-                false,
-                "",
-                false,
-                "",
-                // 2026 REBUILT: HUB shift activity
-                true,
-                25.0,
+                timestampSec,               // timestampSec
+                mode,                       // robotMode
+                enabled,                    // enabled
+                "BLUE",                     // alliance
+                135.0,                      // matchTimeSec
+                0.0, 0.0, 0.0,             // poseX_m, poseY_m, headingDeg
+                0.0, 0.0, 0.0,             // pigeonYawDeg, pigeonPitchDeg, pigeonRollDeg
+                driverRawTurnInput,         // driverRawTurnInput
+                driverCommandedTranslationMps, // driverCommandedTranslationMps
+                driverCommandedOmegaRadPerSec, // driverCommandedOmegaRadPerSec
+                measuredOmegaRadPerSec,     // measuredOmegaRadPerSec
+                driverFieldRelativeEnabled, // driverFieldRelativeEnabled
+                headingHoldActive,          // headingHoldActive
+                headingHoldTargetDeg,       // headingHoldTargetDeg
+                headingHoldErrorDeg,        // headingHoldErrorDeg
+                headingHoldCorrectionOmegaRadPerSec, // headingHoldCorrectionOmegaRadPerSec
+                0.0, 0.0, false,            // shooterLeftRps, shooterRightRps, shooterAtSpeed
+                false, false, 0.0,          // intakeHomed, intakeLimitSwitchPressed, intakeSlideIn
+                0.0, 0.0, 0.0,             // intakeRollerCurrentAmps, feederCurrentAmps, hopperCurrentAmps
+                climberArmed, 0.0, 0.0,    // climberArmed, climberPositionRot, climberCurrentAmps
+                // Alignment pipeline
+                "IDLE", false, false, false, false, // alignState, alignCommandActive, alignHasTarget, alignGeometryFeasible, alignHasShootableTarget
+                Double.NaN, Double.NaN, Double.NaN, Double.NaN, // alignHeadingErrorDeg, alignAimErrorDeg, alignDistanceM, alignTargetRps
+                false, "",                  // alignFeedGateReady, alignAbortReason
+                false, "",                  // readyToScore, readyReason
+                // HUB shift activity
+                true, 25.0,                 // hubActive, hubSecondsToNextShift
                 // System health
-                12.5,
-                false,
-                false,
+                12.5, false, false,         // batteryVoltage, brownoutAlert, isBrownout
                 // Auto
-                "Do Nothing",
-                "SMARTDASHBOARD",
+                "Do Nothing", "SMARTDASHBOARD",
                 new String[] {"Do Nothing", "Taxi Only", "Calibrate CANcoders"},
-                false,
-                // Expected auto starting pose
-                Double.NaN,
-                Double.NaN,
-                Double.NaN,
+                false,                      // autoCommandRunning
+                Double.NaN, Double.NaN, Double.NaN, // autoStartX_m, autoStartY_m, autoStartHeadingDeg
                 // Match info
-                0,
-                "",
-                // Camera
-                true,
-                "STREAMING",
-                0,
-                "Logitech C920",
-                "/dev/video0",
-                "dev=0 Logitech C920 @ /dev/video0",
-                "",
-                42,
-                12.0,
-                -1,
-                false,
-                Double.NaN,
-                Double.NaN,
-                Double.NaN,
-                Double.NaN,
-                Double.NaN,
-                Double.NaN,
-                0,
-                0,
-                Double.NaN,
-                Double.NaN,
+                0, "",                      // matchNumber, eventName
+                // Camera / vision
+                true, "PHOTON_CONNECTED", "OV9281", // cameraConnected, cameraStatus, cameraName
+                -1, false,                  // visionTagId, visionHasTarget
+                Double.NaN, Double.NaN,     // visionHeadingErrorDeg, visionDistanceM
+                0, Double.NaN,              // visionHubTagCount, visionTargetTimestampSec
                 // CAN health
-                0.0,
-                0,
-                0,
+                0.0, 0, 0,                 // canBusUtilization, canReceiveErrorCount, canTransmitErrorCount
                 // Swerve angles
                 0.0, 0.0, 0.0, 0.0,
                 // CANCoder health (pos, absRaw, ok)
@@ -675,25 +621,14 @@ class RobotDashboardServiceTest {
                 0.0, 0.0, 0.0, 0.0,
                 true, true, true, true,
                 // Motor temps
-                0.0, 0.0, 0.0, 0.0,
-                0.0, 0.0,
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
                 // Controller diagnostics
-                driverButtonsActive,
-                operatorButtonsActive,
-                controlEventSeq,
-                controlEventTimestampSec,
-                controlEventMessage,
-                false,
-                "NONE",
-                "--",
-                "IDLE",
-                "Idle",
-                0.0,
-                0.0,
-                Double.NaN,
-                Double.NaN,
-                Double.NaN,
-                Double.NaN);
+                driverButtonsActive, operatorButtonsActive,
+                controlEventSeq, controlEventTimestampSec, controlEventMessage,
+                // Swerve validation
+                false, "NONE", "--", "IDLE", "Idle",
+                0.0, 0.0,
+                Double.NaN, Double.NaN, Double.NaN, Double.NaN);
     }
 
     private static final class TestActions implements RobotDashboardService.Actions {
@@ -768,6 +703,20 @@ class RobotDashboardServiceTest {
         public void selectAutoByName(String autoName) {
             selectAutoCalls++;
             lastSelectedAutoName = autoName;
+        }
+
+        String activeCameraType = "PHOTONVISION";
+        int selectCameraCalls;
+
+        @Override
+        public void selectCamera(String cameraTypeName) {
+            selectCameraCalls++;
+            activeCameraType = cameraTypeName;
+        }
+
+        @Override
+        public String getActiveCameraTypeName() {
+            return activeCameraType;
         }
     }
 }

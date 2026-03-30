@@ -140,13 +140,15 @@ public class DashboardNtClient implements AutoCloseable {
     private final IntegerSubscriber matchNumberSub = table.getIntegerTopic("match/number").subscribe(0);
     private final StringSubscriber eventNameSub = table.getStringTopic("match/event_name").subscribe("");
 
-    // Camera / vision connection (PhotonVision on Raspberry Pi 4)
+    // Camera / vision connection
     private final BooleanSubscriber cameraConnectedSub =
             table.getBooleanTopic("vision/camera_connected").subscribe(false);
     private final StringSubscriber cameraStatusSub =
             table.getStringTopic("vision/camera_status").subscribe("STARTING");
     private final StringSubscriber cameraNameSub =
             table.getStringTopic("vision/camera_name").subscribe("");
+    private final StringSubscriber activeCameraTypeSub =
+            table.getStringTopic("vision/active_camera").subscribe("PHOTONVISION");
     // Vision pose estimation
     private final IntegerSubscriber visionTagIdSub =
             table.getIntegerTopic("vision/tag_id").subscribe(-1);
@@ -268,6 +270,8 @@ public class DashboardNtClient implements AutoCloseable {
     private final IntegerPublisher stopSwerveValidationPub = table.getIntegerTopic("cmd/stop_swerve_validation_seq").publish();
     private final StringPublisher selectAutoNamePub = table.getStringTopic("cmd/select_auto_name").publish();
     private final IntegerPublisher selectAutoPub = table.getIntegerTopic("cmd/select_auto_seq").publish();
+    private final StringPublisher selectCameraNamePub = table.getStringTopic("cmd/select_camera_name").publish();
+    private final IntegerPublisher selectCameraPub = table.getIntegerTopic("cmd/select_camera_seq").publish();
 
     // Command sequence numbers for deduplication. Each command is sent with an
     // incrementing sequence number so the robot can detect new commands vs. stale
@@ -283,6 +287,7 @@ public class DashboardNtClient implements AutoCloseable {
     private long swerveValidationSeq = 0;
     private long stopSwerveValidationSeq = 0;
     private long selectAutoSeq = 0;
+    private long selectCameraSeq = 0;
 
     public DashboardNtClient(String clientName, int teamNumber, String hostOverride) {
         robotHost = resolveRobotHost(teamNumber, hostOverride);
@@ -369,10 +374,11 @@ public class DashboardNtClient implements AutoCloseable {
                 // Match info
                 matchNumberSub.get(),
                 eventNameSub.get(),
-                // Camera (PhotonVision on Raspberry Pi 4)
+                // Camera / vision connection
                 cameraConnectedSub.get(),
                 cameraStatusSub.get(),
                 cameraNameSub.get(),
+                activeCameraTypeSub.get(),
                 // Vision pose estimation
                 (int) visionTagIdSub.get(),
                 visionHasTargetSub.get(),
@@ -527,6 +533,16 @@ public class DashboardNtClient implements AutoCloseable {
         ++selectAutoSeq;
         selectAutoNamePub.set(autoName);
         selectAutoPub.set(selectAutoSeq);
+    }
+
+    public synchronized void sendCameraSelection(String cameraTypeName) {
+        if (cameraTypeName == null || cameraTypeName.isBlank()) {
+            return;
+        }
+
+        ++selectCameraSeq;
+        selectCameraNamePub.set(cameraTypeName);
+        selectCameraPub.set(selectCameraSeq);
     }
 
     public synchronized void sendSwerveValidation(String moduleToken, String modeToken) {
