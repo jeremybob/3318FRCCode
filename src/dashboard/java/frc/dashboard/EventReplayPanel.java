@@ -302,7 +302,8 @@ public final class EventReplayPanel extends JPanel {
                 + " hdgErr=" + ONE_D.format(row.alignHeadingErrorDeg())
                 + " dist=" + ONE_D.format(row.alignDistanceM())
                 + " gate=" + (row.alignFeedGateReady() ? "YES" : "NO")
-                + " rps=" + ONE_D.format(row.alignTargetRps()));
+                + " rps=" + ONE_D.format(row.alignTargetRps())
+                + " hold=" + (row.alignPositionHoldActive() ? ONE_D.format(row.alignPositionHoldErrorM()) + "m" : "OFF"));
         poseLabel.setText("Pose: (" + ONE_D.format(row.poseXm()) + ", "
                 + ONE_D.format(row.poseYm()) + ") hdg " + ONE_D.format(row.headingDeg()));
         canLabel.setText("CAN: " + ONE_D.format(row.canBusUtilization() * 100.0) + "% util"

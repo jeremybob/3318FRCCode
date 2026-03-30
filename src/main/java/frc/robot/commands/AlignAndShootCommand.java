@@ -17,6 +17,7 @@ package frc.robot.commands;
 
 import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.controller.PIDController;
+import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
 import edu.wpi.first.wpilibj.Timer;
@@ -49,7 +50,9 @@ public class AlignAndShootCommand extends Command {
             double distanceM,
             double targetRps,
             boolean feedGateReady,
-            String lastAbortReason) {}
+            String lastAbortReason,
+            boolean positionHoldActive,
+            double positionHoldErrorM) {}
 
     private static final TelemetrySnapshot IDLE_SNAPSHOT = new TelemetrySnapshot(
             "IDLE",
@@ -62,7 +65,9 @@ public class AlignAndShootCommand extends Command {
             Double.NaN,
             Double.NaN,
             false,
-            "");
+            "",
+            false,
+            Double.NaN);
 
     private static volatile TelemetrySnapshot telemetrySnapshot = IDLE_SNAPSHOT;
 
@@ -77,6 +82,14 @@ public class AlignAndShootCommand extends Command {
             Constants.AlignShoot.TURN_kP,
             0.0,
             Constants.AlignShoot.TURN_kD);
+
+    // Position-hold PID controllers (field-relative X and Y)
+    private final PIDController holdXPID = new PIDController(
+            Constants.PositionHold.kP, 0.0, Constants.PositionHold.kD);
+    private final PIDController holdYPID = new PIDController(
+            Constants.PositionHold.kP, 0.0, Constants.PositionHold.kD);
+    private Translation2d holdSetpoint = null;
+    private boolean positionHoldActive = false;
 
     private enum State { ALIGN, CLEAR, FEED, DONE }
 
@@ -113,6 +126,8 @@ public class AlignAndShootCommand extends Command {
     private double workTargetRps = Double.NaN;
     private boolean workFeedGateReady = false;
     private String workLastAbortReason = "";
+    private boolean workPositionHoldActive = false;
+    private double workPositionHoldErrorM = Double.NaN;
 
     public AlignAndShootCommand(
             SwerveSubsystem swerve,
@@ -152,6 +167,11 @@ public class AlignAndShootCommand extends Command {
         alignmentLocked = false;
         hadAlignmentLockThisRun = false;
 
+        holdXPID.reset();
+        holdYPID.reset();
+        holdSetpoint = null;
+        positionHoldActive = false;
+
         workState = State.ALIGN.name();
         workCommandActive = true;
         workHasTarget = false;
@@ -163,6 +183,8 @@ public class AlignAndShootCommand extends Command {
         workTargetRps = Constants.Shooter.TARGET_RPS;
         workFeedGateReady = false;
         workLastAbortReason = "";
+        workPositionHoldActive = false;
+        workPositionHoldErrorM = Double.NaN;
 
         if (!HubActivityTracker.isOurHubActive()) {
             double secsToShift = HubActivityTracker.secondsUntilNextShiftChange();
@@ -214,6 +236,10 @@ public class AlignAndShootCommand extends Command {
         workHasShootableTarget = false;
         workFeedGateReady = false;
         workTargetRps = Double.NaN;
+        workPositionHoldActive = false;
+        workPositionHoldErrorM = Double.NaN;
+        holdSetpoint = null;
+        positionHoldActive = false;
         alignmentLocked = false;
         hadAlignmentLockThisRun = false;
         resetAlignmentLockTimer();
@@ -473,9 +499,21 @@ public class AlignAndShootCommand extends Command {
             alignmentLocked = false;
             resetAlignmentLockTimer();
             resetAlignmentBreakTimer();
+            // Release position hold when returning to ALIGN or finishing
+            holdSetpoint = null;
+            positionHoldActive = false;
         }
         if (newState != State.ALIGN) {
             resetFeedGateTimer();
+        }
+        // Capture position-hold setpoint when entering CLEAR (first feed state)
+        if (newState == State.CLEAR || (newState == State.FEED && holdSetpoint == null)) {
+            if (Constants.PositionHold.ENABLED) {
+                holdSetpoint = swerve.getPose().getTranslation();
+                holdXPID.reset();
+                holdYPID.reset();
+                positionHoldActive = true;
+            }
         }
         workState = newState.toString();
         SmartDashboard.putString("AlignShoot/State", newState.toString());
@@ -510,6 +548,9 @@ public class AlignAndShootCommand extends Command {
                     Constants.AlignShoot.MAX_AUTO_AIM_OMEGA_RADPS);
         }
 
+        // Position-hold: compute corrective field-relative translation
+        ChassisSpeeds holdTranslation = computePositionHoldSpeeds();
+
         boolean feedGateSettled = updateFeedGateTimer(
                 feasible
                         && holdingAlignment
@@ -523,7 +564,7 @@ public class AlignAndShootCommand extends Command {
                 distanceM,
                 targetRps,
                 hoodAngleDeg,
-                new ChassisSpeeds(0.0, 0.0, 0.0),
+                holdTranslation,
                 rotCmd,
                 feasible,
                 feedGateReady);
@@ -545,10 +586,67 @@ public class AlignAndShootCommand extends Command {
     }
 
     private void driveTracking(ShotTracking tracking) {
-        swerve.driveRobotRelative(new ChassisSpeeds(
-                tracking.translationCmd().vxMetersPerSecond,
-                tracking.translationCmd().vyMetersPerSecond,
-                tracking.rotCmdRadPerSec()));
+        if (positionHoldActive) {
+            // Position-hold outputs are field-relative; rotation is robot-relative.
+            // Use field-relative drive so the correction pushes toward the held
+            // field position regardless of which way the robot is currently facing.
+            swerve.drive(
+                    tracking.translationCmd().vxMetersPerSecond,
+                    tracking.translationCmd().vyMetersPerSecond,
+                    tracking.rotCmdRadPerSec(),
+                    true);
+        } else {
+            swerve.driveRobotRelative(new ChassisSpeeds(
+                    tracking.translationCmd().vxMetersPerSecond,
+                    tracking.translationCmd().vyMetersPerSecond,
+                    tracking.rotCmdRadPerSec()));
+        }
+    }
+
+    // =========================================================================
+    // Position hold — resist defensive pushing during CLEAR/FEED
+    // =========================================================================
+
+    /**
+     * Computes field-relative corrective chassis speeds to hold the robot at
+     * the captured setpoint. Returns zero speeds if position hold is inactive.
+     * Aborts the shot if the robot has been pushed beyond the abandon threshold.
+     */
+    private ChassisSpeeds computePositionHoldSpeeds() {
+        if (!positionHoldActive || holdSetpoint == null) {
+            workPositionHoldActive = false;
+            workPositionHoldErrorM = Double.NaN;
+            return new ChassisSpeeds(0.0, 0.0, 0.0);
+        }
+
+        Pose2d currentPose = swerve.getPose();
+        Translation2d currentPos = currentPose.getTranslation();
+        double errorX = holdSetpoint.getX() - currentPos.getX();
+        double errorY = holdSetpoint.getY() - currentPos.getY();
+        double errorMagnitude = Math.hypot(errorX, errorY);
+
+        workPositionHoldActive = true;
+        workPositionHoldErrorM = errorMagnitude;
+
+        // Abandon: pushed too far, shot solution is stale
+        if (errorMagnitude > Constants.PositionHold.ABANDON_DISTANCE_M) {
+            abort("Position hold lost (pushed " + String.format("%.2f", errorMagnitude) + " m)");
+            return new ChassisSpeeds(0.0, 0.0, 0.0);
+        }
+
+        // PID outputs are in m/s, field-relative
+        double vx = holdXPID.calculate(currentPos.getX(), holdSetpoint.getX());
+        double vy = holdYPID.calculate(currentPos.getY(), holdSetpoint.getY());
+
+        // Clamp total magnitude to limit current draw
+        double magnitude = Math.hypot(vx, vy);
+        if (magnitude > Constants.PositionHold.MAX_CORRECTION_MPS) {
+            double scale = Constants.PositionHold.MAX_CORRECTION_MPS / magnitude;
+            vx *= scale;
+            vy *= scale;
+        }
+
+        return new ChassisSpeeds(vx, vy, 0.0);
     }
 
     // =========================================================================
@@ -800,7 +898,15 @@ public class AlignAndShootCommand extends Command {
             hopper.setPower(Constants.Shooter.FEED_POWER);
             intake.setRollerPower(Constants.Shooter.FEED_POWER);
         }
-        swerve.driveRobotRelative(new ChassisSpeeds(0.0, 0.0, 0.0));
+        // Apply position hold even during vision dropout so the robot
+        // continues to resist pushing while waiting to reacquire.
+        ChassisSpeeds holdSpeeds = computePositionHoldSpeeds();
+        if (positionHoldActive) {
+            swerve.drive(holdSpeeds.vxMetersPerSecond, holdSpeeds.vyMetersPerSecond,
+                    0.0, true);
+        } else {
+            swerve.driveRobotRelative(new ChassisSpeeds(0.0, 0.0, 0.0));
+        }
     }
 
     private void updateSearchDirectionFromError(double errorDeg) {
@@ -832,7 +938,9 @@ public class AlignAndShootCommand extends Command {
                 workDistanceM,
                 workTargetRps,
                 workFeedGateReady,
-                workLastAbortReason);
+                workLastAbortReason,
+                workPositionHoldActive,
+                workPositionHoldErrorM);
     }
 
     private void publishTelemetry() {
@@ -841,6 +949,8 @@ public class AlignAndShootCommand extends Command {
         SmartDashboard.putNumber("AlignShoot/DistanceM", workDistanceM);
         SmartDashboard.putNumber("AlignShoot/CalculatedRPS", workTargetRps);
         SmartDashboard.putBoolean("AlignShoot/FeedGateReady", workFeedGateReady);
+        SmartDashboard.putBoolean("AlignShoot/PositionHoldActive", workPositionHoldActive);
+        SmartDashboard.putNumber("AlignShoot/PositionHoldErrorM", workPositionHoldErrorM);
     }
 
     public static TelemetrySnapshot getTelemetrySnapshot() { return telemetrySnapshot; }
@@ -856,6 +966,8 @@ public class AlignAndShootCommand extends Command {
     public static double getTelemetryTargetRps() { return telemetrySnapshot.targetRps(); }
     public static boolean telemetryFeedGateReady() { return telemetrySnapshot.feedGateReady(); }
     public static String getTelemetryLastAbortReason() { return telemetrySnapshot.lastAbortReason(); }
+    public static boolean telemetryPositionHoldActive() { return telemetrySnapshot.positionHoldActive(); }
+    public static double getTelemetryPositionHoldErrorM() { return telemetrySnapshot.positionHoldErrorM(); }
 
     private record ShotTracking(
             double aimErrorDeg,

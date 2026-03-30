@@ -128,6 +128,7 @@ public class DashboardFrame extends JFrame {
     private final JLabel shotModelLabel = new JLabel("Shot: --");
     // motionLabel removed — stationary alignment only, no moving shot data
     private final JProgressBar yawBar = new JProgressBar(-30, 30);
+    private final JLabel positionHoldLabel = new JLabel("Pos hold: OFF");
     private final JLabel visionLabel = new JLabel("Vision: --");
     private final JLabel abortLabel = new JLabel("Last abort: --");
     private final FieldPanel fieldPanel = new FieldPanel();
@@ -347,6 +348,7 @@ public class DashboardFrame extends JFrame {
         styleCompactLabel(distanceLabel);
         styleCompactLabel(shotModelLabel);
         // motionLabel removed
+        styleCompactLabel(positionHoldLabel);
         styleCompactLabel(visionLabel);
         styleCompactLabel(abortLabel);
         styleMetricLabel(ackLabel);
@@ -732,7 +734,7 @@ public class DashboardFrame extends JFrame {
     }
 
     private JPanel buildAlignCard() {
-        JPanel panel = new JPanel(new GridLayout(9, 1, 4, 4));
+        JPanel panel = new JPanel(new GridLayout(10, 1, 4, 4));
         panel.setBackground(CARD);
         panel.add(alignPhaseLabel);
         panel.add(aimErrorLabel);
@@ -740,7 +742,7 @@ public class DashboardFrame extends JFrame {
         panel.add(yawBar);
         panel.add(distanceLabel);
         panel.add(shotModelLabel);
-        // motionLabel removed — stationary alignment only
+        panel.add(positionHoldLabel);
         panel.add(visionLabel);
         panel.add(abortLabel);
         return wrapCard("Align Pipeline", panel);
@@ -1116,6 +1118,16 @@ public class DashboardFrame extends JFrame {
                 + "  Dist: " + formatMaybe(data.visionDistanceM()) + " m"
                 + "  Tags: " + data.visionHubTagCount());
         abortLabel.setText("Last abort: " + sanitize(data.alignAbortReason()));
+        if (data.alignPositionHoldActive()) {
+            positionHoldLabel.setText("Pos hold: ACTIVE  drift " + formatMaybe(data.alignPositionHoldErrorM()) + " m");
+            double holdErr = data.alignPositionHoldErrorM();
+            positionHoldLabel.setForeground(
+                    Double.isFinite(holdErr) && holdErr > 0.3 ? WARN
+                            : Double.isFinite(holdErr) && holdErr > 0.1 ? OK : TEXT);
+        } else {
+            positionHoldLabel.setText("Pos hold: OFF");
+            positionHoldLabel.setForeground(TEXT);
+        }
         updateYawBar(data.alignAimErrorDeg());
 
         // Shot checklist
@@ -1799,7 +1811,9 @@ public class DashboardFrame extends JFrame {
                 .append(" dist=").append(data.alignDistanceM())
                 .append(" rps=").append(data.alignTargetRps())
                 .append(" gate=").append(data.alignFeedGateReady())
-                .append(" abort='").append(sanitize(data.alignAbortReason())).append("'\n");
+                .append(" abort='").append(sanitize(data.alignAbortReason())).append("'")
+                .append(" posHold=").append(data.alignPositionHoldActive())
+                .append(" posHoldErr=").append(formatMaybe(data.alignPositionHoldErrorM())).append("m\n");
         sb.append("ReadyToScore: ").append(data.readyToScore())
                 .append(" reason='").append(sanitize(data.readyReason())).append("'\n");
         sb.append("DriverButtons: ").append(sanitize(data.driverButtonsActive())).append('\n');

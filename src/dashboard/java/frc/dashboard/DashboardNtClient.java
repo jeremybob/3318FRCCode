@@ -109,6 +109,10 @@ public class DashboardNtClient implements AutoCloseable {
     private final BooleanSubscriber alignFeedGateReadySub =
             table.getBooleanTopic("align/feed_gate_ready").subscribe(false);
     private final StringSubscriber alignAbortSub = table.getStringTopic("align/last_abort_reason").subscribe("");
+    private final BooleanSubscriber alignPositionHoldActiveSub =
+            table.getBooleanTopic("align/position_hold_active").subscribe(false);
+    private final DoubleSubscriber alignPositionHoldErrorSub =
+            table.getDoubleTopic("align/position_hold_error_m").subscribe(Double.NaN);
 
     private final BooleanSubscriber readySub = table.getBooleanTopic("shot/ready").subscribe(false);
     private final StringSubscriber readyReasonSub = table.getStringTopic("shot/ready_reason").subscribe("");
@@ -353,6 +357,8 @@ public class DashboardNtClient implements AutoCloseable {
                 alignTargetRpsSub.get(),
                 alignFeedGateReadySub.get(),
                 alignAbortSub.get(),
+                alignPositionHoldActiveSub.get(),
+                alignPositionHoldErrorSub.get(),
                 readySub.get(),
                 readyReasonSub.get(),
                 // 2026 REBUILT: HUB shift activity

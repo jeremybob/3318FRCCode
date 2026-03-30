@@ -596,6 +596,30 @@ public final class Constants {
     }
 
     // =========================================================================
+    // POSITION HOLD — resist defensive pushing during shot sequence
+    // =========================================================================
+    public static final class PositionHold {
+        // PID gains for field-relative X/Y hold.
+        // Units: meters/second output per meter of position error.
+        // kP must be aggressive enough to resist pushing, but kD must be
+        // high enough to damp oscillation when the pushing force suddenly
+        // stops — otherwise the robot overshoots the setpoint.
+        public static final double kP = 3.5;   // TUNE ME — aggressive to resist defense
+        public static final double kD = 0.4;   // TUNE ME — strong damping prevents overshoot on release
+
+        // Cap corrective drive output to limit current draw while shooter
+        // and feed path are running (~60% of max drive speed).
+        public static final double MAX_CORRECTION_MPS = 2.7; // TUNE ME
+
+        // If pushed beyond this distance from the hold setpoint, abort the
+        // shot — the shot solution is stale and the robot is losing the fight.
+        public static final double ABANDON_DISTANCE_M = 0.5; // TUNE ME
+
+        // Master enable flag for easy toggle during testing.
+        public static final boolean ENABLED = true;
+    }
+
+    // =========================================================================
     // ALIGN-AND-SHOOT (stationary auto-align then shoot)
     // =========================================================================
     public static final class AlignShoot {

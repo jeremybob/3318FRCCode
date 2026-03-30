@@ -31,6 +31,7 @@ class MatchCsvLoggerTest {
                 "TRACKING", true, true, true, true,        // alignState, alignCommandActive, alignHasTarget, alignGeometryFeasible, alignHasShootableTarget
                 1.2, 0.3, 0.9, -0.5,                      // alignHeadingErrorDeg, alignAimErrorDeg, alignDistanceM, alignTargetRps
                 true, "",                                   // alignFeedGateReady, alignAbortReason
+                false, Double.NaN,                          // alignPositionHoldActive, alignPositionHoldErrorM
                 true, "All conditions met",                // readyToScore, readyReason
                 true, 10.0,                                 // hubActive, hubSecondsToNextShift
                 battery, false, false,                      // batteryVoltage, brownoutAlert, isBrownout

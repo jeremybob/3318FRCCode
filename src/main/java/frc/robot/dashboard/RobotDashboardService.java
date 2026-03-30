@@ -103,6 +103,8 @@ public class RobotDashboardService {
     private final DoublePublisher alignTargetRpsPub;
     private final BooleanPublisher alignFeedGateReadyPub;
     private final StringPublisher alignAbortReasonPub;
+    private final BooleanPublisher alignPositionHoldActivePub;
+    private final DoublePublisher alignPositionHoldErrorPub;
 
     private final BooleanPublisher readyToScorePub;
     private final StringPublisher readyReasonPub;
@@ -293,6 +295,8 @@ public class RobotDashboardService {
         alignTargetRpsPub = table.getDoubleTopic("align/target_rps").publish();
         alignFeedGateReadyPub = table.getBooleanTopic("align/feed_gate_ready").publish();
         alignAbortReasonPub = table.getStringTopic("align/last_abort_reason").publish();
+        alignPositionHoldActivePub = table.getBooleanTopic("align/position_hold_active").publish();
+        alignPositionHoldErrorPub = table.getDoubleTopic("align/position_hold_error_m").publish();
 
         readyToScorePub = table.getBooleanTopic("shot/ready").publish();
         readyReasonPub = table.getStringTopic("shot/ready_reason").publish();
@@ -484,6 +488,8 @@ public class RobotDashboardService {
         alignTargetRpsPub.set(snapshot.alignTargetRps());
         alignFeedGateReadyPub.set(snapshot.alignFeedGateReady());
         alignAbortReasonPub.set(snapshot.alignAbortReason());
+        alignPositionHoldActivePub.set(snapshot.alignPositionHoldActive());
+        alignPositionHoldErrorPub.set(snapshot.alignPositionHoldErrorM());
 
         readyToScorePub.set(snapshot.readyToScore());
         readyReasonPub.set(snapshot.readyReason());

@@ -48,6 +48,8 @@ public record DashboardData(
         double alignTargetRps,
         boolean alignFeedGateReady,
         String alignAbortReason,
+        boolean alignPositionHoldActive,
+        double alignPositionHoldErrorM,
         boolean readyToScore,
         String readyReason,
         // 2026 REBUILT: HUB shift activity

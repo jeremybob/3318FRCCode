@@ -595,6 +595,7 @@ class RobotDashboardServiceTest {
                 "IDLE", false, false, false, false, // alignState, alignCommandActive, alignHasTarget, alignGeometryFeasible, alignHasShootableTarget
                 Double.NaN, Double.NaN, Double.NaN, Double.NaN, // alignHeadingErrorDeg, alignAimErrorDeg, alignDistanceM, alignTargetRps
                 false, "",                  // alignFeedGateReady, alignAbortReason
+                false, Double.NaN,          // alignPositionHoldActive, alignPositionHoldErrorM
                 false, "",                  // readyToScore, readyReason
                 // HUB shift activity
                 true, 25.0,                 // hubActive, hubSecondsToNextShift

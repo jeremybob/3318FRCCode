@@ -45,6 +45,8 @@ public final class MatchCsvLogger implements AutoCloseable {
             "align_distance_m",
             "align_target_rps",
             "align_feed_gate_ready",
+            "align_pos_hold_active",
+            "align_pos_hold_error_m",
             "heading_deg",
             "pose_x_m",
             "pose_y_m",
@@ -93,6 +95,8 @@ public final class MatchCsvLogger implements AutoCloseable {
         sb.append(',').append(data.alignDistanceM());
         sb.append(',').append(data.alignTargetRps());
         sb.append(',').append(data.alignFeedGateReady());
+        sb.append(',').append(data.alignPositionHoldActive());
+        sb.append(',').append(data.alignPositionHoldErrorM());
         sb.append(',').append(data.headingDeg());
         sb.append(',').append(data.poseX_m());
         sb.append(',').append(data.poseY_m());
@@ -140,6 +144,8 @@ public final class MatchCsvLogger implements AutoCloseable {
             double alignDistanceM,
             double alignTargetRps,
             boolean alignFeedGateReady,
+            boolean alignPositionHoldActive,
+            double alignPositionHoldErrorM,
             double headingDeg,
             double poseXm,
             double poseYm,
@@ -176,11 +182,13 @@ public final class MatchCsvLogger implements AutoCloseable {
                             parseDouble(cols[15]),
                             parseDouble(cols[16]),
                             Boolean.parseBoolean(cols[17]),
-                            parseDouble(cols[18]),
+                            Boolean.parseBoolean(cols[18]),
                             parseDouble(cols[19]),
                             parseDouble(cols[20]),
                             parseDouble(cols[21]),
-                            Boolean.parseBoolean(cols[22])));
+                            parseDouble(cols[22]),
+                            parseDouble(cols[23]),
+                            Boolean.parseBoolean(cols[24])));
                 } catch (NumberFormatException ignored) {
                     // skip malformed rows
                 }

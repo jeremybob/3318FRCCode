@@ -1008,6 +1008,8 @@ public class RobotContainer implements RobotRuntimeContainer {
                 AlignAndShootCommand.getTelemetryTargetRps(),
                 AlignAndShootCommand.telemetryFeedGateReady(),
                 AlignAndShootCommand.getTelemetryLastAbortReason(),
+                AlignAndShootCommand.telemetryPositionHoldActive(),
+                AlignAndShootCommand.getTelemetryPositionHoldErrorM(),
                 ready.ready(),
                 ready.reason(),
                 // 2026 REBUILT: HUB shift activity
