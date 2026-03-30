@@ -87,8 +87,11 @@ public class RobotContainer implements RobotRuntimeContainer {
     private PhotonPoseEstimator photonPoseEstimator;
     private edu.wpi.first.networktables.NetworkTable limelightTable;
     private Constants.Vision.CameraType activeCameraType = Constants.Vision.CameraType.PHOTONVISION;
+    private Constants.Vision.CameraType previousCameraType = Constants.Vision.CameraType.PHOTONVISION;
     private int lastVisionTagId = -1;
     private int lastVisionTagCount = 0;
+    private long lastLimelightNtTimestamp = 0;
+    private double lastLimelightFpgaSec = 0.0;
 
     // =========================================================================
     // SUBSYSTEMS — created once here, shared with commands
@@ -260,7 +263,14 @@ public class RobotContainer implements RobotRuntimeContainer {
      * into the swerve drive pose estimator to correct odometry drift.
      */
     private void updateVision() {
-        switch (getActiveCameraType()) {
+        Constants.Vision.CameraType current = getActiveCameraType();
+        // Clear stale telemetry when the camera source changes.
+        if (current != previousCameraType) {
+            lastVisionTagId = -1;
+            lastVisionTagCount = 0;
+            previousCameraType = current;
+        }
+        switch (current) {
             case PHOTONVISION -> updatePhotonVision();
             case LIMELIGHT    -> updateLimelight();
         }
@@ -289,6 +299,15 @@ public class RobotContainer implements RobotRuntimeContainer {
     private void updateLimelight() {
         if (limelightTable == null) return;
 
+        // Track when the Limelight last published a fresh value (for connection detection).
+        // Compare NT timestamps across cycles: if the NT timestamp changed, the Limelight
+        // is still publishing, and we record the FPGA time of that observation.
+        long tvTimestamp = limelightTable.getEntry("tv").getLastChange();
+        if (tvTimestamp > lastLimelightNtTimestamp) {
+            lastLimelightNtTimestamp = tvTimestamp;
+            lastLimelightFpgaSec = Timer.getFPGATimestamp();
+        }
+
         double tv = limelightTable.getEntry("tv").getDouble(0.0);
         if (tv < 1.0) return; // no target visible
 
@@ -299,6 +318,10 @@ public class RobotContainer implements RobotRuntimeContainer {
         // botpose_wpiblue: [x, y, z, roll, pitch, yaw, latencyMs, tagCount, tagSpan, avgDist, avgArea]
         double[] botpose = limelightTable.getEntry("botpose_wpiblue").getDoubleArray(new double[0]);
         if (botpose.length < 7) return;
+
+        // Limelight returns all-zeros when it has no valid 3D solution.
+        // Feeding (0, 0) into the pose estimator would corrupt odometry.
+        if (botpose[0] == 0.0 && botpose[1] == 0.0 && botpose[5] == 0.0) return;
 
         Pose2d visionPose = new Pose2d(
                 botpose[0], botpose[1],
@@ -912,8 +935,10 @@ public class RobotContainer implements RobotRuntimeContainer {
         String cameraName;
         switch (getActiveCameraType()) {
             case LIMELIGHT:
+                // Consider connected if Limelight published within the last 2 seconds.
                 cameraConnected = limelightTable != null
-                        && limelightTable.getEntry("tv").getLastChange() > 0;
+                        && lastLimelightFpgaSec > 0
+                        && (Timer.getFPGATimestamp() - lastLimelightFpgaSec) < 2.0;
                 cameraStatus = cameraConnected ? "LIMELIGHT_CONNECTED" : "LIMELIGHT_DISCONNECTED";
                 cameraName = Constants.Vision.LIMELIGHT_NAME;
                 break;
